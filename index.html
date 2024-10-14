@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Music Visualizer</title>
+    <style>
+        body, html { margin: 0; overflow: hidden; }
+        #info {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: grey; text-align: center;
+            font-family: Arial, sans-serif;
+        }
+        #modeIndicator {
+            position: absolute; bottom: 10px; left: 10px;
+            color: grey; text-align: left;
+            font-family: Arial, sans-serif;
+            opacity: 0;
+            transition: opacity 1s;
+        }
+        #fileInput {
+            display: none;
+        }
+        </style>
+        </head>
+        <body>
+            <div id="info">press spacebar to start</div>
+            <div id="modeIndicator"></div>
+            <audio id="audio" preload="auto">
+                <source src="london.mp3" type="audio/mp3">
+            </audio>
+            <div id="loadedMessage" style="position: absolute; bottom: 10px; left: 10px;
+            color: grey; text-align: left;
+            font-family: Arial, sans-serif; display: none;">
+            loaded
+        </div>
+        <div id="songInfo" style="position: absolute; bottom: 10px; right: 10px; color: grey; text-align: right; font-family: Arial, sans-serif; opacity: 0; transition: opacity 1s;"></div>
+        <input type="file" id="fileInput" accept="audio/*" onchange="handleFileSelect(event)">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        <script>
+        const audioElement = document.getElementById('audio');
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        let audioSrc;
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 1024;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        let camera, scene, renderer, intensityLevel = 1;
+        let currentStyleIndex = Math.floor(Math.random() * 4); // Randomly select an initial style
+        let visualElements = [];
+        let isPlaying = false;
+        let isUsingDefaultAudio = true; // Flag to track audio source status
+        let currentMode = 'playlist'; // Start in playlist mode
+
+        const modes = ['fileSelect', 'audioDevice', 'dsp', 'playlist'];
+        let currentModeIndex = modes.indexOf(currentMode);
+
+        function init() {
+             scene = new THREE.Scene(); 
+             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+             camera.position.z = 500;
+             
+             renderer = new THREE.WebGLRenderer();
+             renderer.setSize(window.innerWidth, window.innerHeight);
+             document.body.appendChild(renderer.domElement);
+             
+             createVisualElements();
+             window.addEventListener('resize', onWindowResize, false);
+             document.body.addEventListener('keydown', onKeyDown, false);
+             
+             if (currentMode === 'playlist') {
+                shufflePlaylist(); // Shuffle the playlist
+                loadCurrentSong(); // Load the first random song
+                }
+                
+                // Add event listener for spacebar here
+                document.body.addEventListener('keydown', (event) => {
+                    if (event.key === ' ') {
+                        event.preventDefault(); // Prevent scrolling on spacebar press in some browsers
+                        togglePlayPause();
+                    }
+                });
+                
+                animate();
+            
+        }
+            let playlist = ['london.mp3', 'basketcase.mp3', 'clubtropicana.mp3']; // Example playlist
+            let currentSongIndex = Math.floor(Math.random() * playlist.length); // Random start
+            
+            function shufflePlaylist() {
+                for (let i = playlist.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [playlist[i], playlist[j]] = [playlist[j], playlist[i]];
+                }
+            }
+            
+            function loadCurrentSong() {
+                if (audioSrc) {
+                    audioSrc.disconnect(); // Disconnect the previous audio source
+                    }
+                    audioElement.src = playlist[currentSongIndex];
+                    selectedFileName = playlist[currentSongIndex].replace(/\.[^/.]+$/, "");
+                    audioElement.load();
+                    
+                    audioElement.onloadedmetadata = async () => {
+                        if (audioContext.state === 'suspended') {
+                            await audioContext.resume(); // Ensure the audio context is resumed if it was suspended
+                            }
+                            audioSrc = audioContext.createMediaElementSource(audioElement);
+                            audioSrc.connect(analyser);
+                            analyser.connect(audioContext.destination);
+                            audioElement.play(); // Start playing the song immediately
+                            };
+            }
+                        
+            function playNextSongInPlaylist() {
+                currentSongIndex = (currentSongIndex + 1) % playlist.length;
+                    loadCurrentSong();
+            }
+                        
+            function playPreviousSongInPlaylist() {
+                currentSongIndex = (currentSongIndex - 1 + playlist.length) % playlist.length;
+                    loadCurrentSong();
+            }
+                        
+            audioElement.addEventListener('ended', () => {
+                if (currentMode === 'playlist') {
+                    playNextSongInPlaylist();
+                }
+            });
+                        
+            function switchMode(mode) {
+                currentMode = mode;
+                currentModeIndex = modes.indexOf(mode);
+                displayMode();
+                            
+                // Reset any existing audio source connections
+                if (audioSrc) {
+                    audioSrc.disconnect();
+                        audioSrc = null;
+                }
+                            
+                switch (mode) {
+                    case 'fileSelect':
+                        document.getElementById('fileInput').click();
+                            break;
+                    case 'audioDevice':
+                        navigator.mediaDevices.getUserMedia({ audio: true })
+                            .then(stream => {
+                                audioSrc = audioContext.createMediaStreamSource(stream);
+                                audioSrc.connect(analyser);
+                                analyser.connect(audioContext.destination);
+                                }).catch(error => {
+                                    console.error('Error accessing audio device:', error);
+                                });
+                                break;
+                    case 'dsp':
+                        console.log('DSP Mode is not implemented in this example.');
+                        break;
+                    case 'playlist':
+                        shufflePlaylist(); // Shuffle the playlist
+                        loadCurrentSong(); // Load the first random song
+                        isUsingDefaultAudio = true;
+                        audioElement.addEventListener('ended', () => {
+                            if (currentMode === 'playlist') {
+                                playNextSongInPlaylist();
+                            }
+                        });
+                        break;
+                        default:
+                        console.log('Unknown mode');
+                        }
+            }
+                                            
+                let selectedFileName = '';
+                                            
+                function handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    selectedFileName = file.name.replace(/\.[^/.]+$/, ""); // Remove the file extension
+                    audioElement.src = URL.createObjectURL(file);
+                    audioElement.load();
+                    audioElement.onloadedmetadata = () => {
+                        if (audioSrc) {
+                            audioSrc.disconnect();
+                        }
+                        analyser.disconnect(); // Ensure previous connections are cleared
+                        audioSrc = audioContext.createMediaElementSource(audioElement);
+                        audioSrc.connect(analyser);
+                        analyser.connect(audioContext.destination); // Ensure this connection for playback
+                        isUsingDefaultAudio = false; // Update flag since we're now using a custom audio file
+                        
+                        // Display the "Loaded" message
+                        const loadedMessage = document.getElementById('loadedMessage');
+                        loadedMessage.style.display = 'block';
+                        setTimeout(() => {
+                            loadedMessage.style.display = 'none';
+                        }, 3000); // Hide the message after 3 seconds
+                        };
+                }
+                function createParticles() {
+            const particleCount = 5000;
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+            for (let i = 0; i < particleCount; i++) {
+                // positions
+                positions[i * 3] = (Math.random() - 0.5) * 1000; // x
+                positions[i * 3 + 1] = (Math.random() - 0.5) * 1000; // y
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 1000; // z
+                // colors
+                colors[i * 3] = Math.random(); // r
+                colors[i * 3 + 1] = Math.random(); // g
+                colors[i * 3 + 2] = Math.random(); // b
+            }
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            const material = new THREE.PointsMaterial({ size: 2, vertexColors: true });
+            const particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+            visualElements.push(particles);
+        }
+
+        function createWaves() {
+    const waveGeometry = new THREE.PlaneBufferGeometry(1000, 1000, 100, 100);
+
+    const waveMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0.0 },
+            amplitude: { value: 10.0 },
+            frequency: { value: 0.2 },
+            speed: { value: 0.5 },
+            color: { value: new THREE.Color(0x00ff00) }
+        },
+        vertexShader: `
+            uniform float time;
+            uniform float amplitude;
+            uniform float frequency;
+            uniform float speed;
+
+            varying vec3 vColor;
+
+            void main() {
+                vec3 pos = position;
+                pos.z += sin((pos.x + pos.y + time * speed) * frequency) * amplitude;
+
+                vColor = vec3(0.0, 1.0 - pos.z * 0.1, 0.0);
+
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vColor;
+
+            void main() {
+                gl_FragColor = vec4(vColor, 1.0);
+            }
+        `,
+        wireframe: true,
+        transparent: true,
+    });
+
+    const wave = new THREE.Mesh(waveGeometry, waveMaterial);
+    wave.rotation.x = -Math.PI / 2;
+    wave.name = 'Waves';
+    scene.add(wave);
+    visualElements.push(wave);
+}
+
+function create3DWaves() {
+    const wave3DGeometry = new THREE.PlaneBufferGeometry(1000, 1000, 50, 50);
+
+    const wave3DMaterial = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0.0 },
+            amplitude: { value: 15.0 },
+            frequency: { value: 0.4 },
+            speed: { value: 0.8 },
+            color: { value: new THREE.Color(0x00aaff) }
+        },
+        vertexShader: `
+            uniform float time;
+            uniform float amplitude;
+            uniform float frequency;
+            uniform float speed;
+
+            varying vec3 vColor;
+
+            void main() {
+                vec3 pos = position;
+                pos.z += cos((pos.x + pos.y + time * speed) * frequency) * amplitude;
+
+                vColor = vec3(0.0, 1.0 - pos.z * 0.1, 0.5 + pos.z * 0.1);
+
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+            }
+        `,
+        fragmentShader: `
+            varying vec3 vColor;
+
+            void main() {
+                gl_FragColor = vec4(vColor, 1.0);
+            }
+        `,
+        wireframe: true,
+        transparent: true,
+    });
+
+    const wave3D = new THREE.Mesh(wave3DGeometry, wave3DMaterial);
+    wave3D.rotation.x = -Math.PI / 2;
+    wave3D.name = '3DWaves';
+    scene.add(wave3D);
+    visualElements.push(wave3D);
+}
+
+
+
+function createTrippyColors() {
+    const geometry = new THREE.PlaneGeometry(2000, 2000, 1, 1);
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            time: { value: 0.0 },  // Ensure time starts at 0
+            resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+            audioIntensity: { value: 0.5 },  // Set initial intensity for strong visibility
+        },
+        vertexShader: `
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `,
+        fragmentShader: `
+            uniform float time;
+            uniform vec2 resolution;
+            uniform float audioIntensity;
+            varying vec2 vUv;
+
+            void main() {
+                vec2 p = -1.0 + 2.0 * vUv;
+                float a = atan(p.y, p.x);  // Calculate angle for vortex
+                float r = length(p);  // Calculate radius
+                float spiralEffect = sin(a * 5.0 + time * 2.0) * 0.5;  // Create a spiral vortex effect
+
+                float red = 0.5 + 0.5 * sin(3.0 * a + time * 3.0);
+                float green = 0.5 + 0.5 * cos(3.0 * r + time * 2.0);
+                float blue = 0.5 + 0.5 * sin(2.0 * a - time);
+
+                gl_FragColor = vec4(red, green, blue, 1.0) * (0.5 + 0.5 * spiralEffect) * audioIntensity;
+            }
+        `,
+        transparent: true,
+    });
+
+    const trippy = new THREE.Mesh(geometry, material);
+    trippy.name = 'TrippyColors';
+    scene.add(trippy);
+    visualElements.push(trippy);
+}
+
+
+        function createVisualElements() {
+            createParticles();
+            createWaves();
+            create3DWaves();
+            createTrippyColors();
+            //createVortex();
+            //createKaleidoscope();
+            //createstyle7();
+            //createstyle8();
+            //createstyle9();
+            //createstyle10();
+            updateVisibility(); // Show only the selected style
+        }
+
+        function updateVisibility() {
+            visualElements.forEach((elem, index) => {
+                elem.visible = (index === currentStyleIndex);
+            });
+        }
+
+        function animate() {
+    requestAnimationFrame(animate);
+
+    if (isPlaying) {
+        animateAudioReactiveEffects();
+    } else {
+        animateInitialEffects();
+    }
+
+    renderer.render(scene, camera);
+}
+
+function animateInitialEffects() {
+    const time = performance.now() * 0.001; // Use `performance.now()` for smooth animation timing
+
+    // Trippy Colors Effect Animation
+    const trippyEffect = visualElements.find(elem => elem.name === 'TrippyColors');
+    if (trippyEffect && trippyEffect.material.uniforms) {
+        // Increment shader time uniform for smooth animation
+        trippyEffect.material.uniforms.time.value = time * 0.5; // Adjust speed factor if needed
+        trippyEffect.material.uniforms.audioIntensity.value = 1.0; // Set a base intensity for initial effects
+    }
+
+
+    // Particles Animation
+    const particleSystem = visualElements.find(elem => elem instanceof THREE.Points);
+    if (particleSystem) {
+        particleSystem.rotation.y += 0.01 * intensityLevel;
+    }
+
+    // Waves Animation
+    const waveEffect = visualElements.find(elem => elem instanceof THREE.Mesh && elem.name === 'Waves');
+    if (waveEffect && waveEffect.material.uniforms) {
+        waveEffect.material.uniforms.time.value = time;
+        waveEffect.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // 3D Waves Animation
+    const wave3DEffect = visualElements.find(elem => elem instanceof THREE.Mesh && elem.name === '3DWaves');
+    if (wave3DEffect && wave3DEffect.material.uniforms) {
+        wave3DEffect.material.uniforms.time.value = time;
+        wave3DEffect.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // Style 5
+    // const wave3DEffect = visualElements.find(elem => elem instanceof THREE.Mesh && elem.name === '3DWaves');
+    // if (wave3DEffect && wave3DEffect.material.uniforms) {
+    //    wave3DEffect.material.uniforms.time.value = time;
+    //    wave3DEffect.geometry.attributes.position.needsUpdate = true;
+    // }
+
+    // Style 6
+    // const wave3DEffect = visualElements.find(elem => elem instanceof THREE.Mesh && elem.name === '3DWaves');
+    // if (wave3DEffect && wave3DEffect.material.uniforms) {
+    //    wave3DEffect.material.uniforms.time.value = time;
+    //    wave3DEffect.geometry.attributes.position.needsUpdate = true;
+    // }
+
+    // Style 7
+    // const wave3DEffect = visualElements.find(elem => elem instanceof THREE.Mesh && elem.name === '3DWaves');
+    // if (wave3DEffect && wave3DEffect.material.uniforms) {
+    //    wave3DEffect.material.uniforms.time.value = time;
+    //    wave3DEffect.geometry.attributes.position.needsUpdate = true;
+    // }
+
+    // Style 8
+    // const wave3DEffect = visualElements.find(elem => elem instanceof THREE.Mesh && elem.name === '3DWaves');
+    // if (wave3DEffect && wave3DEffect.material.uniforms) {
+    //    wave3DEffect.material.uniforms.time.value = time;
+    //    wave3DEffect.geometry.attributes.position.needsUpdate = true;
+    // }
+
+    // Style 9
+    // const wave3DEffect = visualElements.find(elem => elem instanceof THREE.Mesh && elem.name === '3DWaves');
+    // if (wave3DEffect && wave3DEffect.material.uniforms) {
+    //    wave3DEffect.material.uniforms.time.value = time;
+    //    wave3DEffect.geometry.attributes.position.needsUpdate = true;
+    // }
+
+    // Style 10
+    // const wave3DEffect = visualElements.find(elem => elem instanceof THREE.Mesh && elem.name === '3DWaves');
+    // if (wave3DEffect && wave3DEffect.material.uniforms) {
+    //    wave3DEffect.material.uniforms.time.value = time;
+    //    wave3DEffect.geometry.attributes.position.needsUpdate = true;
+    // }
+
+    renderer.render(scene, camera);
+}
+
+
+
+
+function animateAudioReactiveEffects() {
+    analyser.getByteFrequencyData(dataArray);
+
+    visualElements.forEach((element, index) => {
+        switch (index) {
+            case 0: // Particles (No changes needed)
+                break;
+            case 1: // Waves
+                if (element.visible && element.material.uniforms) {
+                    element.material.uniforms.audioData.value = dataArray;
+                    element.material.uniforms.time.value += 0.02; // Update time uniform for Waves
+                }
+                break;
+            case 2: // 3D Waves
+                if (element.visible && element.material.uniforms) {
+                    element.material.uniforms.audioData.value = dataArray;
+                    element.material.uniforms.time.value += 0.02; // Update time uniform for 3D Waves
+                }
+                break;
+            case 3: // Trippy Colors (No changes needed)
+                break;
+            case 4: // Style 5 (No changes needed)
+                break;
+            case 5: // Style 6 (No changes needed)
+                break;
+            case 6: // Style 7 (No changes needed)
+                break;
+            case 7: // Style 8 (No changes needed)
+                break;
+            case 8: // Style 9 (No changes needed)
+                break;
+            case 9: // Style 10 (No changes needed)
+                break;
+        }
+    });
+
+    renderer.render(scene, camera);
+}
+
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function onKeyDown(event) {
+        switch (event.key) {
+            case ' ':
+                togglePlayPause();
+                break;
+            case 'm':
+                audioElement.muted = !audioElement.muted;
+                break;
+            case 'i':
+                displayInfo();
+                break;
+            case 'ArrowLeft':
+                currentStyleIndex = (currentStyleIndex - 1 + visualElements.length) % visualElements.length;
+                updateVisibility();
+                break;
+            case 'ArrowRight':
+                currentStyleIndex = (currentStyleIndex + 1) % visualElements.length;
+                updateVisibility();
+                break;
+            case 'ArrowUp':
+                currentModeIndex = (currentModeIndex + 1) % modes.length;
+                switchMode(modes[currentModeIndex]);
+                break;
+            case 'ArrowDown':
+                currentModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
+                switchMode(modes[currentModeIndex]);
+                break;
+            case 'n': // Next song
+            playNextSongInPlaylist();
+            break;
+            case 'b': // Previous song
+            playPreviousSongInPlaylist();
+            break;
+            default:
+                if (event.key >= '1' && event.key <= '9') {
+                    intensityLevel = parseInt(event.key);
+                    adjustVisualEffectsIntensity();
+                }
+                break;
+        }
+    }
+
+    function adjustVisualEffectsIntensity() {
+    visualElements.forEach((element, index) => {
+        switch (index) {
+            case 0: // Particles
+                // (Remains unchanged)
+                break;
+            case 1: // Waves
+                
+                break;
+            case 2: // 3D Waves
+                
+                break;
+            case 3: // Trippy Colors
+                // (Remains unchanged)
+                break;
+            case 4: // Style 5
+                // (Remains unchanged)
+                break;
+            case 5: // Style 6
+                // (Remains unchanged)
+                break;
+            case 6: // Style 7
+                // (Remains unchanged)
+                break;
+            case 7: // Style 8
+                // (Remains unchanged)
+                break;
+            case 8: // Style 9
+                // (Remains unchanged)
+                break;
+            case 9: // Style 10
+                // (Remains unchanged)
+                break;
+
+        }
+    });
+}
+function displayInfo() {
+    // Display current mode
+    displayMode();
+
+    // Display song information
+    const songInfo = document.getElementById('songInfo');
+    songInfo.textContent = `Song: ${selectedFileName}`;
+    songInfo.style.opacity = 1;
+
+    // Fade out song information after 3 seconds
+    setTimeout(() => {
+        songInfo.style.opacity = 0;
+    }, 3000);
+}
+
+    function togglePlayPause() {
+    if (!isPlaying) {
+        if (audioContext.state === 'suspended') {
+            audioContext.resume();  // Resume audio context if it's suspended
+        }
+        audioElement.play();
+        document.getElementById('info').style.display = "none";  // Hide info message when playing
+        isPlaying = true;
+    } else {
+        audioElement.pause();
+        document.getElementById('info').textContent = "press spacebar to start";
+        document.getElementById('info').style.display = "block";  // Show info message when paused
+        isPlaying = false;
+    }
+}
+
+    function displayMode() {
+        const modeIndicator = document.getElementById('modeIndicator');
+        modeIndicator.textContent = `mode: ${currentMode}`;
+        modeIndicator.style.opacity = 1; // Make the mode indicator visible
+
+        // Fade out the mode indicator after 3 seconds
+        setTimeout(() => {
+            modeIndicator.style.opacity = 0;
+        }, 3000);
+    }
+
+    document.body.addEventListener('keydown', (event) => {
+        if (event.key === ' ') {
+            event.preventDefault(); // Prevent scrolling on spacebar press in some browsers
+            togglePlayPause(); 
+        }
+    });
+
+    init();
+</script>
+</body>
+</html>
