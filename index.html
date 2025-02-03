@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta charset="UTF-8">
-    <title>Music Visualizer</title>
+    <title>Visualizer</title>
     <style>
         body, html { margin: 0; overflow: hidden; }
         #info {
@@ -62,6 +63,11 @@
 }
 #helpOverlay li {
   margin-bottom: 8px;
+}
+@media only screen and (max-width: 768px) {
+  #info {
+    font-size: 24px; /* Increase font size for mobile devices */
+  }
 }
     </style>
     </head>
@@ -135,6 +141,8 @@ let shuffleInterval = null;
     window.addEventListener('resize', onWindowResize, false);
     document.body.addEventListener('keydown', onKeyDown, false);
 
+    
+
     // If the currentMode is 'playlist', shuffle & load the first song
     if (currentMode === 'playlist') {
         shufflePlaylist(); 
@@ -168,7 +176,35 @@ let shuffleInterval = null;
             fadeSwapInfoMessage(infoMessages[currentInfoIndex]);
         }
     }, 5000);
+
+    
 }
+// Determine if the user is on a mobile device.
+const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+
+// Show the first message (for mobile, change the text accordingly)
+const info = document.getElementById('info');
+if (info) {
+  info.style.opacity = '0'; // ensure it's transparent
+  // For mobile devices, display "tap to start" and a hint for long press (help)
+  info.textContent = isMobile ? "tap to start\nhold for help" : "press spacebar to start";
+  // Force reflow to trigger the CSS transition
+  void info.offsetWidth;
+  info.style.opacity = '1'; // fade in
+}
+
+// Then set up the interval to swap between info messages every 5s
+let infoMessages = isMobile 
+    ? ["tap to start\nhold for help", "tap to start\nhold for help"]
+    : ["press spacebar to start", "press h for help"];
+let currentInfoIndex = 0;
+setInterval(() => {
+  if (!isPlaying) {
+    currentInfoIndex = (currentInfoIndex + 1) % infoMessages.length;
+    fadeSwapInfoMessage(infoMessages[currentInfoIndex]);
+  }
+}, 5000);
+
 
 function fadeSwapInfoMessage(newText) {
     const info = document.getElementById('info');
