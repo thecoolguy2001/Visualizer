@@ -1698,24 +1698,26 @@ let tapCount = 0;
 let tapTimer = null;
 let longPressTimer = null;
 
-// Thresholds (tweak as needed)
-const longPressThreshold = 600;  // ms to trigger a long press (help menu)
-const tapMaxDuration = 200;      // max ms for a tap
-const tapDelay = 300;            // ms to wait for additional taps
-const swipeThreshold = 50;       // min pixels for a swipe
+// Configurable thresholds (in ms and pixels)
+const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
+const tapMaxDuration = 200;      // Max duration (ms) for a tap
+const tapDelay = 300;            // Time window (ms) to wait for additional taps
+const swipeThreshold = 50;       // Minimum movement (pixels) to be considered a swipe
 
-// Revised: attach events to the renderer's DOM element (or document if not available)
+// Initialize touch event listeners (call this after the DOM loads)
 function initTouchControls() {
-  const element = renderer.domElement || document;
-  element.addEventListener('touchstart', onTouchStart, false);
-  element.addEventListener('touchmove', onTouchMove, false);
-  element.addEventListener('touchend', onTouchEnd, false);
-  element.addEventListener('touchcancel', onTouchCancel, false);
+  // Attach events to the document's body
+  const target = document.body;
+  target.addEventListener('touchstart', onTouchStart, { passive: false });
+  target.addEventListener('touchmove', onTouchMove, { passive: false });
+  target.addEventListener('touchend', onTouchEnd, { passive: false });
+  target.addEventListener('touchcancel', onTouchCancel, { passive: false });
 }
 
 function onTouchStart(e) {
-  // Only process single-finger touches
+  // Only consider single-finger touches
   if (e.touches.length > 1) return;
+  e.preventDefault();
   touchStartTime = Date.now();
   touchStartX = e.touches[0].clientX;
   touchStartY = e.touches[0].clientY;
@@ -1727,11 +1729,13 @@ function onTouchStart(e) {
 }
 
 function onTouchMove(e) {
-  // Movement cancels the long press timer
+  e.preventDefault();
+  // Any movement cancels the long press timer
   clearTimeout(longPressTimer);
 }
 
 function onTouchEnd(e) {
+  e.preventDefault();
   clearTimeout(longPressTimer);
   const touchEndTime = Date.now();
   let touchEndX = 0, touchEndY = 0;
@@ -1744,51 +1748,54 @@ function onTouchEnd(e) {
   const dy = touchEndY - touchStartY;
   const distance = Math.sqrt(dx * dx + dy * dy);
 
-  // If movement is significant, treat it as a swipe
+  // If the movement is significant, consider it a swipe
   if (distance >= swipeThreshold) {
+    // Determine if horizontal or vertical swipe
     if (Math.abs(dx) > Math.abs(dy)) {
-      // Horizontal swipe
+      // Horizontal swipe detected
       if (dx > 0) {
-        // Swipe right: next effect style
+        // Swipe right: cycle to the next effect style
         currentStyleIndex = (currentStyleIndex + 1) % visualElements.length;
       } else {
-        // Swipe left: previous effect style
+        // Swipe left: cycle to the previous effect style
         currentStyleIndex = (currentStyleIndex - 1 + visualElements.length) % visualElements.length;
       }
       updateVisibility();
     } else {
-      // Vertical swipe
+      // Vertical swipe detected
       if (dy < 0) {
-        // Swipe up: next mode
+        // Swipe up: change mode to next mode
         currentModeIndex = (currentModeIndex + 1) % modes.length;
         switchMode(modes[currentModeIndex]);
       } else {
-        // Swipe down: previous mode
+        // Swipe down: change mode to previous mode
         currentModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
         switchMode(modes[currentModeIndex]);
       }
     }
-    // Reset tap count after a swipe
+    // Since this was a swipe, reset any tap count
     tapCount = 0;
     clearTimeout(tapTimer);
   } else {
-    // Minimal movement and short duration: treat as tap
+    // Minimal movement and short duration: treat it as a tap.
     if (dt < tapMaxDuration) {
       tapCount++;
+      // Clear any previous tapTimer
       if (tapTimer) clearTimeout(tapTimer);
       tapTimer = setTimeout(() => {
+        // Process the number of taps:
         if (tapCount === 1) {
           // Single tap: toggle play/pause
           togglePlayPause();
         } else if (tapCount === 2) {
-          // Double tap: change intensity (cycle intensity levels)
-          intensityLevel = (intensityLevel % 9) + 1;
+          // Double tap: change intensity (cycle through intensity levels)
+          intensityLevel = (intensityLevel % 9) + 1; // cycles from 1 to 9
           adjustVisualEffectsIntensity();
         } else if (tapCount === 3) {
-          // Triple tap: next song
+          // Triple tap: play the next song in the playlist
           playNextSongInPlaylist();
         }
-        tapCount = 0;
+        tapCount = 0; // Reset tap count after handling
       }, tapDelay);
     }
   }
@@ -1799,8 +1806,9 @@ function onTouchCancel(e) {
   clearTimeout(tapTimer);
   tapCount = 0;
 }
-// Initialize touch controls after renderer is set up
-initTouchControls();
+
+// Call initTouchControls() once the DOM is ready
+document.addEventListener('DOMContentLoaded', initTouchControls);
 
     init();
     </script>
