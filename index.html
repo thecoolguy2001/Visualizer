@@ -982,6 +982,100 @@ function createCityEffect() {
   visualElements.push(city);
 }
 
+function createStaticElectricityEffect() {
+  // Create a full-screen plane.
+  const geometry = new THREE.PlaneGeometry(2000, 2000, 1, 1);
+  
+  // Build a ShaderMaterial that simulates static electricity.
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0.0 },
+      audioIntensity: { value: 0.0 },
+      effectIntensity: { value: 1.0 },
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float time;
+      uniform float audioIntensity;
+      uniform float effectIntensity;
+      uniform vec2 resolution;
+      varying vec2 vUv;
+      
+      // Basic random function based on the input coordinates.
+      float random(in vec2 st) {
+          return fract(sin(dot(st.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+      }
+      
+      // Basic 2D noise function.
+      float noise(in vec2 st) {
+          vec2 i = floor(st);
+          vec2 f = fract(st);
+          float a = random(i);
+          float b = random(i + vec2(1.0, 0.0));
+          float c = random(i + vec2(0.0, 1.0));
+          float d = random(i + vec2(1.0, 1.0));
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(a, b, u.x) + (c - a) * u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+      }
+      
+      // Fractal Brownian Motion (fBm) for richer noise.
+      float fbm(vec2 st) {
+          float value = 0.0;
+          float amplitude = 0.5;
+          for (int i = 0; i < 5; i++) {
+              value += amplitude * noise(st);
+              st *= 2.0;
+              amplitude *= 0.5;
+          }
+          return value;
+      }
+      
+      void main() {
+          // Work in normalized coordinates.
+          vec2 st = vUv;
+          
+          // Add a slight distortion for a crackling, jittery feel.
+          st += 0.02 * sin(time * 5.0 + st.yx * 20.0);
+          
+          // Scale the coordinates for more noise detail; multiply by effectIntensity.
+          float n = fbm(st * effectIntensity * 10.0 + time * 3.0);
+          
+          // Set a threshold that decreases with audioIntensity (louder audio produces more sparks).
+          float threshold = 0.65 - audioIntensity * 0.1;
+          float spark = smoothstep(threshold, threshold + 0.05, n);
+          
+          // Add a slight vertical streak effect.
+          float streak = step(0.9, random(vec2(st.x * 10.0, time)));
+          spark = max(spark, streak * 0.3);
+          
+          // Mix between a dark background and a bright electric blue spark color.
+          vec3 backgroundColor = vec3(0.0, 0.0, 0.05); // A very dark, almost black-blue background.
+          vec3 sparkColor = vec3(0.6, 0.8, 1.0);        // A bright, electric blue.
+          vec3 color = mix(backgroundColor, sparkColor, spark);
+          
+          // Add a subtle flicker by modulating with a random factor.
+          color *= 0.8 + 0.2 * random(vUv * time);
+          
+          gl_FragColor = vec4(color, 1.0);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending
+  });
+  
+  const staticElectricity = new THREE.Mesh(geometry, material);
+  staticElectricity.name = "StaticElectricity";
+  scene.add(staticElectricity);
+  visualElements.push(staticElectricity);
+}
+
         
         function createVisualElements() {
             createParticles();
@@ -994,6 +1088,7 @@ function createCityEffect() {
             createJungleFurryEffect(); 
             createSixtiesEffect();
             createCityEffect();
+            createStaticElectricityEffect();
             // Additional styles can be added here
             updateVisibility(); // Show only the selected style
         }
@@ -1112,6 +1207,16 @@ if (cityEffect && cityEffect.material.uniforms) {
   cityEffect.material.uniforms.time.value = performance.now() * 0.001;
   cityEffect.material.uniforms.audioIntensity.value = 0.0;
   cityEffect.material.uniforms.effectIntensity.value = cityEffect.userData?.baseEffectIntensity || 1.0;
+}
+
+// --- Static Electricity Effect: Non-reactive state ---
+const staticEffect = visualElements.find(elem => elem.name === "StaticElectricity");
+if (staticEffect && staticEffect.material.uniforms) {
+  staticEffect.material.uniforms.time.value = performance.now() * 0.001;
+  // With no audio, set audioIntensity to zero.
+  staticEffect.material.uniforms.audioIntensity.value = 0.0;
+  // Set effectIntensity from user settings (or default to 1.0).
+  staticEffect.material.uniforms.effectIntensity.value = staticEffect.userData?.baseEffectIntensity || 1.0;
 }
 }
         
@@ -1250,6 +1355,15 @@ if (cityEffect && cityEffect.material.uniforms) {
   let audioIntensity = (bassAvg * 0.5 + midAvg * 0.3 + trebleAvg * 0.2);
   cityEffect.material.uniforms.audioIntensity.value = audioIntensity;
   cityEffect.material.uniforms.effectIntensity.value = cityEffect.userData?.baseEffectIntensity || 1.0;
+}
+// --- Static Electricity Effect: Audio-reactive state ---
+const staticEffect = visualElements.find(elem => elem.name === "StaticElectricity");
+if (staticEffect && staticEffect.material.uniforms) {
+  staticEffect.material.uniforms.time.value = performance.now() * 0.001;
+  // Compute an overall audio intensity from the subrange averages.
+  let audioIntensity = (bassAvg * 0.5 + midAvg * 0.3 + trebleAvg * 0.2);
+  staticEffect.material.uniforms.audioIntensity.value = audioIntensity;
+  staticEffect.material.uniforms.effectIntensity.value = staticEffect.userData?.baseEffectIntensity || 1.0;
 }
     renderer.render(scene, camera);
 }
@@ -1487,6 +1601,14 @@ function shuffleToRandomEffect() {
     // Increase the base effect intensity as the user increases intensityLevel.
     cityEffect.userData.baseEffectIntensity = 1.0 + intensityLevel * 0.3;
     cityEffect.material.uniforms.effectIntensity.value = cityEffect.userData.baseEffectIntensity;
+  }
+
+  const staticEffect = visualElements.find(elem => elem.name === "StaticElectricity");
+  if (staticEffect) {
+    staticEffect.userData = staticEffect.userData || {};
+    // Increase the base effect intensity as the user increases intensityLevel.
+    staticEffect.userData.baseEffectIntensity = 1.0 + intensityLevel * 0.25;
+    staticEffect.material.uniforms.effectIntensity.value = staticEffect.userData.baseEffectIntensity;
   }
 }
     
