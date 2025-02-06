@@ -5,7 +5,24 @@
     <meta charset="UTF-8">
     <title>Visualizer</title>
     <style>
-        body, html { margin: 0; overflow: hidden; }
+        /* Ensure the background is black for iOS Safari */
+html, body {
+  background-color: black;
+  margin: 0;
+  padding: 0;
+}
+#fadeOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: black;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1s ease;
+  z-index: 9998; /* behind the help overlay */
+}
         #info {
             position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
@@ -22,8 +39,9 @@
             transition: opacity 1s;
         }
         #fileInput {
-            display: none;
-        }
+  position: absolute;
+  left: -9999px;
+}
         #loadedMessage {
             position: absolute; bottom: 10px; left: 10px;
             color: grey; text-align: left;
@@ -66,7 +84,7 @@
 }
 @media only screen and (max-width: 768px) {
   #info {
-    font-size: 24px; /* Increase font size for mobile devices */
+    font-size: 20px; /* Increase font size for mobile devices */
   }
 }
     </style>
@@ -78,6 +96,7 @@
         <div id="loadedMessage">loaded</div>
         <div id="songInfo"></div>
         <input type="file" id="fileInput" accept="audio/*" onchange="handleFileSelect(event)">
+        <div id="fadeOverlay"></div>
         <div id="helpOverlay">
             <h2>Controls</h2>
             <ul>
@@ -182,28 +201,25 @@ let shuffleInterval = null;
 // Determine if the user is on a mobile device.
 const isMobile = /Mobi|Android/i.test(navigator.userAgent);
 
-// Show the first message (for mobile, change the text accordingly)
-const info = document.getElementById('info');
-if (info) {
-  info.style.opacity = '0'; // ensure it's transparent
-  // For mobile devices, display "tap to start" and a hint for long press (help)
-  info.textContent = isMobile ? "tap to start\nhold for help" : "press spacebar to start";
-  // Force reflow to trigger the CSS transition
-  void info.offsetWidth;
-  info.style.opacity = '1'; // fade in
-}
-
-// Then set up the interval to swap between info messages every 5s
-let infoMessages = isMobile 
-    ? ["tap to start\nhold for help", "tap to start\nhold for help"]
-    : ["press spacebar to start", "press h for help"];
-let currentInfoIndex = 0;
-setInterval(() => {
-  if (!isPlaying) {
-    currentInfoIndex = (currentInfoIndex + 1) % infoMessages.length;
-    fadeSwapInfoMessage(infoMessages[currentInfoIndex]);
+  // Update the info message accordingly.
+  const info = document.getElementById('info');
+  if (info) {
+    info.style.opacity = '0';
+    info.textContent = isMobile ? "tap to start" : "press spacebar to start";
+    void info.offsetWidth;
+    info.style.opacity = '1';
   }
-}, 5000);
+
+  let infoMessages = isMobile 
+      ? ["tap to start", "hold for help"]
+      : ["press spacebar to start", "press h for help"];
+  let currentInfoIndex = 0;
+  setInterval(() => {
+      if (!isPlaying) {
+          currentInfoIndex = (currentInfoIndex + 1) % infoMessages.length;
+          fadeSwapInfoMessage(infoMessages[currentInfoIndex]);
+      }
+  }, 5000);
 
 
 function fadeSwapInfoMessage(newText) {
@@ -316,21 +332,23 @@ function fadeSwapInfoMessage(newText) {
                 case 'fileSelect':
                     document.getElementById('fileInput').click();
                     break;
-                case 'audioDevice':
-                    // Disconnect existing audioSrc if any
-                    if (audioSrc) {
-                        audioSrc.disconnect();
-                        audioSrc = null;
-                    }
-                    navigator.mediaDevices.getUserMedia({ audio: true })
-                    .then(stream => {
-                        audioSrc = audioContext.createMediaStreamSource(stream);
-                        audioSrc.connect(analyser);
-                        // No need to connect analyser to destination again
-                        }).catch(error => {
-                            console.error('Error accessing audio device:', error);
-                        });
-                    break;
+                    case 'audioDevice':
+  if (audioSrc) {
+    audioSrc.disconnect();
+    audioSrc = null;
+  }
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      // Create a media stream source without connecting to destination.
+      audioSrc = audioContext.createMediaStreamSource(stream);
+      audioSrc.connect(analyser);
+      // On mobile, ensure no sound is played by not connecting to destination
+      // Optionally, you can also set the audio element to muted:
+      audioElement.muted = true;
+    }).catch(error => {
+      console.error('Error accessing audio device:', error);
+    });
+  break;
                 case 'dsp':
                     console.log('DSP Mode is not implemented in this example.');
                     break;
@@ -1130,10 +1148,28 @@ function createStaticElectricityEffect() {
         }
             
         function updateVisibility() {
-            visualElements.forEach((elem, index) => {
-                elem.visible = (index === currentStyleIndex);
-            });
-        }
+  // Instead of instantly switching, trigger a fade transition
+  fadeTransition(() => {
+    visualElements.forEach((elem, index) => {
+      elem.visible = (index === currentStyleIndex);
+    });
+  });
+}
+        function fadeTransition(callback) {
+  const fadeOverlay = document.getElementById('fadeOverlay');
+  if (!fadeOverlay) {
+    if (callback) callback();
+    return;
+  }
+  // Fade in overlay
+  fadeOverlay.style.opacity = '1';
+  setTimeout(() => {
+    // Call the callback (which will switch the effect)
+    if (callback) callback();
+    // Then fade out overlay
+    fadeOverlay.style.opacity = '0';
+  }, 500); // hold black for 500ms (adjust as desired)
+}
         
         function animate() {
             requestAnimationFrame(animate);
@@ -1717,12 +1753,45 @@ function shuffleToRandomEffect() {
     function toggleHelpOverlay() {
   const helpOverlay = document.getElementById('helpOverlay');
   if (!helpOverlay) return;
-
+  
+  // Check mobile
+  const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+  if (isMobile) {
+    helpOverlay.innerHTML = `
+      <h2>Mobile Controls</h2>
+      <ul>
+        <li><b>Single Tap:</b> Play/Pause</li>
+        <li><b>Double Tap:</b> Change Intensity</li>
+        <li><b>Triple Tap:</b> Next Song</li>
+        <li><b>Swipe Left/Right:</b> Change Effect Style</li>
+        <li><b>Swipe Up/Down:</b> Change Mode</li>
+        <li><b>Long Press:</b> Show Help</li>
+        <li><b>Two-Finger Tap:</b> Show Info</li>
+      </ul>
+    `;
+  } else {
+    helpOverlay.innerHTML = `
+      <h2>Controls</h2>
+      <ul>
+        <li><b>Spacebar:</b> Play/Pause</li>
+        <li><b>Arrow Up/Down:</b> Switch Mode</li>
+        <li><b>Arrow Left/Right:</b> Switch Effect Style</li>
+        <li><b>1–9:</b> Set Effect Intensity Level</li>
+        <li><b>N:</b> Next Song</li>
+        <li><b>B:</b> Previous Song</li>
+        <li><b>M:</b> Toggle Mute</li>
+        <li><b>O:</b> Toggle Effect Shuffle Mode</li>
+        <li><b>P:</b> Toggle Player Mode</li>
+        <li><b>I:</b> Show Info</li>
+        <li><b>H:</b> Show/Hide Help</li>
+      </ul>
+    `;
+  }
+  
+  // Toggle display
   if (helpOverlay.style.display === 'block') {
-    // Hide it
     helpOverlay.style.display = 'none';
   } else {
-    // Show it
     helpOverlay.style.display = 'block';
   }
 }
