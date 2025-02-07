@@ -38,10 +38,17 @@ html, body {
             opacity: 0;
             transition: opacity 1s;
         }
-        #fileInput {
-  position: absolute;
-  left: -9999px;
+        /* File input now is a 1x1 pixel element, visible (opacity: 0) so it can be clicked on mobile */
+#fileInput {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  z-index: 10000;
+  top: 10px;
+  left: 10px;
 }
+
         #loadedMessage {
             position: absolute; bottom: 10px; left: 10px;
             color: grey; text-align: left;
@@ -332,23 +339,25 @@ function fadeSwapInfoMessage(newText) {
                 case 'fileSelect':
                     document.getElementById('fileInput').click();
                     break;
-                    case 'audioDevice':
-  if (audioSrc) {
-    audioSrc.disconnect();
-    audioSrc = null;
-  }
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(stream => {
-      // Create a media stream source without connecting to destination.
-      audioSrc = audioContext.createMediaStreamSource(stream);
-      audioSrc.connect(analyser);
-      // On mobile, ensure no sound is played by not connecting to destination
-      // Optionally, you can also set the audio element to muted:
-      audioElement.muted = true;
-    }).catch(error => {
-      console.error('Error accessing audio device:', error);
-    });
-  break;
+                case 'audioDevice':
+                    // Disconnect existing audioSrc if any
+                    if (audioSrc) {
+                        audioSrc.disconnect();
+                        audioSrc = null;
+                    }
+                    navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => {
+                        audioSrc = audioContext.createMediaStreamSource(stream);
+                        audioSrc.connect(analyser);
+                         // On mobile, mute the audio element so that mic input is not played.
+        if (/Mobi|Android/i.test(navigator.userAgent)) {
+            audioElement.muted = true;
+        }
+                        // No need to connect analyser to destination again
+                        }).catch(error => {
+                            console.error('Error accessing audio device:', error);
+                        });
+                    break;
                 case 'dsp':
                     console.log('DSP Mode is not implemented in this example.');
                     break;
@@ -1758,13 +1767,13 @@ function shuffleToRandomEffect() {
   const isMobile = /Mobi|Android/i.test(navigator.userAgent);
   if (isMobile) {
     helpOverlay.innerHTML = `
-      <h2>Mobile Controls</h2>
+      <h2>Controls</h2>
       <ul>
         <li><b>Single Tap:</b> Play/Pause</li>
-        <li><b>Double Tap:</b> Change Intensity</li>
+        <li><b>Swipe Up/Down:</b> Switch Mode</li>
+        <li><b>Swipe Left/Right:</b> Switch Effect Style</li>
+        <li><b>Double Tap:</b> Set Intensity</li>
         <li><b>Triple Tap:</b> Next Song</li>
-        <li><b>Swipe Left/Right:</b> Change Effect Style</li>
-        <li><b>Swipe Up/Down:</b> Change Mode</li>
         <li><b>Long Press:</b> Show Help</li>
       </ul>
     `;
@@ -1801,7 +1810,6 @@ let touchStartTime = 0;
 let tapCount = 0;
 let tapTimer = null;
 let longPressTimer = null;
-let twoFingerTap = false;
 
 // Configurable thresholds (in ms and pixels)
 const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
@@ -1820,88 +1828,97 @@ function initTouchControls() {
 }
 
 function onTouchStart(e) {
-      // Only consider single-finger touches (or adjust if you want to handle multi-touch)
-      if (e.touches.length > 1) return;
-      e.preventDefault();
-      touchStartTime = Date.now();
-      touchStartX = e.touches[0].clientX;
-      touchStartY = e.touches[0].clientY;
-      // Start long press timer
-      longPressTimer = setTimeout(() => {
-        // Long press detected – show the help menu
-        toggleHelpOverlay();
-      }, longPressThreshold);
-    }
+  // Only consider single-finger touches
+  if (e.touches.length > 1) return;
+  e.preventDefault();
+  touchStartTime = Date.now();
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+  // Start long press timer
+  longPressTimer = setTimeout(() => {
+    // Long press detected – show the help menu
+    toggleHelpOverlay();
+  }, longPressThreshold);
+}
 
-    function onTouchMove(e) {
-      e.preventDefault();
-      clearTimeout(longPressTimer);
-    }
+function onTouchMove(e) {
+  e.preventDefault();
+  // Any movement cancels the long press timer
+  clearTimeout(longPressTimer);
+}
 
-    function onTouchEnd(e) {
-      e.preventDefault();
-      clearTimeout(longPressTimer);
-      const touchEndTime = Date.now();
-      let touchEndX = 0, touchEndY = 0;
-      if (e.changedTouches.length > 0) {
-        touchEndX = e.changedTouches[0].clientX;
-        touchEndY = e.changedTouches[0].clientY;
-      }
-      const dt = touchEndTime - touchStartTime;
-      const dx = touchEndX - touchStartX;
-      const dy = touchEndY - touchStartY;
-      const distance = Math.sqrt(dx * dx + dy * dy);
+function onTouchEnd(e) {
+  e.preventDefault();
+  clearTimeout(longPressTimer);
+  const touchEndTime = Date.now();
+  let touchEndX = 0, touchEndY = 0;
+  if (e.changedTouches.length > 0) {
+    touchEndX = e.changedTouches[0].clientX;
+    touchEndY = e.changedTouches[0].clientY;
+  }
+  const dt = touchEndTime - touchStartTime;
+  const dx = touchEndX - touchStartX;
+  const dy = touchEndY - touchStartY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
 
-      // If the movement is significant, treat it as a swipe
-      if (distance >= swipeThreshold) {
-        if (Math.abs(dx) > Math.abs(dy)) {
-          // Horizontal swipe: change effect style
-          if (dx > 0) {
-            currentStyleIndex = (currentStyleIndex + 1) % visualElements.length;
-          } else {
-            currentStyleIndex = (currentStyleIndex - 1 + visualElements.length) % visualElements.length;
-          }
-          updateVisibility();
-        } else {
-          // Vertical swipe: change mode
-          if (dy < 0) {
-            currentModeIndex = (currentModeIndex + 1) % modes.length;
-            switchMode(modes[currentModeIndex]);
-          } else {
-            currentModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
-            switchMode(modes[currentModeIndex]);
-          }
-        }
-        tapCount = 0;
-        clearTimeout(tapTimer);
+  // If the movement is significant, consider it a swipe
+  if (distance >= swipeThreshold) {
+    // Determine if horizontal or vertical swipe
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Horizontal swipe detected
+      if (dx > 0) {
+        // Swipe right: cycle to the next effect style
+        currentStyleIndex = (currentStyleIndex + 1) % visualElements.length;
       } else {
-        // Minimal movement and short duration: treat as a tap.
-        if (dt < tapMaxDuration) {
-          tapCount++;
-          if (tapTimer) clearTimeout(tapTimer);
-          tapTimer = setTimeout(() => {
-            if (tapCount === 1) {
-              // Single tap: toggle play/pause
-              togglePlayPause();
-            } else if (tapCount === 2) {
-              // Double tap: change intensity
-              intensityLevel = (intensityLevel % 9) + 1;
-              adjustVisualEffectsIntensity();
-            } else if (tapCount === 3) {
-              // Triple tap: next song
-              playNextSongInPlaylist();
-            }
-            tapCount = 0;
-          }, tapDelay);
-        }
+        // Swipe left: cycle to the previous effect style
+        currentStyleIndex = (currentStyleIndex - 1 + visualElements.length) % visualElements.length;
+      }
+      updateVisibility();
+    } else {
+      // Vertical swipe detected
+      if (dy < 0) {
+        // Swipe up: change mode to next mode
+        currentModeIndex = (currentModeIndex + 1) % modes.length;
+        switchMode(modes[currentModeIndex]);
+      } else {
+        // Swipe down: change mode to previous mode
+        currentModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
+        switchMode(modes[currentModeIndex]);
       }
     }
-
-    function onTouchCancel(e) {
-      clearTimeout(longPressTimer);
-      clearTimeout(tapTimer);
-      tapCount = 0;
+    // Since this was a swipe, reset any tap count
+    tapCount = 0;
+    clearTimeout(tapTimer);
+  } else {
+    // Minimal movement and short duration: treat it as a tap.
+    if (dt < tapMaxDuration) {
+      tapCount++;
+      // Clear any previous tapTimer
+      if (tapTimer) clearTimeout(tapTimer);
+      tapTimer = setTimeout(() => {
+        // Process the number of taps:
+        if (tapCount === 1) {
+          // Single tap: toggle play/pause
+          togglePlayPause();
+        } else if (tapCount === 2) {
+          // Double tap: change intensity (cycle through intensity levels)
+          intensityLevel = (intensityLevel % 9) + 1; // cycles from 1 to 9
+          adjustVisualEffectsIntensity();
+        } else if (tapCount === 3) {
+          // Triple tap: play the next song in the playlist
+          playNextSongInPlaylist();
+        }
+        tapCount = 0; // Reset tap count after handling
+      }, tapDelay);
     }
+  }
+}
+
+function onTouchCancel(e) {
+  clearTimeout(longPressTimer);
+  clearTimeout(tapTimer);
+  tapCount = 0;
+}
 
 // Call initTouchControls() once the DOM is ready
 document.addEventListener('DOMContentLoaded', initTouchControls);
