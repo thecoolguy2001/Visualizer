@@ -336,9 +336,68 @@ function fadeSwapInfoMessage(newText) {
             }
             
             switch (mode) {
-                case 'fileSelect':
-                    document.getElementById('fileInput').click();
-                    break;
+              case 'fileSelect':
+    // Dynamically create a file input element
+    let input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*';
+    // Make sure it is not hidden via display:none; instead, make it visible but with zero opacity.
+    input.style.opacity = 0;
+    input.style.position = 'fixed';
+    input.style.top = '0';
+    input.style.left = '0';
+    input.style.width = '44px';    // a reasonable touch target size
+    input.style.height = '44px';
+    input.style.zIndex = 10000;
+    
+    // Append the file input to the document body
+    document.body.appendChild(input);
+
+    // Add an event listener to handle file selection
+    input.addEventListener('change', function(e) {
+        const file = input.files[0];
+        if (!file) return;
+        // Set up the new audio element using the selected file:
+        const newAudio = new Audio();
+        newAudio.src = URL.createObjectURL(file);
+        newAudio.load();
+        selectedFileName = file.name.replace(/\.[^/.]+$/, "");
+        
+        newAudio.onloadedmetadata = async () => {
+            if (audioSrc) {
+                audioSrc.disconnect();
+                audioSrc = null;
+            }
+            await ensureAudioContextResumed();
+            audioSrc = audioContext.createMediaElementSource(newAudio);
+            audioSrc.connect(analyser);
+            analyser.connect(audioContext.destination);
+            
+            // Optionally, replace the current audio element with the new one
+            audioElement.pause();
+            audioElement = newAudio;
+            
+            const loadedMessage = document.getElementById('loadedMessage');
+            if (loadedMessage) {
+                console.log('Showing loadedMessage');
+                loadedMessage.style.display = 'block';
+                setTimeout(() => {
+                    loadedMessage.style.display = 'none';
+                }, 3000);
+            }
+        };
+
+        newAudio.onerror = function(e) {
+            console.error('Error loading audio file:', e);
+        };
+
+        // Once a file is chosen, remove the temporary input element
+        document.body.removeChild(input);
+    });
+
+    // Immediately trigger the click event on the newly created file input
+    input.click();
+    break;
                 case 'audioDevice':
                     // Disconnect existing audioSrc if any
                     if (audioSrc) {
