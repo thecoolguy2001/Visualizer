@@ -297,83 +297,62 @@ function fadeSwapInfoMessage(newText) {
             
             switch (mode) {
               case 'fileSelect': {
-  if (/Mobi|Android/i.test(navigator.userAgent)) {
-    // Mobile-only: create (or reuse) a dedicated button for file selection.
-    let btn = document.getElementById('mobileFileSelectBtn');
-    if (!btn) {
-      btn = document.createElement('button');
-      btn.id = 'mobileFileSelectBtn';
-      btn.innerText = "Access Files";
-      // Style the button so it is visible (adjust as needed)
-      btn.style.position = "fixed";
-      btn.style.bottom = "20px";
-      btn.style.left = "50%";
-      btn.style.transform = "translateX(-50%)";
-      btn.style.padding = "10px 20px";
-      btn.style.fontSize = "16px";
-      btn.style.zIndex = "10001";
-      // When tapped, trigger the permanent file input’s click.
-      btn.addEventListener('click', function() {
-        let fileInput = document.getElementById('fileInput');
-        if (fileInput) {
-          fileInput.click();
-        }
-      });
-      document.body.appendChild(btn);
-    }
-  } else {
-    // Desktop: use your dynamic file input creation method.
-    let input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'audio/*';
-    input.style.position = 'fixed';
-    input.style.top = '0px';
-    input.style.left = '0px';
-    input.style.width = '44px';
-    input.style.height = '44px';
-    input.style.opacity = '0';
-    input.style.pointerEvents = 'auto';
-    input.style.zIndex = '10000';
-    document.body.appendChild(input);
-    input.addEventListener('change', function(e) {
-      const file = input.files[0];
-      if (!file) {
-        document.body.removeChild(input);
-        return;
+      // For mobile, do nothing special here—
+      // the permanent file input (id="fileInput") is already in the DOM.
+      // (Desktop code remains unchanged.)
+      if (!/Mobi|Android/i.test(navigator.userAgent)) {
+        // Desktop: create a dynamic file input as before.
+        let input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'audio/*';
+        input.style.position = 'fixed';
+        input.style.top = '0px';
+        input.style.left = '0px';
+        input.style.width = '44px';
+        input.style.height = '44px';
+        input.style.opacity = '0';
+        input.style.pointerEvents = 'auto';
+        input.style.zIndex = '10000';
+        document.body.appendChild(input);
+        input.addEventListener('change', function(e) {
+          const file = input.files[0];
+          if (!file) {
+            document.body.removeChild(input);
+            return;
+          }
+          const newAudio = new Audio();
+          newAudio.src = URL.createObjectURL(file);
+          newAudio.load();
+          selectedFileName = file.name.replace(/\.[^/.]+$/, "");
+          
+          newAudio.onloadedmetadata = async () => {
+            if (audioSrc) {
+              audioSrc.disconnect();
+              audioSrc = null;
+            }
+            await ensureAudioContextResumed();
+            audioSrc = audioContext.createMediaElementSource(newAudio);
+            audioSrc.connect(analyser);
+            analyser.connect(audioContext.destination);
+            audioElement.pause();
+            audioElement = newAudio;
+            const loadedMessage = document.getElementById('loadedMessage');
+            if (loadedMessage) {
+              loadedMessage.style.display = 'block';
+              setTimeout(() => {
+                loadedMessage.style.display = 'none';
+              }, 3000);
+            }
+          };
+          newAudio.onerror = function(e) {
+            console.error('Error loading audio file:', e);
+          };
+          document.body.removeChild(input);
+        });
+        input.click();
       }
-      const newAudio = new Audio();
-      newAudio.src = URL.createObjectURL(file);
-      newAudio.load();
-      selectedFileName = file.name.replace(/\.[^/.]+$/, "");
-      
-      newAudio.onloadedmetadata = async () => {
-        if (audioSrc) {
-          audioSrc.disconnect();
-          audioSrc = null;
-        }
-        await ensureAudioContextResumed();
-        audioSrc = audioContext.createMediaElementSource(newAudio);
-        audioSrc.connect(analyser);
-        analyser.connect(audioContext.destination);
-        audioElement.pause();
-        audioElement = newAudio;
-        const loadedMessage = document.getElementById('loadedMessage');
-        if (loadedMessage) {
-          loadedMessage.style.display = 'block';
-          setTimeout(() => {
-            loadedMessage.style.display = 'none';
-          }, 3000);
-        }
-      };
-      newAudio.onerror = function(e) {
-        console.error('Error loading audio file:', e);
-      };
-      document.body.removeChild(input);
-    });
-    input.click();
-  }
-}
-break;
+      break;
+    }
 case 'audioDevice': {
   // Disconnect any existing audio source and clear previous connections
   if (audioSrc) {
@@ -1909,54 +1888,50 @@ function onTouchEnd(e) {
   const dy = touchEndY - touchStartY;
   const distance = Math.sqrt(dx * dx + dy * dy);
 
-  // If the movement is significant, consider it a swipe
+  // If we're in fileSelect mode, trigger the file input immediately.
+  if (currentMode === 'fileSelect') {
+    // Directly trigger file input click on mobile.
+    let fileInput = document.getElementById('fileInput');
+    if (fileInput) {
+      fileInput.click();
+    }
+    // Return early so that tap count/swipe logic is not processed further.
+    return;
+  }
+  // Existing swipe/tap logic:
   if (distance >= swipeThreshold) {
-    // Determine if horizontal or vertical swipe
     if (Math.abs(dx) > Math.abs(dy)) {
-      // Horizontal swipe detected
       if (dx > 0) {
-        // Swipe right: cycle to the next effect style
         currentStyleIndex = (currentStyleIndex + 1) % visualElements.length;
       } else {
-        // Swipe left: cycle to the previous effect style
         currentStyleIndex = (currentStyleIndex - 1 + visualElements.length) % visualElements.length;
       }
       updateVisibility();
     } else {
-      // Vertical swipe detected
       if (dy < 0) {
-        // Swipe up: change mode to next mode
         currentModeIndex = (currentModeIndex + 1) % modes.length;
         switchMode(modes[currentModeIndex]);
       } else {
-        // Swipe down: change mode to previous mode
         currentModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
         switchMode(modes[currentModeIndex]);
       }
     }
-    // Since this was a swipe, reset any tap count
     tapCount = 0;
     clearTimeout(tapTimer);
   } else {
-    // Minimal movement and short duration: treat it as a tap.
     if (dt < tapMaxDuration) {
       tapCount++;
-      // Clear any previous tapTimer
       if (tapTimer) clearTimeout(tapTimer);
       tapTimer = setTimeout(() => {
-        // Process the number of taps:
         if (tapCount === 1) {
-          // Single tap: toggle play/pause
           togglePlayPause();
         } else if (tapCount === 2) {
-          // Double tap: change intensity (cycle through intensity levels)
-          intensityLevel = (intensityLevel % 9) + 1; // cycles from 1 to 9
+          intensityLevel = (intensityLevel % 9) + 1;
           adjustVisualEffectsIntensity();
         } else if (tapCount === 3) {
-          // Triple tap: play the next song in the playlist
           playNextSongInPlaylist();
         }
-        tapCount = 0; // Reset tap count after handling
+        tapCount = 0;
       }, tapDelay);
     }
   }
