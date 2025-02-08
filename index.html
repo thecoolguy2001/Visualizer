@@ -294,20 +294,18 @@ function fadeSwapInfoMessage(newText) {
             }
             
             switch (mode) {
-              case 'fileSelect':
-  {
+              case 'fileSelect':{
     // Create the file input dynamically
     let input = document.createElement('input');
     input.type = 'file';
     input.accept = 'audio/*';
-    // Style it so it is rendered (do not use display:none)
-    input.style.position = 'fixed';
-    input.style.top = '0px';
-    input.style.left = '0px';
-    input.style.width = '50px';    // a reasonable touch target size
-    input.style.height = '50px';
-    input.style.opacity = '0';
-    input.style.pointerEvents = 'auto';
+    // Instead of display:none or opacity: 0, hide it using clipping.
+    input.style.position = 'absolute';
+    input.style.top = '0';
+    input.style.left = '0';
+    input.style.width = '1px';
+    input.style.height = '1px';
+    input.style.clip = 'rect(0, 0, 0, 0)'; // This keeps the element in the layout
     input.style.zIndex = 10000;
     
     // Append to the body immediately
@@ -363,25 +361,31 @@ function fadeSwapInfoMessage(newText) {
     input.click();
   }
   break;
-  case 'audioDevice':
-  {
+  case 'audioDevice': {
+    // Disconnect any previous audio source
     if (audioSrc) {
-      audioSrc.disconnect();
-      audioSrc = null;
+        audioSrc.disconnect();
+        audioSrc = null;
     }
+    // Pause the current audio element (playlist)
+    audioElement.pause();
+    // Mute the audio element (if applicable)
+    audioElement.muted = true;
+    
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(stream => {
-        audioSrc = audioContext.createMediaStreamSource(stream);
-        audioSrc.connect(analyser);
-        // Do NOT connect the analyser to the destination so that the mic input is not audible.
-        // Also ensure the audioElement is muted.
-        audioElement.muted = true;
+          // Create a MediaStreamSource from the microphone stream
+          audioSrc = audioContext.createMediaStreamSource(stream);
+          // Connect the mic input only to the analyser
+          audioSrc.connect(analyser);
+          // Do NOT connect the analyser to the destination,
+          // so the mic audio is not played through the speakers.
       })
       .catch(error => {
-        console.error('Error accessing audio device:', error);
+          console.error('Error accessing audio device:', error);
       });
-  }
-  break;
+}
+break;
                 case 'dsp':
                     console.log('DSP Mode is not implemented in this example.');
                     break;
