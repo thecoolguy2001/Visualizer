@@ -297,11 +297,31 @@ function fadeSwapInfoMessage(newText) {
             
             switch (mode) {
               case 'fileSelect': {
-  // If on mobile (iOS Safari), use the permanent file input
   if (/Mobi|Android/i.test(navigator.userAgent)) {
-    document.getElementById('fileInput').click();
+    // Mobile-only: create a dedicated button for file selection.
+    let btn = document.createElement('button');
+    btn.innerText = "Access Files";
+    // Style the button so it is visible and placed at the bottom center.
+    btn.style.position = "fixed";
+    btn.style.bottom = "20px";
+    btn.style.left = "50%";
+    btn.style.transform = "translateX(-50%)";
+    btn.style.padding = "10px 20px";
+    btn.style.fontSize = "16px";
+    btn.style.zIndex = "10001";
+    // When tapped, trigger the click on your permanent file input.
+    btn.addEventListener('click', function() {
+      // Use your permanent file input element already in the HTML.
+      let fileInput = document.getElementById('fileInput');
+      if (fileInput) {
+        fileInput.click();
+      }
+      // Remove the button after it has been tapped.
+      document.body.removeChild(btn);
+    });
+    document.body.appendChild(btn);
   } else {
-    // Desktop: create the file input dynamically (keep your original code)
+    // Desktop: Use your dynamic file input creation method.
     let input = document.createElement('input');
     input.type = 'file';
     input.accept = 'audio/*';
