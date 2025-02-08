@@ -298,76 +298,65 @@ function fadeSwapInfoMessage(newText) {
             switch (mode) {
               case 'fileSelect': {
   if (/Mobi|Android/i.test(navigator.userAgent)) {
-    // Mobile-only: create a dedicated button for file selection.
-    let btn = document.createElement('button');
-    btn.innerText = "Access Files";
-    // Style the button so it is visible and placed at the bottom center.
-    btn.style.position = "fixed";
-    btn.style.bottom = "20px";
-    btn.style.left = "50%";
-    btn.style.transform = "translateX(-50%)";
-    btn.style.padding = "10px 20px";
-    btn.style.fontSize = "16px";
-    btn.style.zIndex = "10001";
-    // When tapped, trigger the click on your permanent file input.
-    btn.addEventListener('click', function() {
-      // Use your permanent file input element already in the HTML.
-      let fileInput = document.getElementById('fileInput');
-      if (fileInput) {
-        fileInput.click();
-      }
-      // Remove the button after it has been tapped.
-      document.body.removeChild(btn);
-    });
-    document.body.appendChild(btn);
+    // Mobile-only: create (or reuse) a dedicated button for file selection.
+    let btn = document.getElementById('mobileFileSelectBtn');
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.id = 'mobileFileSelectBtn';
+      btn.innerText = "Access Files";
+      // Style the button so it is visible (adjust as needed)
+      btn.style.position = "fixed";
+      btn.style.bottom = "20px";
+      btn.style.left = "50%";
+      btn.style.transform = "translateX(-50%)";
+      btn.style.padding = "10px 20px";
+      btn.style.fontSize = "16px";
+      btn.style.zIndex = "10001";
+      // When tapped, trigger the permanent file input’s click.
+      btn.addEventListener('click', function() {
+        let fileInput = document.getElementById('fileInput');
+        if (fileInput) {
+          fileInput.click();
+        }
+      });
+      document.body.appendChild(btn);
+    }
   } else {
-    // Desktop: Use your dynamic file input creation method.
+    // Desktop: use your dynamic file input creation method.
     let input = document.createElement('input');
     input.type = 'file';
     input.accept = 'audio/*';
-    // Style it so it is in the layout with a touch-target size.
     input.style.position = 'fixed';
     input.style.top = '0px';
     input.style.left = '0px';
-    input.style.width = '44px';    // 44×44 px (touch target size)
+    input.style.width = '44px';
     input.style.height = '44px';
-    input.style.opacity = '0';     // Invisible but not removed
-    input.style.pointerEvents = 'auto'; // Must allow clicks/touches
+    input.style.opacity = '0';
+    input.style.pointerEvents = 'auto';
     input.style.zIndex = '10000';
-
-    // Append the input to the document body
     document.body.appendChild(input);
-
-    // Add an event listener to handle file selection
     input.addEventListener('change', function(e) {
       const file = input.files[0];
       if (!file) {
         document.body.removeChild(input);
         return;
       }
-      // Create a new audio element using the selected file
       const newAudio = new Audio();
       newAudio.src = URL.createObjectURL(file);
       newAudio.load();
       selectedFileName = file.name.replace(/\.[^/.]+$/, "");
       
       newAudio.onloadedmetadata = async () => {
-        // Disconnect any previous audio source
         if (audioSrc) {
           audioSrc.disconnect();
           audioSrc = null;
         }
         await ensureAudioContextResumed();
-        // Create a MediaElementSource from newAudio
         audioSrc = audioContext.createMediaElementSource(newAudio);
-        // Connect to the analyser and then to the destination (so the audio is audible)
         audioSrc.connect(analyser);
         analyser.connect(audioContext.destination);
-        
-        // Replace the current audio element with the new one
         audioElement.pause();
         audioElement = newAudio;
-        
         const loadedMessage = document.getElementById('loadedMessage');
         if (loadedMessage) {
           loadedMessage.style.display = 'block';
@@ -376,16 +365,11 @@ function fadeSwapInfoMessage(newText) {
           }, 3000);
         }
       };
-
       newAudio.onerror = function(e) {
         console.error('Error loading audio file:', e);
       };
-
-      // Remove the input element now that it’s served its purpose.
       document.body.removeChild(input);
     });
-
-    // Immediately trigger the click; this must occur synchronously in response to the user gesture.
     input.click();
   }
 }
