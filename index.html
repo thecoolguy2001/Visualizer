@@ -11,18 +11,7 @@ html, body {
   margin: 0;
   padding: 0;
 }
-#fadeOverlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background-color: black;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 1s ease;
-  z-index: 9998; /* behind the help overlay */
-}
+
         #info {
             position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
@@ -103,7 +92,7 @@ html, body {
         <div id="loadedMessage">loaded</div>
         <div id="songInfo"></div>
         <input type="file" id="fileInput" accept="audio/*" onchange="handleFileSelect(event)">
-        <div id="fadeOverlay"></div>
+        
         <div id="helpOverlay">
             <h2>Controls</h2>
             <ul>
@@ -174,9 +163,11 @@ let shuffleInterval = null;
         shufflePlaylist(); 
         loadCurrentSong(); 
     }
+    
 
     // Start the animation loop
     animate();
+    
 
    // Show the first message right away, fully invisible at first
     // We'll do a direct fade in from 0 -> 1
@@ -337,86 +328,93 @@ function fadeSwapInfoMessage(newText) {
             
             switch (mode) {
               case 'fileSelect':
-    // Dynamically create a file input element
+  {
+    // Create the file input dynamically
     let input = document.createElement('input');
     input.type = 'file';
     input.accept = 'audio/*';
-    // Make sure it is not hidden via display:none; instead, make it visible but with zero opacity.
-    input.style.opacity = 0;
+    // Style it so it is rendered (do not use display:none)
     input.style.position = 'fixed';
-    input.style.top = '0';
-    input.style.left = '0';
-    input.style.width = '44px';    // a reasonable touch target size
-    input.style.height = '44px';
+    input.style.top = '0px';
+    input.style.left = '0px';
+    input.style.width = '50px';    // a reasonable touch target size
+    input.style.height = '50px';
+    input.style.opacity = '0';
+    input.style.pointerEvents = 'auto';
     input.style.zIndex = 10000;
     
-    // Append the file input to the document body
+    // Append to the body immediately
     document.body.appendChild(input);
 
-    // Add an event listener to handle file selection
+    // Listen for change event
     input.addEventListener('change', function(e) {
-        const file = input.files[0];
-        if (!file) return;
-        // Set up the new audio element using the selected file:
-        const newAudio = new Audio();
-        newAudio.src = URL.createObjectURL(file);
-        newAudio.load();
-        selectedFileName = file.name.replace(/\.[^/.]+$/, "");
-        
-        newAudio.onloadedmetadata = async () => {
-            if (audioSrc) {
-                audioSrc.disconnect();
-                audioSrc = null;
-            }
-            await ensureAudioContextResumed();
-            audioSrc = audioContext.createMediaElementSource(newAudio);
-            audioSrc.connect(analyser);
-            analyser.connect(audioContext.destination);
-            
-            // Optionally, replace the current audio element with the new one
-            audioElement.pause();
-            audioElement = newAudio;
-            
-            const loadedMessage = document.getElementById('loadedMessage');
-            if (loadedMessage) {
-                console.log('Showing loadedMessage');
-                loadedMessage.style.display = 'block';
-                setTimeout(() => {
-                    loadedMessage.style.display = 'none';
-                }, 3000);
-            }
-        };
-
-        newAudio.onerror = function(e) {
-            console.error('Error loading audio file:', e);
-        };
-
-        // Once a file is chosen, remove the temporary input element
+      const file = input.files[0];
+      if (!file) {
         document.body.removeChild(input);
+        return;
+      }
+      // Create a new audio element using the selected file
+      const newAudio = new Audio();
+      newAudio.src = URL.createObjectURL(file);
+      newAudio.load();
+      selectedFileName = file.name.replace(/\.[^/.]+$/, "");
+      
+      newAudio.onloadedmetadata = async () => {
+        if (audioSrc) {
+          audioSrc.disconnect();
+          audioSrc = null;
+        }
+        await ensureAudioContextResumed();
+        // Create new MediaElementSource from newAudio
+        audioSrc = audioContext.createMediaElementSource(newAudio);
+        audioSrc.connect(analyser);
+        // For playlist and file-based audio, route sound to destination:
+        analyser.connect(audioContext.destination);
+        
+        // Replace the current audio element with the new one.
+        audioElement.pause();
+        audioElement = newAudio;
+        
+        const loadedMessage = document.getElementById('loadedMessage');
+        if (loadedMessage) {
+          loadedMessage.style.display = 'block';
+          setTimeout(() => {
+            loadedMessage.style.display = 'none';
+          }, 3000);
+        }
+      };
+      
+      newAudio.onerror = function(e) {
+        console.error('Error loading audio file:', e);
+      };
+
+      // Remove the temporary input now that it’s been used
+      document.body.removeChild(input);
     });
 
-    // Immediately trigger the click event on the newly created file input
+    // Immediately trigger the click (must be directly in response to a user gesture)
     input.click();
-    break;
-                case 'audioDevice':
-                    // Disconnect existing audioSrc if any
-                    if (audioSrc) {
-                        audioSrc.disconnect();
-                        audioSrc = null;
-                    }
-                    navigator.mediaDevices.getUserMedia({ audio: true })
-                    .then(stream => {
-                        audioSrc = audioContext.createMediaStreamSource(stream);
-                        audioSrc.connect(analyser);
-                         // On mobile, mute the audio element so that mic input is not played.
-        if (/Mobi|Android/i.test(navigator.userAgent)) {
-            audioElement.muted = true;
-        }
-                        // No need to connect analyser to destination again
-                        }).catch(error => {
-                            console.error('Error accessing audio device:', error);
-                        });
-                    break;
+  }
+  break;
+  case 'audioDevice':
+  {
+    if (audioSrc) {
+      audioSrc.disconnect();
+      audioSrc = null;
+    }
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(stream => {
+        audioSrc = audioContext.createMediaStreamSource(stream);
+        audioSrc.connect(analyser);
+        // Do NOT connect the analyser to the destination so that the mic input is not audible.
+        // Also ensure the audioElement is muted.
+        audioElement.muted = true;
+      })
+      .catch(error => {
+        console.error('Error accessing audio device:', error);
+      });
+  }
+  break;
                 case 'dsp':
                     console.log('DSP Mode is not implemented in this example.');
                     break;
