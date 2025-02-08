@@ -137,7 +137,7 @@ html, body {
 let shuffleInterval = null;
         
         
-        const modes = ['fileSelect', 'audioDevice', 'dsp', 'playlist'];
+        const modes = ['fileSelect', 'audioDevice', 'playlist'];
         let currentModeIndex = modes.indexOf(currentMode);
         
         let selectedFileName = '';
@@ -422,9 +422,9 @@ case 'audioDevice': {
     });
 }
 break;
-                case 'dsp':
-                    console.log('DSP Mode is not implemented in this example.');
-                    break;
+                //case 'dsp':
+                    //console.log('DSP Mode is not implemented in this example.');
+                    //break;
                     case 'playlist': {
   // Disconnect any existing audio source.
   if (audioSrc) {
@@ -1836,7 +1836,8 @@ function shuffleToRandomEffect() {
         <li><b>Swipe Left/Right:</b> Switch Effect Style</li>
         <li><b>Double Tap:</b> Set Intensity</li>
         <li><b>Triple Tap:</b> Next Song</li>
-        <li><b>Long Press:</b> Show Help</li>
+        <li><b>Long Press:</b> Show/Hide Help</li>
+        <li><b>Full Version Soon!</li>
       </ul>
     `;
   } else {
@@ -1854,6 +1855,7 @@ function shuffleToRandomEffect() {
         <li><b>P:</b> Toggle Player Mode</li>
         <li><b>I:</b> Show Info</li>
         <li><b>H:</b> Show/Hide Help</li>
+        <li><b>Full Version Soon!</li>
       </ul>
     `;
   }
