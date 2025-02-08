@@ -28,14 +28,16 @@ html, body {
             transition: opacity 1s;
         }
         /* File input now is a 1x1 pixel element, visible (opacity: 0) so it can be clicked on mobile */
-#fileInput {
+        #fileInput {
   position: fixed;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
+  width: 44px;            /* A standard touch-target size */
+  height: 44px;
+  opacity: 0;             /* Visually hidden */
   z-index: 10000;
   top: 10px;
   left: 10px;
+  pointer-events: auto;   /* Must allow user interaction */
+  /* Do NOT use display:none or transform that removes it from layout */
 }
 
         #loadedMessage {
@@ -295,71 +297,77 @@ function fadeSwapInfoMessage(newText) {
             
             switch (mode) {
               case 'fileSelect': {
-  // Create the file input dynamically
-  let input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'audio/*';
-  // Style it so it is in the layout with a touch-target size.
-  input.style.position = 'fixed';
-  input.style.top = '0px';
-  input.style.left = '0px';
-  input.style.width = '44px';    // 44×44 px (touch target size)
-  input.style.height = '44px';
-  input.style.opacity = '0';     // Invisible but not removed
-  input.style.pointerEvents = 'auto'; // Must allow clicks/touches
-  input.style.zIndex = '10000';
-  // Append the input to the document body
-  document.body.appendChild(input);
+  // If on mobile (iOS Safari), use the permanent file input
+  if (/Mobi|Android/i.test(navigator.userAgent)) {
+    document.getElementById('fileInput').click();
+  } else {
+    // Desktop: create the file input dynamically (keep your original code)
+    let input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*';
+    // Style it so it is in the layout with a touch-target size.
+    input.style.position = 'fixed';
+    input.style.top = '0px';
+    input.style.left = '0px';
+    input.style.width = '44px';    // 44×44 px (touch target size)
+    input.style.height = '44px';
+    input.style.opacity = '0';     // Invisible but not removed
+    input.style.pointerEvents = 'auto'; // Must allow clicks/touches
+    input.style.zIndex = '10000';
 
-  // Add an event listener to handle file selection
-  input.addEventListener('change', function(e) {
-    const file = input.files[0];
-    if (!file) {
+    // Append the input to the document body
+    document.body.appendChild(input);
+
+    // Add an event listener to handle file selection
+    input.addEventListener('change', function(e) {
+      const file = input.files[0];
+      if (!file) {
+        document.body.removeChild(input);
+        return;
+      }
+      // Create a new audio element using the selected file
+      const newAudio = new Audio();
+      newAudio.src = URL.createObjectURL(file);
+      newAudio.load();
+      selectedFileName = file.name.replace(/\.[^/.]+$/, "");
+      
+      newAudio.onloadedmetadata = async () => {
+        // Disconnect any previous audio source
+        if (audioSrc) {
+          audioSrc.disconnect();
+          audioSrc = null;
+        }
+        await ensureAudioContextResumed();
+        // Create a MediaElementSource from newAudio
+        audioSrc = audioContext.createMediaElementSource(newAudio);
+        // Connect to the analyser and then to the destination (so the audio is audible)
+        audioSrc.connect(analyser);
+        analyser.connect(audioContext.destination);
+        
+        // Replace the current audio element with the new one
+        audioElement.pause();
+        audioElement = newAudio;
+        
+        const loadedMessage = document.getElementById('loadedMessage');
+        if (loadedMessage) {
+          loadedMessage.style.display = 'block';
+          setTimeout(() => {
+            loadedMessage.style.display = 'none';
+          }, 3000);
+        }
+      };
+
+      newAudio.onerror = function(e) {
+        console.error('Error loading audio file:', e);
+      };
+
+      // Remove the input element now that it’s served its purpose.
       document.body.removeChild(input);
-      return;
-    }
-    // Create a new audio element using the selected file
-    const newAudio = new Audio();
-    newAudio.src = URL.createObjectURL(file);
-    newAudio.load();
-    selectedFileName = file.name.replace(/\.[^/.]+$/, "");
-    
-    newAudio.onloadedmetadata = async () => {
-      // Disconnect any previous audio source
-      if (audioSrc) {
-        audioSrc.disconnect();
-        audioSrc = null;
-      }
-      await ensureAudioContextResumed();
-      // Create a MediaElementSource from newAudio
-      audioSrc = audioContext.createMediaElementSource(newAudio);
-      // Connect to the analyser and then to the destination (so the audio is audible)
-      audioSrc.connect(analyser);
-      analyser.connect(audioContext.destination);
-      
-      // Replace the current audio element with the new one
-      audioElement.pause();
-      audioElement = newAudio;
-      
-      const loadedMessage = document.getElementById('loadedMessage');
-      if (loadedMessage) {
-        loadedMessage.style.display = 'block';
-        setTimeout(() => {
-          loadedMessage.style.display = 'none';
-        }, 3000);
-      }
-    };
+    });
 
-    newAudio.onerror = function(e) {
-      console.error('Error loading audio file:', e);
-    };
-
-    // Remove the input element now that it’s served its purpose.
-    document.body.removeChild(input);
-  });
-
-  // Immediately trigger the click; this must occur synchronously in response to the user gesture.
-  input.click();
+    // Immediately trigger the click; this must occur synchronously in response to the user gesture.
+    input.click();
+  }
 }
 break;
 case 'audioDevice': {
@@ -397,49 +405,47 @@ break;
                 case 'dsp':
                     console.log('DSP Mode is not implemented in this example.');
                     break;
-                    case 'playlist':
-    // For playlist mode, reuse the audio element’s source node if already created.
-    // If it’s not created yet, set it up.
-    if (!audioSrc) {
-        // Ensure full volume and set the current playlist track
-        audioElement.volume = 1.0;
-        audioElement.src = playlist[currentSongIndex];
-        audioElement.load();
+                    case 'playlist': {
+  // Disconnect any existing audio source.
+  if (audioSrc) {
+    audioSrc.disconnect();
+    audioSrc = null;
+  }
+  
+  // Create a new Audio element for playlist mode.
+  // This ensures any chain from fileSelect mode is discarded.
+  const playlistAudio = new Audio();
+  playlistAudio.volume = 1.0;
+  playlistAudio.muted = false;  // Make sure it's unmuted
+  playlistAudio.src = playlist[currentSongIndex];
+  playlistAudio.load();
+  
+  // Replace the global audioElement with this new one.
+  audioElement.pause();
+  audioElement = playlistAudio;
 
-        // Set up the chain only once for this audio element.
-        async function setupPlaylistChain() {
-            await ensureAudioContextResumed();
-            // Create the source node only once per element.
-            if (!audioSrc) {
-                audioSrc = audioContext.createMediaElementSource(audioElement);
-                const gainNode = audioContext.createGain();
-                gainNode.gain.value = 2.0; // Adjust gain if needed
-
-                // Build the connection chain: source -> gain -> analyser -> destination
-                audioSrc.connect(gainNode);
-                gainNode.connect(analyser);
-                analyser.connect(audioContext.destination);
-            }
-            if (isPlaying) {
-                audioElement.play();
-            }
-        }
-
-        // Use onloadedmetadata (or oncanplay) to ensure the file is ready.
-        if (audioElement.readyState >= 1) { // HAVE_METADATA
-            setupPlaylistChain();
-        } else {
-            audioElement.onloadedmetadata = setupPlaylistChain;
-        }
-    } else {
-        // If the chain is already set up (audioSrc exists), simply change the track.
-        audioElement.src = playlist[currentSongIndex];
-        audioElement.load();
-        if (isPlaying) {
-            audioElement.play();
-        }
+  async function setupPlaylistChain() {
+    await ensureAudioContextResumed();
+    // Create the MediaElementSource node from the new audio element.
+    audioSrc = audioContext.createMediaElementSource(audioElement);
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = 2.0; // Adjust as needed
+    // Build the connection chain: audioElement -> gainNode -> analyser -> destination
+    audioSrc.connect(gainNode);
+    gainNode.connect(analyser);
+    analyser.connect(audioContext.destination);
+    if (isPlaying) {
+      audioElement.play();
     }
-    break;
+  }
+  
+  if (audioElement.readyState >= 1) {
+    setupPlaylistChain();
+  } else {
+    audioElement.onloadedmetadata = setupPlaylistChain;
+  }
+}
+break;
                 default:
                     console.log('Unknown mode');
             }
