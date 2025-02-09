@@ -1888,17 +1888,26 @@ function onTouchEnd(e) {
   const dy = touchEndY - touchStartY;
   const distance = Math.sqrt(dx * dx + dy * dy);
 
-  // If we're in fileSelect mode, trigger the file input immediately.
+  // If we're in fileSelect mode, check if the touch started within the file input's area.
   if (currentMode === 'fileSelect') {
-    // Directly trigger file input click on mobile.
     let fileInput = document.getElementById('fileInput');
     if (fileInput) {
-      fileInput.click();
+      const rect = fileInput.getBoundingClientRect();
+      // If the touchStart point lies within the file input's bounding rectangle:
+      if (
+        touchStartX >= rect.left &&
+        touchStartX <= rect.right &&
+        touchStartY >= rect.top &&
+        touchStartY <= rect.bottom
+      ) {
+        fileInput.click();
+        // Return early so that swipes/taps elsewhere are not blocked.
+        return;
+      }
     }
-    // Return early so that tap count/swipe logic is not processed further.
-    return;
   }
-  // Existing swipe/tap logic:
+
+  // Process swipe/tap logic normally:
   if (distance >= swipeThreshold) {
     if (Math.abs(dx) > Math.abs(dy)) {
       if (dx > 0) {
@@ -1926,7 +1935,7 @@ function onTouchEnd(e) {
         if (tapCount === 1) {
           togglePlayPause();
         } else if (tapCount === 2) {
-          intensityLevel = (intensityLevel % 9) + 1;
+          intensityLevel = (intensityLevel % 9) + 1; // cycles from 1 to 9
           adjustVisualEffectsIntensity();
         } else if (tapCount === 3) {
           playNextSongInPlaylist();
