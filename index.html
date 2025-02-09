@@ -135,6 +135,7 @@ html, body {
         let userCameraTexture = null;
         let shuffleMode = false;
 let shuffleInterval = null;
+let fileSelectTriggered = false;
         
         
         const modes = ['fileSelect', 'audioDevice', 'playlist'];
@@ -297,62 +298,64 @@ function fadeSwapInfoMessage(newText) {
             
             switch (mode) {
               case 'fileSelect': {
-      // For mobile, do nothing special here—
-      // the permanent file input (id="fileInput") is already in the DOM.
-      // (Desktop code remains unchanged.)
-      if (!/Mobi|Android/i.test(navigator.userAgent)) {
-        // Desktop: create a dynamic file input as before.
-        let input = document.createElement('input');
-        input.type = 'file';
-        input.accept = 'audio/*';
-        input.style.position = 'fixed';
-        input.style.top = '0px';
-        input.style.left = '0px';
-        input.style.width = '44px';
-        input.style.height = '44px';
-        input.style.opacity = '0';
-        input.style.pointerEvents = 'auto';
-        input.style.zIndex = '10000';
-        document.body.appendChild(input);
-        input.addEventListener('change', function(e) {
-          const file = input.files[0];
-          if (!file) {
-            document.body.removeChild(input);
-            return;
-          }
-          const newAudio = new Audio();
-          newAudio.src = URL.createObjectURL(file);
-          newAudio.load();
-          selectedFileName = file.name.replace(/\.[^/.]+$/, "");
-          
-          newAudio.onloadedmetadata = async () => {
-            if (audioSrc) {
-              audioSrc.disconnect();
-              audioSrc = null;
-            }
-            await ensureAudioContextResumed();
-            audioSrc = audioContext.createMediaElementSource(newAudio);
-            audioSrc.connect(analyser);
-            analyser.connect(audioContext.destination);
-            audioElement.pause();
-            audioElement = newAudio;
-            const loadedMessage = document.getElementById('loadedMessage');
-            if (loadedMessage) {
-              loadedMessage.style.display = 'block';
-              setTimeout(() => {
-                loadedMessage.style.display = 'none';
-              }, 3000);
-            }
-          };
-          newAudio.onerror = function(e) {
-            console.error('Error loading audio file:', e);
-          };
-          document.body.removeChild(input);
-        });
-        input.click();
+  if (/Mobi|Android/i.test(navigator.userAgent)) {
+    // On mobile, reset the trigger flag so that one tap will open the file browser.
+    fileSelectTriggered = false;
+    // (You can also optionally show an instruction message here.)
+  } else {
+    // Desktop: use your dynamic file input creation method.
+    let input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*';
+    input.style.position = 'fixed';
+    input.style.top = '0px';
+    input.style.left = '0px';
+    input.style.width = '44px';
+    input.style.height = '44px';
+    input.style.opacity = '0';
+    input.style.pointerEvents = 'auto';
+    input.style.zIndex = '10000';
+    document.body.appendChild(input);
+    input.addEventListener('change', function(e) {
+      const file = input.files[0];
+      if (!file) {
+        document.body.removeChild(input);
+        return;
       }
-      break;
-    }
+      const newAudio = new Audio();
+      newAudio.src = URL.createObjectURL(file);
+      newAudio.load();
+      selectedFileName = file.name.replace(/\.[^/.]+$/, "");
+      
+      newAudio.onloadedmetadata = async () => {
+        if (audioSrc) {
+          audioSrc.disconnect();
+          audioSrc = null;
+        }
+        await ensureAudioContextResumed();
+        audioSrc = audioContext.createMediaElementSource(newAudio);
+        audioSrc.connect(analyser);
+        analyser.connect(audioContext.destination);
+        audioElement.pause();
+        audioElement = newAudio;
+        const loadedMessage = document.getElementById('loadedMessage');
+        if (loadedMessage) {
+          loadedMessage.style.display = 'block';
+          setTimeout(() => {
+            loadedMessage.style.display = 'none';
+          }, 3000);
+        }
+      };
+      newAudio.onerror = function(e) {
+        console.error('Error loading audio file:', e);
+      };
+      document.body.removeChild(input);
+    });
+    input.click();
+  }
+  
+}
+break;
 case 'audioDevice': {
   // Disconnect any existing audio source and clear previous connections
   if (audioSrc) {
@@ -435,46 +438,44 @@ break;
         }
         
         function handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            
-            // Do not reuse `audioElement` from init() at all.
-            // Make a new <audio> each time:
-            const newAudio = new Audio();
-            newAudio.src = URL.createObjectURL(file);
-            newAudio.load();
-            selectedFileName = file.name.replace(/\.[^/.]+$/, "");
-            
-            newAudio.onloadedmetadata = async () => {
-                if (audioSrc) {
-                    audioSrc.disconnect();
-                    audioSrc = null;
-                }
-                
-                await ensureAudioContextResumed();
-                audioSrc = audioContext.createMediaElementSource(newAudio);
-                audioSrc.connect(analyser);
-                analyser.connect(audioContext.destination);
-                
-                // Optionally replace references so toggles control the newAudio
-                audioElement.pause();
-                audioElement = newAudio;
-                
-                
-                const loadedMessage = document.getElementById('loadedMessage');
-                if (loadedMessage) {
-                    console.log('Showing loadedMessage');
-                    loadedMessage.style.display = 'block';
-                    setTimeout(() => {
-                        loadedMessage.style.display = 'none';
-                    }, 3000);
-                }
-            };
-            
-            audioElement.onerror = function(e) {
-                console.error('Error loading audio file:', e);
-            };
-        }
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const newAudio = new Audio();
+  newAudio.src = URL.createObjectURL(file);
+  newAudio.load();
+  selectedFileName = file.name.replace(/\.[^/.]+$/, "");
+  
+  newAudio.onloadedmetadata = async () => {
+    if (audioSrc) {
+      audioSrc.disconnect();
+      audioSrc = null;
+    }
+    
+    await ensureAudioContextResumed();
+    audioSrc = audioContext.createMediaElementSource(newAudio);
+    audioSrc.connect(analyser);
+    analyser.connect(audioContext.destination);
+    
+    audioElement.pause();
+    audioElement = newAudio;
+    
+    const loadedMessage = document.getElementById('loadedMessage');
+    if (loadedMessage) {
+      loadedMessage.style.display = 'block';
+      setTimeout(() => {
+        loadedMessage.style.display = 'none';
+      }, 3000);
+    }
+    // Reset our fileSelect flag and switch mode to playlist so that normal gestures work.
+    fileSelectTriggered = false;
+    switchMode('playlist');
+  };
+  
+  audioElement.onerror = function(e) {
+    console.error('Error loading audio file:', e);
+  };
+}
         
         function createParticles() {
             const particleCount = 5000;
@@ -1888,26 +1889,20 @@ function onTouchEnd(e) {
   const dy = touchEndY - touchStartY;
   const distance = Math.sqrt(dx * dx + dy * dy);
 
-  // If we're in fileSelect mode, check if the touch started within the file input's area.
-  if (currentMode === 'fileSelect') {
-    let fileInput = document.getElementById('fileInput');
-    if (fileInput) {
-      const rect = fileInput.getBoundingClientRect();
-      // If the touchStart point lies within the file input's bounding rectangle:
-      if (
-        touchStartX >= rect.left &&
-        touchStartX <= rect.right &&
-        touchStartY >= rect.top &&
-        touchStartY <= rect.bottom
-      ) {
+  // When in fileSelect mode on mobile, trigger the file input only once.
+  if (currentMode === 'fileSelect' && /Mobi|Android/i.test(navigator.userAgent)) {
+    if (!fileSelectTriggered) {
+      let fileInput = document.getElementById('fileInput');
+      if (fileInput) {
         fileInput.click();
-        // Return early so that swipes/taps elsewhere are not blocked.
-        return;
+        fileSelectTriggered = true;
       }
     }
+    // Return early so that no other gesture logic is processed.
+    return;
   }
 
-  // Process swipe/tap logic normally:
+  // (Existing swipe and tap logic follows here.)
   if (distance >= swipeThreshold) {
     if (Math.abs(dx) > Math.abs(dy)) {
       if (dx > 0) {
@@ -1935,7 +1930,7 @@ function onTouchEnd(e) {
         if (tapCount === 1) {
           togglePlayPause();
         } else if (tapCount === 2) {
-          intensityLevel = (intensityLevel % 9) + 1; // cycles from 1 to 9
+          intensityLevel = (intensityLevel % 9) + 1;
           adjustVisualEffectsIntensity();
         } else if (tapCount === 3) {
           playNextSongInPlaylist();
@@ -1945,7 +1940,6 @@ function onTouchEnd(e) {
     }
   }
 }
-
 function onTouchCancel(e) {
   clearTimeout(longPressTimer);
   clearTimeout(tapTimer);
