@@ -142,7 +142,14 @@ let fileSelectTriggered = false;
         let currentModeIndex = modes.indexOf(currentMode);
         
         let selectedFileName = '';
-        let playlist = ['london.mp3', 'basketcase.mp3', 'clubtropicana.mp3']; // Example playlist
+        let playlist = [
+          'music/aphex twin - xtal.mp3', 
+          'music/daft punk - pheonix.mp3', 
+          'music/future - i serve the base.mp3',
+          'music/nirvana - radio friendly unit shifter.mp3',
+          'music/prince -  i wanna be your lover.mp3',
+        ]; // playlist
+
         let currentSongIndex = Math.floor(Math.random() * playlist.length); // Random start
 
         function init() {
@@ -226,7 +233,9 @@ function fadeSwapInfoMessage(newText) {
   return new Promise((resolve) => {
     // Set the new song URL and update the displayed song name.
     audioElement.src = playlist[currentSongIndex];
-    selectedFileName = playlist[currentSongIndex].replace(/\.[^/.]+$/, "");
+    selectedFileName = playlist[currentSongIndex]
+  .replace(/^music\//, "")  // Remove "music/" at the start, if it exists
+  .replace(/\.[^/.]+$/, ""); // Remove the extension (.mp3, etc.)
     audioElement.load();
 
     // This function will build the chain if it hasn't been built yet.
