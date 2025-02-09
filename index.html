@@ -1890,13 +1890,16 @@ function onTouchEnd(e) {
 
   // If we're in fileSelect mode, trigger the file input immediately.
   if (currentMode === 'fileSelect') {
-    // Directly trigger file input click on mobile.
     let fileInput = document.getElementById('fileInput');
     if (fileInput) {
       fileInput.click();
     }
-    // Return early so that tap count/swipe logic is not processed further.
-    return;
+    // Switch mode to "playlist" after triggering the file input
+    // so that subsequent touches are processed normally.
+    setTimeout(() => {
+      switchMode('playlist');
+    }, 100); // 100ms delay (adjust if needed)
+    return; // Exit early so no other tap/swipe logic is processed.
   }
   // Existing swipe/tap logic:
   if (distance >= swipeThreshold) {
