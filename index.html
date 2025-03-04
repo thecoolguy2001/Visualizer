@@ -115,7 +115,7 @@
   <div id="loadedMessage">loaded</div>
   <div id="songInfo"></div>
   <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.ogg" onchange="handleFileSelect(event)">
-    
+
   <div id="helpOverlay">
     <h2>Controls</h2>
     <ul>
@@ -1788,36 +1788,35 @@
       
       if (currentMode === 'audioDevice') {
         if (!isPlaying) {
-          // Start "visualization" without playing any audio track
-          // Hide the #info altogether
           document.getElementById('info').style.display = "none";
           isPlaying = true;
         } else {
-          // Pause the visualization
-          // Show #info again; set text to "press spacebar to start" and fade in
           const info = document.getElementById('info');
           info.style.display = "block"; 
           info.style.opacity = "0";
-          info.textContent = "press spacebar to start";
+          // Use mobile-specific message if applicable
+          const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+          info.textContent = isMobile ? "tap to start" : "press spacebar to start";
           void info.offsetWidth;
           info.style.opacity = "1";
           isPlaying = false;
         }
       } else {
-        // Normal logic for playlist / fileSelect / dsp
         if (!isPlaying) {
-            audioElement.play();
-            document.getElementById('info').style.display = "none";
-            isPlaying = true;
+          audioElement.play();
+          document.getElementById('info').style.display = "none";
+          isPlaying = true;
         } else {
-            audioElement.pause();
-            const info = document.getElementById('info');
-            info.style.display = "block";
-            info.style.opacity = "0";
-            info.textContent = "press spacebar to start";
-            void info.offsetWidth;
-            info.style.opacity = "1";
-            isPlaying = false;
+          audioElement.pause();
+          const info = document.getElementById('info');
+          info.style.display = "block";
+          info.style.opacity = "0";
+          // Use mobile-specific message if applicable
+          const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+          info.textContent = isMobile ? "tap to start" : "press spacebar to start";
+          void info.offsetWidth;
+          info.style.opacity = "1";
+          isPlaying = false;
         }
       }
     }
