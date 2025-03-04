@@ -1944,12 +1944,11 @@
           if (fileInput) {
             fileInput.click();
             fileSelectTriggered = true;
+            return; // Only return on the first tap to trigger file selection.
+            }
           }
-        }
-        
-        // Return early so that no other gesture logic is processed.
-        return;
-      }
+          // If fileSelectTriggered is true, do not return so that gestures can be processed.
+      }        
       
       // (Existing swipe and tap logic follows here.)
       if (distance >= swipeThreshold) {
