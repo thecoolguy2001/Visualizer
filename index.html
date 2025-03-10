@@ -577,50 +577,58 @@
     }
         
     function create3DWaves() {
-      const wave3DGeometry = new THREE.PlaneBufferGeometry(1000, 1000, 50, 50);
-            
-      const wave3DMaterial = new THREE.ShaderMaterial({
-      uniforms: {
-        time: { value: 0.0 },
-        amplitude: { value: 15.0 },
-        frequency: { value: 0.4 },
-        speed: { value: 0.8 },
-        color: { value: new THREE.Color(0x00aaff) }
-      },
-      vertexShader: `
+  // Use a highly subdivided plane for high-quality, experimental waves
+  const geometry = new THREE.PlaneBufferGeometry(1200, 1200, 300, 300);
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0.0 },
+      amplitude: { value: 20.0 },
+      frequency: { value: 0.5 },
+      speed: { value: 1.0 }
+    },
+    vertexShader: `
       uniform float time;
       uniform float amplitude;
       uniform float frequency;
       uniform float speed;
-
       varying vec3 vColor;
-
+      
       void main() {
-       vec3 pos = position;
-       pos.z += cos((pos.x + pos.y + time * speed) * frequency) * amplitude;
-
-       Color = vec3(0.0, 1.0 - pos.z * 0.1, 0.5 + pos.z * 0.1);
-
-       gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        vec3 pos = position;
+        // Compute three wave patterns with a twist effect for complexity
+        float wave1 = sin(pos.x * frequency + time * speed);
+        float wave2 = cos(pos.y * frequency * 1.2 + time * speed * 1.1);
+        float wave3 = sin((pos.x + pos.y) * frequency * 0.8 + time * speed * 0.8);
+        // Apply a twist based on the y position and time to add a 3D dynamic\n
+        float twist = sin(time + pos.y * 0.05) * 0.5;
+        pos.x += twist;
+        // Combine the waves to get a complex displacement\n
+        float displacement = (wave1 + wave2 + wave3) / 3.0 * amplitude;
+        pos.z += displacement;
+        // Generate a vibrant color based on the displacement\n
+        vColor = vec3(0.5 + 0.5 * sin(displacement * 0.1),
+                      0.5 + 0.5 * cos(displacement * 0.1),
+                      0.5 + 0.5 * sin(displacement * 0.2));
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       }
-      `,
-      fragmentShader: `
+    `,
+    fragmentShader: `
       varying vec3 vColor;
-
       void main() {
-       gl_FragColor = vec4(vColor, 1.0);
+        gl_FragColor = vec4(vColor, 1.0);
       }
-      `,
-      wireframe: true,
-      transparent: true,
-      });
-            
-      const wave3D = new THREE.Mesh(wave3DGeometry, wave3DMaterial);
-      wave3D.rotation.x = -Math.PI / 2;
-      wave3D.name = '3DWaves';
-      scene.add(wave3D);
-      visualElements.push(wave3D);
-    }
+    `,
+    wireframe: false,
+    transparent: true,
+  });
+  
+  const mesh = new THREE.Mesh(geometry, material);
+  // Tilt the plane for a more engaging perspective (angled view instead of flat)
+  mesh.rotation.set(-0.5, 0.3, 0);
+  mesh.name = '3DWaves';
+  scene.add(mesh);
+  visualElements.push(mesh);
+}
         
     function createTrippyColors() {
       const geometry = new THREE.PlaneGeometry(2000, 2000, 1, 1);
@@ -1026,88 +1034,100 @@
     }
     
     function createCityEffect() {
-      // Create a full-screen plane.
-      const geometry = new THREE.PlaneGeometry(2000, 2000, 1, 1);
-      const material = new THREE.ShaderMaterial({
-        uniforms: {
-          time: { value: 0.0 },
-          audioIntensity: { value: 0.0 },
-          effectIntensity: { value: 1.0 },
-          resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
-        },
-        
-        vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-        `,
-        fragmentShader: `
-        uniform float time;
-        uniform float audioIntensity;
-        uniform float effectIntensity;
-        uniform vec2 resolution;
-        varying vec2 vUv;
-        
-        // A simple pseudo-random function
-        // float random(vec2 st) {
-          return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
-        }
+  const geometry = new THREE.PlaneBufferGeometry(2000, 2000, 1, 1);
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0.0 },
+      audioIntensity: { value: 0.0 },
+      effectIntensity: { value: 1.0 },
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float time;
+      uniform float audioIntensity;
+      uniform float effectIntensity;
+      uniform vec2 resolution;
+      varying vec2 vUv;
 
-        void main() {
-          // Flip the vertical coordinate so that y=0 is at the bottom.
-          vec2 uv = vUv;
-          uv.y = 1.0 - uv.y;
+      // 2D noise function
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+                   mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+                   u.y);
+      }
+
+      void main() {
+        // Flip v coordinate so horizon is at the bottom
+        vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
+
+        // Create a gradient night sky background
+        vec3 skyColor = mix(vec3(0.02, 0.02, 0.05), vec3(0.1, 0.1, 0.2), uv.y);
+
+        // Determine the city grid parameters
+        float columnCount = 30.0;
+        float colWidth = 1.0 / columnCount;
+        float colIndex = floor(uv.x * columnCount);
+        float xLocal = fract(uv.x * columnCount);
+
+        // Base building height via noise (each column gets a unique base height)
+        float baseHeight = noise(vec2(colIndex * 0.5, 0.0)) * 0.4 + 0.2;
+        // Audio-reactive pulsation adds a dynamic component (using sine for a smooth pulse)
+        float pulsate = sin(time * 2.0 + colIndex) * 0.05 * audioIntensity * effectIntensity;
+        float buildingHeight = baseHeight + pulsate;
+
+        // If we are below the building height, render building silhouette and neon windows
+        vec3 color = skyColor;
+        if (uv.y < buildingHeight) {
+          // Base building color: dark silhouette with a subtle bluish tint
+          vec3 buildingColor = vec3(0.05, 0.05, 0.1);
+          color = buildingColor;
           
-          // Define a dark sky color.
-          vec3 skyColor = vec3(0.05, 0.05, 0.1);
+          // Create a window grid pattern over each building column
+          float rows = 10.0;
+          float cols = 3.0;
+          vec2 windowUV = vec2(xLocal, uv.y / buildingHeight);
+          vec2 cell = vec2(1.0 / cols, 1.0 / rows);
+          vec2 cellUV = fract(windowUV * vec2(cols, rows));
           
-          // Define the horizon (e.g., lower 30% of the screen).
-          float horizon = 0.3;
+          // Windows appear in the central 40% of each cell
+          float win = step(0.3, cellUV.x) * step(cellUV.x, 0.7) *
+                      step(0.3, cellUV.y) * step(cellUV.y, 0.7);
           
-          // Compute a varying building height for each column:
-          // Use the x coordinate (scaled to create about 20 columns) and a sine function for variation.
-          float baseHeight = 0.3 + 0.4 * fract(sin(uv.x * 50.0 + time * 0.3) * 43758.5453123);
-          // Add a pulsation component (modulated by both audio and user intensity).
-          float pulsate = 0.05 * sin(time * 5.0 + uv.x * 10.0) * audioIntensity;
-          float buildingHeight = baseHeight + pulsate * effectIntensity;
+          // Flicker effect: each cell gets a random value modulated by time and audio
+          float flicker = step(0.8, noise(vec2(colIndex, floor(windowUV.y * rows) + time * 3.0)) + audioIntensity * 0.5);
           
-          // Start with the sky color.
-          vec3 color = skyColor;
-          
-          // If we're below the computed building height, render a building.
-          if (uv.y < buildingHeight) {
-            // Base building color (a dark, almost black-blue silhouette).
-            vec3 buildingColor = vec3(0.1, 0.1, 0.15);
-            color = buildingColor;
-              
-            // Create a window grid pattern:
-            float windowScale = 100.0;
-            vec2 windowPos = fract(uv * windowScale);
-            // A simple grid: windows exist in a central band within each cell.
-            float window = step(0.4, windowPos.x) * step(windowPos.x, 0.6) *
-            step(0.4, windowPos.y) * step(windowPos.y, 0.6);
-            // Flicker effect: use a random function (based on uv and time) so that windows sometimes light up.
-            float flicker = step(0.95, random(uv * windowScale + time * 10.0));
-            // Mix in a bright warm light for lit windows; modulate by audioIntensity and effectIntensity.
-            color = mix(color, vec3(1.0, 0.9, 0.7), window * flicker * audioIntensity * effectIntensity);
-          }
-          // Add a subtle vignette effect based on distance from the center.
-          float dist = distance(vUv, vec2(0.5));
-          color *= smoothstep(1.0, 0.4, dist);
-          
-          gl_FragColor = vec4(color, 1.0);
+          // Neon window color with a cool cyan tone
+          vec3 windowColor = vec3(0.0, 1.0, 0.8);
+          color = mix(color, windowColor, win * flicker);
         }
-        `,
-        transparent: true
-      });
-      
-      const city = new THREE.Mesh(geometry, material);
-      city.name = "City";
-      scene.add(city);
-      visualElements.push(city);
-    }
+        
+        // Apply a subtle vignette effect based on distance from the center
+        float dist = distance(vUv, vec2(0.5));
+        color *= smoothstep(1.0, 0.4, dist);
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `,
+    transparent: true
+  });
+  
+  const city = new THREE.Mesh(geometry, material);
+  city.name = "City";
+  scene.add(city);
+  visualElements.push(city);
+}
     
     function createStaticElectricityEffect() {
       // Create a full-screen plane.
@@ -1202,7 +1222,121 @@
       scene.add(staticElectricity);
       visualElements.push(staticElectricity);
     }
-    
+
+    function createAuroraEffect() {
+  // 1) Calculate the needed plane size to fill the view at a given distance.
+
+  // The camera has these properties:
+  //   camera.fov (vertical field of view in degrees)
+  //   camera.aspect (width / height)
+  //   camera.position.z (e.g. 500)
+
+  // We want the plane at z = -500, so the distance from camera to plane is:
+  const distance = camera.position.z - (-500); // e.g. 500 - (-500) = 1000
+
+  // Convert FOV from degrees to radians
+  const fovInRadians = (camera.fov * Math.PI) / 180.0;
+
+  // The plane height needed to fill the vertical FOV at 'distance':
+  const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+
+  // The plane width depends on the camera aspect ratio:
+  const planeWidth = planeHeight * camera.aspect;
+
+  // 2) Create a plane geometry that exactly fills the camera view at that distance:
+  const geometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight, 1, 1);
+
+  // 3) Build the same ShaderMaterial you already have:
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0.0 },
+      audioIntensity: { value: 0.0 },
+      effectIntensity: { value: 1.0 },
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main(){
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      // (Same aurora-smoke shader logic you already have)
+      uniform float time;
+      uniform float audioIntensity;
+      uniform float effectIntensity;
+      uniform vec2 resolution;
+      varying vec2 vUv;
+      
+      float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453123);
+      }
+      float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+                     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+                     u.y);
+      }
+      float fbm(vec2 p) {
+          float total = 0.0;
+          float amplitude = 0.5;
+          for (int i = 0; i < 5; i++) {
+              total += amplitude * noise(p);
+              p *= 2.0;
+              amplitude *= 0.5;
+          }
+          return total;
+      }
+      void main(){
+          // Convert vUv to a 'centered' coordinate that accounts for aspect ratio.
+          vec2 centeredUv = (vUv - 0.5) * vec2(resolution.x / resolution.y, 1.0);
+          
+          // Base noise layer
+          float baseNoise = fbm(centeredUv * 3.0 + time * 0.2);
+          // Audio-driven noise layer
+          float audioNoise = fbm(centeredUv * 10.0 + time * 2.0);
+          float combinedNoise = baseNoise + audioIntensity * effectIntensity * audioNoise;
+          
+          // Swirl the UV coords based on the combined noise
+          float angle = time * 0.1 + combinedNoise * 6.2831;
+          mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+          vec2 swirledUv = rot * centeredUv;
+          
+          // Fine detail noise
+          float detailNoise = fbm(swirledUv * 4.0 + time * 0.5);
+          float smokeValue = mix(combinedNoise, detailNoise, 0.5);
+          
+          // Aurora color gradient
+          vec3 colorA = vec3(0.2, 0.0, 0.3);  // deep purple
+          vec3 colorB = vec3(0.0, 0.6, 0.8);  // cyan
+          vec3 finalColor = mix(colorA, colorB, smoothstep(0.3, 0.7, smokeValue));
+          
+          // Glow in bright areas
+          float glow = smoothstep(0.4, 0.5, smokeValue) * audioIntensity * effectIntensity;
+          finalColor += glow * vec3(0.8, 0.9, 1.0);
+          
+          // Subtle vignette
+          float d = distance(vUv, vec2(0.5));
+          finalColor *= smoothstep(0.8, 0.4, d);
+          
+          gl_FragColor = vec4(finalColor, 1.0);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending
+  });
+
+  // 4) Create the mesh, position it at z = -500
+  const auroraSmoke = new THREE.Mesh(geometry, material);
+  auroraSmoke.name = "AuroraEffect";
+  auroraSmoke.position.z = -500; 
+  scene.add(auroraSmoke);
+  visualElements.push(auroraSmoke);
+}
+
     function createVisualElements() {
       createParticles();
       createWaves();
@@ -1215,6 +1349,7 @@
       createSixtiesEffect();
       createCityEffect();
       createStaticElectricityEffect();
+      createAuroraEffect();
       // Additional styles can be added here
       updateVisibility(); // Show only the selected style
     }
@@ -1291,17 +1426,19 @@
         waveEffect.geometry.attributes.position.needsUpdate = true;
       }
         
-      // 3D Waves
-      const wave3DEffect = visualElements.find(elem => elem.name === '3DWaves');
-      if (wave3DEffect && wave3DEffect.material.uniforms) {
-        wave3DEffect.material.uniforms.time.value = time;
-        const baseAmp = wave3DEffect.userData?.baseAmplitude ?? 15.0;
-        wave3DEffect.material.uniforms.amplitude.value = baseAmp;
-        const baseFreq = wave3DEffect.userData?.baseFrequency ?? 0.4;
-        wave3DEffect.material.uniforms.frequency.value = baseFreq;
-          
-        wave3DEffect.geometry.attributes.position.needsUpdate = true;
-      }
+      // 3D Waves (Initial Animation)
+const wave3DEffect = visualElements.find(elem => elem.name === '3DWaves');
+if (wave3DEffect && wave3DEffect.material.uniforms) {
+  const currentTime = performance.now() * 0.001;
+  wave3DEffect.material.uniforms.time.value = currentTime;
+  const baseAmp = wave3DEffect.userData?.baseAmplitude ?? 20.0;
+  const baseFreq = wave3DEffect.userData?.baseFrequency ?? 0.5;
+  const baseSpeed = wave3DEffect.userData?.baseSpeed ?? 1.0;
+  wave3DEffect.material.uniforms.amplitude.value = baseAmp;
+  wave3DEffect.material.uniforms.frequency.value = baseFreq;
+  wave3DEffect.material.uniforms.speed.value = baseSpeed;
+  wave3DEffect.geometry.attributes.position.needsUpdate = true;
+}
         
       // Portal
       const portal = visualElements.find(elem => elem.name === 'Portal');
@@ -1347,13 +1484,15 @@
         sixtiesEffect.material.uniforms.effectIntensity.value = sixtiesEffect.userData?.baseEffectIntensity || 1.0;
       }
         
-      // --- City Effect: Non-reactive (initial) state ---
-      const cityEffect = visualElements.find(elem => elem.name === "City");
-      if (cityEffect && cityEffect.material.uniforms) {
-        cityEffect.material.uniforms.time.value = performance.now() * 0.001;
-        cityEffect.material.uniforms.audioIntensity.value = 0.0;
-        cityEffect.material.uniforms.effectIntensity.value = cityEffect.userData?.baseEffectIntensity || 1.0;
-      }
+      // City Effect (Initial Animation)
+const cityEffect = visualElements.find(elem => elem.name === 'City');
+if (cityEffect && cityEffect.material.uniforms) {
+  cityEffect.material.uniforms.time.value = performance.now() * 0.001;
+  // Set a base audio intensity (typically 0 when idle)
+  cityEffect.material.uniforms.audioIntensity.value = 0.0;
+  // Use stored base effect intensity or default to 1.0
+  cityEffect.material.uniforms.effectIntensity.value = cityEffect.userData?.baseEffectIntensity ?? 1.0;
+}
         
       // --- Static Electricity Effect: Non-reactive state ---
       const staticEffect = visualElements.find(elem => elem.name === "StaticElectricity");
@@ -1364,6 +1503,13 @@
         // Set effectIntensity from user settings (or default to 1.0).
         staticEffect.material.uniforms.effectIntensity.value = staticEffect.userData?.baseEffectIntensity || 1.0;
       }
+
+      const aurora = visualElements.find(elem => elem.name === 'AuroraEffect');
+if (aurora && aurora.material.uniforms) {
+  aurora.material.uniforms.time.value = performance.now() * 0.001;
+  aurora.material.uniforms.audioIntensity.value = 0.0;
+  aurora.material.uniforms.effectIntensity.value = aurora.userData?.baseEffectIntensity ?? 1.0;
+}
     }
 
     function getSubrangeAverage(dataArray, startIndex, endIndex) {
@@ -1423,20 +1569,22 @@
         waveEffect.geometry.attributes.position.needsUpdate = true;
       }
       
-      // 3D Waves (named '3DWaves')
-      const wave3DEffect = visualElements.find(elem => elem.name === '3DWaves');
-      if (wave3DEffect && wave3DEffect.material.uniforms && wave3DEffect.visible) {
-        const baseAmp = wave3DEffect.userData?.baseAmplitude ?? 15.0;
-        const baseFreq = wave3DEffect.userData?.baseFrequency ?? 0.4;
-        
-        // amplitude => base + bass
-        wave3DEffect.material.uniforms.amplitude.value = baseAmp + bassAvg * 30.0;
-        // frequency => base + treble
-        wave3DEffect.material.uniforms.frequency.value = baseFreq + (trebleAvg * 0.3);
-        
-        wave3DEffect.material.uniforms.time.value += 0.05;
-        wave3DEffect.geometry.attributes.position.needsUpdate = true;
-      }
+      // 3D Waves (Experimental Audio-Reactive)
+const wave3DEffect = visualElements.find(elem => elem.name === '3DWaves');
+if (wave3DEffect && wave3DEffect.material.uniforms) {
+  const baseAmp = wave3DEffect.userData?.baseAmplitude ?? 20.0;
+  // Non-linear modulation: squared bass average for dramatic amplitude effects
+  const newAmp = baseAmp * (1.0 + Math.pow(bassAvg, 2.0) * 2.0);
+  const baseFreq = wave3DEffect.userData?.baseFrequency ?? 0.5;
+  const newFreq = baseFreq + trebleAvg * 1.2;
+  const baseSpeed = wave3DEffect.userData?.baseSpeed ?? 1.0;
+  const newSpeed = baseSpeed + midAvg * 1.5;
+  wave3DEffect.material.uniforms.amplitude.value = newAmp;
+  wave3DEffect.material.uniforms.frequency.value = newFreq;
+  wave3DEffect.material.uniforms.speed.value = newSpeed;
+  wave3DEffect.material.uniforms.time.value = performance.now() * 0.001;
+  wave3DEffect.geometry.attributes.position.needsUpdate = true;
+}
       
       // Trippy Colors (named 'TrippyColors')
       const trippyEffect = visualElements.find(elem => elem.name === 'TrippyColors');
@@ -1495,15 +1643,17 @@
         sixtiesEffect.material.uniforms.effectIntensity.value = sixtiesEffect.userData?.baseEffectIntensity || 1.0;
       }
       
-      // --- City Effect: Audio-reactive state ---
-      const cityEffect = visualElements.find(elem => elem.name === "City");
-      if (cityEffect && cityEffect.material.uniforms) {
-        cityEffect.material.uniforms.time.value = performance.now() * 0.001;
-        // Compute an overall audio intensity from bass, mid, and treble averages.
-        let audioIntensity = (bassAvg * 0.5 + midAvg * 0.3 + trebleAvg * 0.2);
-        cityEffect.material.uniforms.audioIntensity.value = audioIntensity;
-        cityEffect.material.uniforms.effectIntensity.value = cityEffect.userData?.baseEffectIntensity || 1.0;
-      }
+      // City Effect (Experimental Audio-Reactive)
+const cityEffect = visualElements.find(elem => elem.name === 'City');
+if (cityEffect && cityEffect.material.uniforms) {
+  cityEffect.material.uniforms.time.value = performance.now() * 0.001;
+  // Compute an overall audio intensity (adjust the multipliers as desired)
+  let audioIntensity = (bassAvg * 0.5 + midAvg * 0.3 + trebleAvg * 0.2);
+  // Pass the audioIntensity to the shader for building pulsation and window flickering
+  cityEffect.material.uniforms.audioIntensity.value = audioIntensity;
+  // Maintain effect intensity from user settings or default value
+  cityEffect.material.uniforms.effectIntensity.value = cityEffect.userData?.baseEffectIntensity ?? 1.0;
+}
       
       // --- Static Electricity Effect: Audio-reactive state ---
       const staticEffect = visualElements.find(elem => elem.name === "StaticElectricity");
@@ -1514,6 +1664,15 @@
         staticEffect.material.uniforms.audioIntensity.value = audioIntensity;
         staticEffect.material.uniforms.effectIntensity.value = staticEffect.userData?.baseEffectIntensity || 1.0;
       }
+
+      const aurora = visualElements.find(elem => elem.name === 'AuroraEffect');
+if (aurora && aurora.material.uniforms) {
+  aurora.material.uniforms.time.value = performance.now() * 0.001;
+  // Compute overall audio intensity (tweak the multipliers for stronger effect)
+  let audioIntensity = (bassAvg * 0.5 + midAvg * 0.3 + trebleAvg * 0.2);
+  aurora.material.uniforms.audioIntensity.value = audioIntensity;
+  aurora.material.uniforms.effectIntensity.value = aurora.userData?.baseEffectIntensity ?? 1.0;
+}
 
       renderer.render(scene, camera);
     }
@@ -1694,12 +1853,14 @@
       }
       
       // 3D Waves (named '3DWaves')
-      const wave3DEffect = visualElements.find(elem => elem.name === '3DWaves');
-      if (wave3DEffect && wave3DEffect.material && wave3DEffect.material.uniforms) {
-        wave3DEffect.userData = wave3DEffect.userData || {};
-        wave3DEffect.userData.baseAmplitude = 15.0 + intensityLevel * 3.0;
-        wave3DEffect.userData.baseFrequency = 0.4 + (intensityLevel * 0.1);
-      }
+const wave3DEffect = visualElements.find(elem => elem.name === '3DWaves');
+if (wave3DEffect && wave3DEffect.material && wave3DEffect.material.uniforms) {
+  wave3DEffect.userData = wave3DEffect.userData || {};
+  // Adjust the base amplitude, frequency, and speed with intensityLevel
+  wave3DEffect.userData.baseAmplitude = 20.0 + intensityLevel * 4.0;
+  wave3DEffect.userData.baseFrequency = 0.5 + (intensityLevel * 0.1);
+  wave3DEffect.userData.baseSpeed = 1.0 + intensityLevel * 0.1;
+}
       
       // Trippy Colors
       const trippyEffect = visualElements.find(elem => elem.name === 'TrippyColors');
@@ -1749,13 +1910,14 @@
         sixtiesEffect.material.uniforms.effectIntensity.value = sixtiesEffect.userData.baseEffectIntensity;
       }
       
-      const cityEffect = visualElements.find(elem => elem.name === "City");
-      if (cityEffect) {
-        cityEffect.userData = cityEffect.userData || {};
-        // Increase the base effect intensity as the user increases intensityLevel.
-        cityEffect.userData.baseEffectIntensity = 1.0 + intensityLevel * 0.3;
-        cityEffect.material.uniforms.effectIntensity.value = cityEffect.userData.baseEffectIntensity;
-      }
+      // City Effect (Experimental Intensity Adjustment)
+const cityEffect = visualElements.find(elem => elem.name === 'City');
+if (cityEffect && cityEffect.material && cityEffect.material.uniforms) {
+  cityEffect.userData = cityEffect.userData || {};
+  // Scale the effect intensity with the user-selected intensityLevel
+  cityEffect.userData.baseEffectIntensity = 1.0 + intensityLevel * 0.3;
+  cityEffect.material.uniforms.effectIntensity.value = cityEffect.userData.baseEffectIntensity;
+}
       
       const staticEffect = visualElements.find(elem => elem.name === "StaticElectricity");
       if (staticEffect) {
@@ -1764,6 +1926,14 @@
         staticEffect.userData.baseEffectIntensity = 1.0 + intensityLevel * 0.25;
         staticEffect.material.uniforms.effectIntensity.value = staticEffect.userData.baseEffectIntensity;
       }
+
+      const aurora = visualElements.find(elem => elem.name === 'AuroraEffect');
+if (aurora && aurora.material && aurora.material.uniforms) {
+  aurora.userData = aurora.userData || {};
+  // Scale the effect intensity dramatically with the user-selected intensityLevel
+  aurora.userData.baseEffectIntensity = 1.0 + intensityLevel * 0.5;
+  aurora.material.uniforms.effectIntensity.value = aurora.userData.baseEffectIntensity;
+}
     }
     
     function displayInfo() {
