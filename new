@@ -464,6 +464,11 @@ const APPLE_DEVELOPER_TOKEN  = 'YOUR_APPLE_MUSIC_DEVELOPER_TOKEN';
       }     
 
       function switchMode(mode) {
+        const dsp = document.getElementById('dspOverlay');
+  if (dsp && mode !== 'dsp') {
+    dsp.classList.remove('show');
+    dsp.style.display = 'none';
+  }
         
       if (mode !== 'fileSelect') {
         userPlaylist = [];
@@ -2893,7 +2898,9 @@ visualElements.forEach(effect => {
   const currentEffect = visualElements[currentStyleIndex];
   if (!currentEffect || !currentEffect.material || !currentEffect.material.uniforms) return;
   
+  
   for (let key in currentEffect.material.uniforms) {
+    if (key === 'visualMode') continue;
     let uniform = currentEffect.material.uniforms[key];
     if (typeof uniform.value === 'number') {
       // Store the base value if not already stored
