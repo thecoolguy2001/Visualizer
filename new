@@ -13,6 +13,9 @@
     
   <!-- Apple Touch Icon -->
   <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
+  <script src="https://js-cdn.music.apple.com/musickit/v1/musickit.js"></script>
+  <script src="https://sdk.scdn.co/spotify-player.js"></script>
+  <script src="https://connect.soundcloud.com/sdk/sdk-3.3.2.js"></script>
   <style>
   /* Ensure the background is black for iOS Safari */
   html, body {
@@ -189,6 +192,25 @@
     cursor: pointer;
 }
 
+/* Creator Modal animation */
+  #creatorModal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(0%, 0%);
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    display: none;
+    z-index: 10000;
+    overflow: auto;
+  }
+  #creatorModal.show {
+    display: block;
+    opacity: 1;
+    transform: translate(0%, -3%);
+  }
+
+
 @keyframes fadeInUp {
   0% {
     opacity: 0;
@@ -248,7 +270,6 @@
       (adsbygoogle = window.adsbygoogle || []).push({});
     </script>
   </div>
-  </div>
   <div id="dspOverlay">
     <h2>Connect Service</h2>
     <button id="connectApple" type="button">Connect to Apple Music</button>
@@ -262,6 +283,25 @@
   </div>
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+  // Initialize Apple MusicKit JS
+  async function initAppleMusic() {
+    const token = await fetch('/apple-music-token').then(res => res.text());
+    MusicKit.configure({
+      developerToken: token,
+      app: { name: 'Visualizer Website', build: '1.0.0' }
+    });
+  }
+  initAppleMusic();
+    // Initialize SoundCloud SDK
+    SC.initialize({ client_id: SOUNDCLOUD_CLIENT_ID });
+  
+  // Helper to fetch Spotify access token from backend
+  async function fetchSpotifyToken() {
+    const res = await fetch('/spotify-token');
+    return res.text();
+  }
+  </script>
   <script>
     const clock = new THREE.Clock();
     let audioElement = document.getElementById('audio');
@@ -579,9 +619,6 @@ const APPLE_DEVELOPER_TOKEN  = 'YOUR_APPLE_MUSIC_DEVELOPER_TOKEN';
             });
             }
           break;
-          //case 'dsp':
-          // //console.log('DSP Mode is not implemented in this example.');
-          // //break;
           case 'playlist': {
             // Disconnect any existing audio source.
             if (audioSrc) {
@@ -646,20 +683,76 @@ const APPLE_DEVELOPER_TOKEN  = 'YOUR_APPLE_MUSIC_DEVELOPER_TOKEN';
   audioElement = dspAudio;
 
   // wire up the Connect/Cancel buttons
-  document.getElementById('connectApple').onclick = () => {
-    // TODO: trigger Apple Music OAuth flow
-    dsp.classList.remove('show');
-    isPlaying = true; startVisualizerWithDummyData();
+  document.getElementById('connectApple').onclick = async () => {
+    try {
+      const music = MusicKit.getInstance();
+      await music.authorize();
+      const audioEl = music.player.audioElement;
+      music.setQueue({ song: 'YOUR_APPLE_MUSIC_SONG_ID' });
+      if (audioSrc) audioSrc.disconnect();
+      audioSrc = audioContext.createMediaElementSource(audioEl);
+      audioSrc.connect(analyser);
+      analyser.connect(audioContext.destination);
+      audioEl.play();
+      dsp.classList.remove('show');
+      isPlaying = true;
+    } catch(err) {
+      console.error('Apple Music authorization failed:', err);
+      dsp.classList.remove('show');
+      isPlaying = true;
+      startVisualizerWithDummyData();
+    }
   };
-  document.getElementById('connectSpotify').onclick = () => {
-    // TODO: trigger Spotify OAuth flow
-    dsp.classList.remove('show');
-    isPlaying = true; startVisualizerWithDummyData();
+    
+  // Spotify integration
+  document.getElementById('connectSpotify').onclick = async () => {
+    try {
+      const token = await fetchSpotifyToken();
+      window.onSpotifyWebPlaybackSDKReady = () => {
+        const player = new Spotify.Player({
+          name: 'Visualizer Web Playback',
+          getOAuthToken: cb => cb(token)
+        });
+        player.connect().then(success => {
+          if (!success) throw new Error('Failed to connect Spotify player');
+          const audioEl = document.querySelector('audio'); // adjust selector if necessary
+          if (audioEl) {
+            if (audioSrc) audioSrc.disconnect();
+            audioSrc = audioContext.createMediaElementSource(audioEl);
+            audioSrc.connect(analyser);
+            analyser.connect(audioContext.destination);
+            audioEl.play();
+          }
+          dsp.classList.remove('show');
+          isPlaying = true;
+        });
+      };
+    } catch (err) {
+      console.error('Spotify connection failed:', err);
+      dsp.classList.remove('show');
+      isPlaying = true;
+      startVisualizerWithDummyData();
+    }
   };
-  document.getElementById('connectSoundCloud').onclick = () => {
-    // TODO: trigger SoundCloud OAuth flow
-    dsp.classList.remove('show');
-    isPlaying = true; startVisualizerWithDummyData();
+    
+  // SoundCloud integration
+  document.getElementById('connectSoundCloud').onclick = async () => {
+    try {
+      const track = await SC.stream('/tracks/YOUR_SOUNDCLOUD_TRACK_ID');
+      const audioEl = track._player; 
+      if (audioSrc) audioSrc.disconnect();
+      audioSrc = audioContext.createMediaElementSource(audioEl);
+      audioSrc.connect(analyser);
+      analyser.connect(audioContext.destination);
+      audioEl.play();
+      dsp.classList.remove('show');
+      isPlaying = true;
+    } catch (err) {
+      console.error('SoundCloud connection failed:', err);
+      dsp.classList.remove('show');
+      isPlaying = true;
+      startVisualizerWithDummyData();
+    }
   };
   document.getElementById('dspCancel').onclick = () => {
     if (dsp) {
@@ -3086,7 +3179,9 @@ function onKeyUp(event) {
     function toggleCreatorMode() {
   let modal = document.getElementById('creatorModal');
   if (modal) {
-    modal.style.display = 'block';
+      // simply display it and let CSS handle the fade/slide
+      modal.style.display = 'block';
+    requestAnimationFrame(() => modal.classList.add('show'));
     return;
   }
   // Create the modal container covering the full screen
@@ -3118,6 +3213,8 @@ function onKeyUp(event) {
       <div style="text-align: center;">\n         <button id="creatorSubmitButton" style="padding: 10px 20px; background-color: rgba(0,0,0,0.8); border: 2px solid grey; border-radius: 8px; color: white; font-family: Arial, sans-serif; font-size: 16px; cursor: pointer;">Submit Effect</button>      <button id="creatorCancelButton" style="padding: 10px 20px; background-color: transparent; border: 2px solid grey; border-radius: 8px; color: white; font-family: Arial, sans-serif; font-size: 16px; cursor: pointer;">Cancel</button>\n      </div>\n    </div>\n  `;
   
   document.body.appendChild(modal);
+  modal.style.display = 'block';
+  requestAnimationFrame(() => modal.classList.add('show'));
   
   document.getElementById('creatorSubmitButton').addEventListener('click', function(){
     // Get the code from each textarea
@@ -3160,15 +3257,28 @@ function onKeyUp(event) {
       showActionMessage("loaded");
       
       // Hide the modal.
-      modal.style.display = 'none';
+      modal.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+  modal.style.opacity   = '0';
+  modal.style.transform = 'translate(-50%, -40%)';
+  modal.addEventListener('transitionend', function handler() {
+    modal.style.display = 'none';
+    modal.removeEventListener('transitionend', handler);
+  }, { once: true });
     } catch (e) {
       alert("Error in custom effect code: " + e);
     }
   });
   
   document.getElementById('creatorCancelButton').addEventListener('click', function(){
+    const modal = document.getElementById('creatorModal');
+  if (!modal) return;
+  // remove the class to trigger your fade/slide‐out
+  modal.classList.remove('show');
+  modal.addEventListener('transitionend', function handler() {
     modal.style.display = 'none';
-  });
+    modal.removeEventListener('transitionend', handler);
+  }, { once: true });
+});
 }
 
 // Listen for the "c" key to trigger creator mode.
