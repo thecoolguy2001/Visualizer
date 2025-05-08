@@ -691,16 +691,28 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
-            
-      // Fetch the user’s recently played tracks and extract their IDs
-            const recent = await music.api.recentPlayed({ limit: 25 });
-      const recentIds = (recent.data || []).map(item => item.id);
-      if (recentIds.length === 0) {
-        throw new Error('No recently played songs found');
+
+      // Attempt to fetch the user's recently played tracks
+      let trackIds = [];
+      try {
+        const recent = await music.api.recentPlayed({ limit: 25 });
+        trackIds = (recent.data || []).map(item => item.id);
+      } catch (e) {
+        trackIds = [];
       }
-      // Queue up all recently played song IDs
-      await music.setQueue({ songs: recentIds });
-      
+
+      // If no recently played tracks, fall back to the user's library songs
+      if (trackIds.length === 0) {
+        const library = await music.api.library.songs({ limit: 25 });
+        trackIds = (library.data || []).map(item => item.id);
+        if (trackIds.length === 0) {
+          throw new Error('No available songs in Apple Music library');
+        }
+      }
+
+      // Queue up the chosen tracks
+      await music.setQueue({ songs: trackIds });
+
       // When the MusicKit player is ready, hook up the analyser
       music.addEventListener('playbackReady', () => {
         const audioEl = music.player.audioElement;
@@ -710,7 +722,7 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
         analyser.connect(audioContext.destination);
         audioEl.play();
       });
-      
+
       // Start playback
       music.play();
       dsp.classList.remove('show');
