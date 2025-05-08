@@ -14,6 +14,11 @@
   <!-- Apple Touch Icon -->
   <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
   <script src="https://js-cdn.music.apple.com/musickit/v1/musickit.js"></script>
+  <script>
+    window.onSpotifyWebPlaybackSDKReady = function() {
+      console.log('Spotify Web Playback SDK loaded');
+    };
+  </script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
   <script src="https://connect.soundcloud.com/sdk/sdk-3.3.2.js"></script>
   <style>
@@ -286,7 +291,8 @@
   <script>
   // Initialize Apple MusicKit JS
   async function initAppleMusic() {
-    const { token } = await fetch('/api/apple-music-token').then(res => res.json());    MusicKit.configure({
+    const { token } = await fetch(`${window.location.origin}/api/apple-music-token`).then(res => res.json());
+    MusicKit.configure({
       developerToken: token,
       app: { name: 'Visualizer Website', build: '1.0.0' }
     });
@@ -294,14 +300,14 @@
   initAppleMusic();
     // Initialize SoundCloud SDK
     (async () => {
-  const { clientId } = await fetch('/api/soundcloud-client-id').then(r => r.json());
-  SC.initialize({ client_id: clientId });
-})();
+      const { clientId } = await fetch(`${window.location.origin}/api/soundcloud-client-id`).then(r => r.json());
+      SC.initialize({ client_id: clientId });
+    })();
   
   // Helper to fetch Spotify access token from backend
   async function fetchSpotifyToken() {
-    const { token } = await fetch('/api/spotify-token').then(res => res.json());
-return token;
+    const { token } = await fetch(`${window.location.origin}/api/spotify-token`).then(res => res.json());
+    return token;
   }
 </script>
   <script>
