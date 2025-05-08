@@ -286,20 +286,22 @@
   <script>
   // Initialize Apple MusicKit JS
   async function initAppleMusic() {
-    const token = await fetch('/apple-music-token').then(res => res.text());
-    MusicKit.configure({
+    const { token } = await fetch('/api/apple-music-token').then(res => res.json());    MusicKit.configure({
       developerToken: token,
       app: { name: 'Visualizer Website', build: '1.0.0' }
     });
   }
   initAppleMusic();
     // Initialize SoundCloud SDK
-    SC.initialize({ client_id: SOUNDCLOUD_CLIENT_ID });
+    (async () => {
+  const { clientId } = await fetch('/api/soundcloud-client-id').then(r => r.json());
+  SC.initialize({ client_id: clientId });
+})();
   
   // Helper to fetch Spotify access token from backend
   async function fetchSpotifyToken() {
-    const res = await fetch('/spotify-token');
-    return res.text();
+    const { token } = await fetch('/api/spotify-token').then(res => res.json());
+return token;
   }
 </script>
   <script>
@@ -333,11 +335,7 @@ const MAX_USER_PLAYLIST = 15;        // Maximum songs allowed
 let currentUserSongIndex = 0;       // If true, each effect uses the camera feed as input
     
     
-const APPLE_DEVELOPER_TOKEN  = 'YOUR_APPLE_MUSIC_DEVELOPER_TOKEN';
-  const SPOTIFY_CLIENT_ID      = 'YOUR_SPOTIFY_CLIENT_ID';
-  const SPOTIFY_CLIENT_SECRET  = 'YOUR_SPOTIFY_CLIENT_SECRET';
-  const SOUNDCLOUD_CLIENT_ID   = 'YOUR_SOUNDCLOUD_CLIENT_ID';
-    
+
         
     const modes = ['fileSelect', 'audioDevice', 'playlist', 'dsp'];
     let currentModeIndex = modes.indexOf(currentMode);
