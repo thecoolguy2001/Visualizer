@@ -697,19 +697,26 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
       try {
         const recent = await music.api.recentPlayed({ limit: 25 });
         trackIds = (recent.data || []).map(item => item.id);
-      } catch (e) {
-        trackIds = [];
-      }
+      } catch {}
 
       // If no recently played tracks, fall back to the user's library songs
       if (trackIds.length === 0) {
         const library = await music.api.library.songs({ limit: 25 });
         trackIds = (library.data || []).map(item => item.id);
-        if (trackIds.length === 0) {
-          throw new Error('No available songs in Apple Music library');
-        }
+        
       }
-
+            // Determine queue: if no songs, use first library playlist
+            let queueOpts;
+      if (trackIds.length > 0) {
+        queueOpts = { songs: trackIds };
+      } else {
+        const playlists = await music.api.library.playlists({ limit: 1 });
+        const playlistId = playlists.data[0]?.id;
+        if (!playlistId) throw new Error('No playlists found in Apple Music library');
+        queueOpts = { playlist: playlistId };
+      }
+      // Queue and play
+      await music.setQueue(queueOpts);
       // Queue up the chosen tracks
       await music.setQueue({ songs: trackIds });
 
