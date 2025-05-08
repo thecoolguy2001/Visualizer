@@ -691,10 +691,16 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
+            
+      // Fetch the user’s recently played tracks and extract their IDs
+            const recent = await music.api.recentPlayed({ limit: 25 });
+      const recentIds = (recent.data || []).map(item => item.id);
+      if (recentIds.length === 0) {
+        throw new Error('No recently played songs found');
+      }
+      // Queue up all recently played song IDs
+      await music.setQueue({ songs: recentIds });
       
-      // Queue the user's Heavy Rotation from their library
-      await music.setQueue({ heavyRotation: { limit: 25 } });
-
       // When the MusicKit player is ready, hook up the analyser
       music.addEventListener('playbackReady', () => {
         const audioEl = music.player.audioElement;
