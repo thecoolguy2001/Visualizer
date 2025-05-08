@@ -691,13 +691,20 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
-      const audioEl = music.player.audioElement;
-      music.setQueue({ song: 'YOUR_APPLE_MUSIC_SONG_ID' });
-      if (audioSrc) audioSrc.disconnect();
-      audioSrc = audioContext.createMediaElementSource(audioEl);
-      audioSrc.connect(analyser);
-      analyser.connect(audioContext.destination);
-      audioEl.play();
+      await music.setQueue({ song: 'YOUR_APPLE_MUSIC_SONG_ID' });
+      
+      // When the MusicKit player is ready, connect its audio element to the analyser
+      music.addEventListener('playbackReady', () => {
+        const audioEl = music.player.audioElement;
+        if (audioSrc) audioSrc.disconnect();
+        audioSrc = audioContext.createMediaElementSource(audioEl);
+        audioSrc.connect(analyser);
+        analyser.connect(audioContext.destination);
+        audioEl.play();
+      });
+      
+      // Start playback
+      music.play();
       dsp.classList.remove('show');
       isPlaying = true;
     } catch(err) {
