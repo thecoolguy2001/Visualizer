@@ -691,9 +691,11 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
-      await music.setQueue({ song: 'YOUR_APPLE_MUSIC_SONG_ID' });
       
-      // When the MusicKit player is ready, connect its audio element to the analyser
+      // Queue the user's Heavy Rotation from their library
+      await music.setQueue({ heavyRotation: { limit: 25 } });
+
+      // When the MusicKit player is ready, hook up the analyser
       music.addEventListener('playbackReady', () => {
         const audioEl = music.player.audioElement;
         if (audioSrc) audioSrc.disconnect();
