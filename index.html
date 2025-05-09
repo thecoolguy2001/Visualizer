@@ -705,6 +705,7 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
       // When the MusicKit player is ready, hook up the analyser
       music.addEventListener('playbackReady', () => {
         const audioEl = music.player.audioElement;
+        audioEl.crossOrigin = 'anonymous';
         if (audioSrc) audioSrc.disconnect();
         audioSrc = audioContext.createMediaElementSource(audioEl);
         audioSrc.connect(analyser);
@@ -713,7 +714,7 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
       });
 
       // Start playback
-      music.play();
+     
       dsp.classList.remove('show');
       isPlaying = true;
     } catch(err) {
@@ -741,7 +742,6 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
             audioSrc = audioContext.createMediaElementSource(audioEl);
             audioSrc.connect(analyser);
             analyser.connect(audioContext.destination);
-            audioEl.play();
           }
           dsp.classList.remove('show');
           isPlaying = true;
@@ -5257,6 +5257,12 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
         case ' ':
           event.preventDefault();
           togglePlayPause();
+           // If we’re in DSP mode and now playing, resume context & start Apple Music
+      if (currentMode === 'dsp' && isPlaying) {
+        audioContext.resume().then(() => {
+          MusicKit.getInstance().play();
+        });
+      }
         break;
         case 'm':
           event.preventDefault();
