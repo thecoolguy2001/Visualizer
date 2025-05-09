@@ -676,15 +676,7 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
   audioElement.pause();
   if (audioSrc) audioSrc.disconnect();
 
-  // create (or reuse) a hidden <audio> for DSP mode
-  let dspAudio = document.getElementById('dspAudio');
-  if (!dspAudio) {
-    dspAudio = document.createElement('audio');
-    dspAudio.id = 'dspAudio';
-    dspAudio.style.display = 'none';
-    document.body.appendChild(dspAudio);
-  }
-  audioElement = dspAudio;
+  
 
   // wire up the Connect/Cancel buttons
   document.getElementById('connectApple').onclick = async () => {
@@ -706,11 +698,11 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
       music.addEventListener('playbackReady', () => {
         const audioEl = music.player.audioElement;
         audioEl.crossOrigin = 'anonymous';
+        audioElement = music.player.audioElement;
         if (audioSrc) audioSrc.disconnect();
         audioSrc = audioContext.createMediaElementSource(audioEl);
         audioSrc.connect(analyser);
         analyser.connect(audioContext.destination);
-        audioEl.play();
       });
 
       // Start playback
@@ -5257,12 +5249,16 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
         case ' ':
           event.preventDefault();
           togglePlayPause();
-           // If we’re in DSP mode and now playing, resume context & start Apple Music
-      if (currentMode === 'dsp' && isPlaying) {
-        audioContext.resume().then(() => {
-          MusicKit.getInstance().play();
-        });
-      }
+          if (currentMode === 'dsp') {
+  if (isPlaying) {
+    // We just switched *on* → resume visuals and Apple Music
+    audioContext.resume().then(() => MusicKit.getInstance().play());
+  } else {
+    // We just switched *off* → pause Apple Music and visuals
+    MusicKit.getInstance().pause();
+    audioContext.suspend();
+  }
+}
         break;
         case 'm':
           event.preventDefault();
