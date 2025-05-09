@@ -695,36 +695,20 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
       await music.setQueue({ playlist: playlistId });
 
       // Hook analyser once playback actually starts
-      // Use the preview clip for analysis while letting MusicKit play the full track
-      music.addEventListener('playbackStateDidChange',
-        event => {
-          if (event.state === MusicKit.PlaybackStates.playing) {
-            const audioEl = music.player.audioElement;
-            // Let full track play normally on audioEl
-
-            // Now use the 30s preview for the analyser
-            const now = music.player.nowPlayingItem;
-            const previewUrl = now?.attributes?.previews?.[0]?.url;
-            if (previewUrl) {
-              let previewAudio = document.getElementById('applePreview');
-              if (!previewAudio) {
-                previewAudio = document.createElement('audio');
-                previewAudio.id = 'applePreview';
-                previewAudio.crossOrigin = 'anonymous';
-                previewAudio.style.display = 'none';
-                document.body.appendChild(previewAudio);
-              }
-              previewAudio.src = previewUrl;
-              previewAudio.load();
-              previewAudio.play();
-              // Hook analyser to previewAudio only (no destination)
-              if (audioSrc) audioSrc.disconnect();
-              audioSrc = audioContext.createMediaElementSource(previewAudio);
-              audioSrc.connect(analyser);
-            }
-          }
-        }
-      );
+      // Once playback truly starts, capture the media stream for analysis
+music.addEventListener('playbackStateDidChange', event => {
+  if (event.state === MusicKit.PlaybackStates.playing) {
+    const audioEl = music.player.audioElement;
+    audioEl.crossOrigin = 'anonymous';
+    audioElement = audioEl;
+    // Capture the same audio stream for visualizer
+    const mediaStream = audioEl.captureStream();
+    if (audioSrc) audioSrc.disconnect();
+    audioSrc = audioContext.createMediaStreamSource(mediaStream);
+    audioSrc.connect(analyser);
+    analyser.connect(audioContext.destination);
+  }
+});
 
       // Start playback
      
