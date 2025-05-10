@@ -725,7 +725,14 @@ music.addEventListener('playbackStateDidChange', event => {
   // Spotify integration
   document.getElementById('connectSpotify').onclick = async () => {
     try {
-      const token = await fetchSpotifyToken();
+      // Ensure we have a valid user token, otherwise start OAuth flow
+      const tokenRes = await fetch(`${window.location.origin}/api/spotify-token`);
+      if (tokenRes.status === 401) {
+        // Not authenticated: redirect to Spotify login
+        window.location.href = `${window.location.origin}/api/spotify-login`;
+        return;
+      }
+      const { token } = await tokenRes.json();
 
       const initSpotifyPlayer = () => {
         const player = new Spotify.Player({
