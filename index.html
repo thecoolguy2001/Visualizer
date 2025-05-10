@@ -726,24 +726,65 @@ music.addEventListener('playbackStateDidChange', event => {
   document.getElementById('connectSpotify').onclick = async () => {
     try {
       const token = await fetchSpotifyToken();
-      window.onSpotifyWebPlaybackSDKReady = () => {
+
+      const initSpotifyPlayer = () => {
         const player = new Spotify.Player({
           name: 'Visualizer Web Playback',
           getOAuthToken: cb => cb(token)
         });
-        player.connect().then(success => {
-          if (!success) throw new Error('Failed to connect Spotify player');
-          const audioEl = document.querySelector('audio'); // adjust selector if necessary
+
+        player.addListener('ready', async ({ device_id }) => {
+          console.log('Spotify Web Playback ready on device', device_id);
+          // Transfer playback to this device without auto-start
+          await fetch('https://api.spotify.com/v1/me/player', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ device_ids: [device_id], play: false })
+          });
+
+          // Fetch user's top tracks
+          const topRes = await fetch('https://api.spotify.com/v1/me/top/tracks?limit=25', {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          const topData = await topRes.json();
+          const uris = topData.items.map(t => t.uri);
+
+          // Start playback of top tracks
+          await fetch('https://api.spotify.com/v1/me/player/play', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ uris })
+          });
+
+          // Hook analyser to the SDK's audio element
+          const audioEl = document.querySelector('audio');
           if (audioEl) {
             if (audioSrc) audioSrc.disconnect();
             audioSrc = audioContext.createMediaElementSource(audioEl);
             audioSrc.connect(analyser);
             analyser.connect(audioContext.destination);
           }
+
           dsp.classList.remove('show');
           isPlaying = true;
         });
+
+        player.connect().catch(err => {
+          console.error('Spotify player.connect() failed:', err);
+        });
       };
+
+      if (window.Spotify && Spotify.Player) {
+        initSpotifyPlayer();
+      } else {
+        window.onSpotifyWebPlaybackSDKReady = initSpotifyPlayer;
+      }
     } catch (err) {
       console.error('Spotify connection failed:', err);
       dsp.classList.remove('show');
