@@ -5790,9 +5790,20 @@ function togglePlayPause() {
     if (isPlaying) {
       // Hide the prompt
       info.style.display = 'none';
+
+      // Hook the playlist audio element into the analyser for both visuals and sound
+      audioElement.crossOrigin = 'anonymous';
+      if (audioSrc) {
+        audioSrc.disconnect();
+      }
+      audioSrc = audioContext.createMediaElementSource(audioElement);
+      audioSrc.connect(analyser);
+      analyser.connect(audioContext.destination);
+
       // Play immediately under user gesture
       const playPromise = audioElement.play();
       if (playPromise) playPromise.catch(err => console.warn('audioElement.play() failed:', err));
+
       // Resume AudioContext for visuals
       audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
     } else {
