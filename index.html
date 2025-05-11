@@ -5738,15 +5738,16 @@ function onKeyUp(event) {
 }
  
 function togglePlayPause() {
-  // Toggle play/pause state
+  // Flip play state
   isPlaying = !isPlaying;
 
-  // DSP mode: Apple Music playback
+  // --- DSP mode: Apple Music playback ---
   if (currentMode === 'dsp') {
+    const info = document.getElementById('info');
     if (isPlaying) {
-      // Hide the start prompt
-      document.getElementById('info').style.display = 'none';
-      // Hook analyser to MusicKit audio element
+      // Hide the prompt
+      info.style.display = 'none';
+      // Hook analyser into MusicKit player
       const player = MusicKit.getInstance().player;
       if (player && player.audioElement) {
         const musicEl = player.audioElement;
@@ -5756,32 +5757,16 @@ function togglePlayPause() {
         audioSrc.connect(analyser);
         analyser.connect(audioContext.destination);
       }
-      // Directly play under user gesture
+      // Play immediately under user gesture
       const playPromise = MusicKit.getInstance().play();
       if (playPromise) playPromise.catch(err => console.warn('MusicKit.play() failed:', err));
-      // Resume audio context for visualizer
+      // Resume AudioContext for visuals
       audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
     } else {
+      // Pause MusicKit and visuals
       MusicKit.getInstance().pause();
       audioContext.suspend().catch(err => console.warn('AudioContext.suspend() failed:', err));
-    }
-    return;
-  }
-
-  // Playlist mode: HTMLAudioElement playback
-  if (currentMode === 'playlist') {
-    if (isPlaying) {
-      // Hide the start prompt
-      document.getElementById('info').style.display = 'none';
-      // Play immediately under user gesture
-      const playPromise = audioElement.play();
-      if (playPromise) playPromise.catch(err => console.warn('audioElement.play() failed:', err));
-      // Resume audio context for visualizer
-      audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
-    } else {
-      // Pause playback and show prompt
-      audioElement.pause();
-      const info = document.getElementById('info');
+      // Show the prompt again
       info.style.display = 'block';
       info.style.opacity = '0';
       const isMobile = /Mobi|Android/i.test(navigator.userAgent);
@@ -5792,12 +5777,37 @@ function togglePlayPause() {
     return;
   }
 
-  // Fallback/other modes: fileSelect or default audioElement
+  // --- Playlist mode: HTMLAudioElement playback ---
+  if (currentMode === 'playlist') {
+    const info = document.getElementById('info');
+    if (isPlaying) {
+      // Hide the prompt
+      info.style.display = 'none';
+      // Play immediately under user gesture
+      const playPromise = audioElement.play();
+      if (playPromise) playPromise.catch(err => console.warn('audioElement.play() failed:', err));
+      // Resume AudioContext for visuals
+      audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
+    } else {
+      // Pause playback
+      audioElement.pause();
+      // Show the prompt again
+      info.style.display = 'block';
+      info.style.opacity = '0';
+      const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+      info.textContent = isMobile ? 'tap to start' : 'press spacebar to start';
+      void info.offsetWidth;
+      info.style.opacity = '1';
+    }
+    return;
+  }
+
+  // --- Fallback / fileSelect mode ---
   if (audioContext.state === 'suspended') {
     audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
   }
-
   if (!isPlaying) {
+    // fileSelect with user playlist
     if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 0) {
       loadCurrentUserSong().then(() => {
         const p = audioElement.play();
