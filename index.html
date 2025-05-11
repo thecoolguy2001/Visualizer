@@ -5738,6 +5738,19 @@ function onKeyUp(event) {
 }
  
     function togglePlayPause() {
+        // DSP mode: control Apple Music playback
+  if (currentMode === 'dsp') {
+    if (isPlaying) {
+      audioContext.resume()
+        .then(() => MusicKit.getInstance().play())
+        .catch(err => console.warn('MusicKit.play() failed:', err));
+    } else {
+      MusicKit.getInstance().pause();
+      audioContext.suspend()
+        .catch(err => console.warn('AudioContext.suspend() failed:', err));
+    }
+    return;
+  }
   if (audioContext.state === 'suspended') {
     audioContext.resume();
   }
