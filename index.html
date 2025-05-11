@@ -5302,16 +5302,31 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
         case ' ':
           event.preventDefault();
           togglePlayPause();
+
           if (currentMode === 'dsp') {
-  if (isPlaying) {
-    // We just switched *on* → resume visuals and Apple Music
-    audioContext.resume().then(() => MusicKit.getInstance().play());
-  } else {
-    // We just switched *off* → pause Apple Music and visuals
-    MusicKit.getInstance().pause();
-    audioContext.suspend();
-  }
-}
+            if (isPlaying) {
+              // Resume visuals and Apple Music
+              audioContext.resume().then(() => MusicKit.getInstance().play());
+            } else {
+              // Pause visuals and Apple Music
+              MusicKit.getInstance().pause();
+              audioContext.suspend();
+            }
+          }
+
+          if (currentMode === 'playlist') {
+            if (isPlaying) {
+              // Resume visuals then play the playlist audio
+              audioContext.resume().then(() => {
+                audioElement.play().catch(err => {
+                  console.warn('Playlist audio play() failed:', err);
+                });
+              });
+            } else {
+              // Pause the playlist audio
+              audioElement.pause();
+            }
+          }
         break;
         case 'm':
           event.preventDefault();
