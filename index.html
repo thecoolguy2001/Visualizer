@@ -715,24 +715,31 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
 
       // Hook analyser once playback actually starts
       // Once playback truly starts, capture the media stream for analysis
-music.addEventListener('playbackStateDidChange', event => {
-  if (event.state === MusicKit.PlaybackStates.playing) {
-    const audioEl = music.player.audioElement;
-    audioEl.crossOrigin = 'anonymous';
-    audioElement = audioEl;
-    // Capture the same audio stream for visualizer
-    const mediaStream = audioEl.captureStream();
-    if (audioSrc) audioSrc.disconnect();
-    audioSrc = audioContext.createMediaStreamSource(mediaStream);
-    audioSrc.connect(analyser);
-    analyser.connect(audioContext.destination);
-  }
-});
+      music.addEventListener('playbackStateDidChange', event => {
+        if (event.state === MusicKit.PlaybackStates.playing) {
+          const audioEl = music.player.audioElement;
+          audioEl.crossOrigin = 'anonymous';
+          audioElement = audioEl;
+          // Capture the same audio stream for visualizer
+          const mediaStream = audioEl.captureStream();
+          if (audioSrc) audioSrc.disconnect();
+          audioSrc = audioContext.createMediaStreamSource(mediaStream);
+          audioSrc.connect(analyser);
+          analyser.connect(audioContext.destination);
+        }
+      });
 
       // Start playback
      
       dsp.classList.remove('show');
-      isPlaying = true;
+      // Reset play state so the next spacebar press starts playback
+      isPlaying = false;
+      const info = document.getElementById('info');
+      info.textContent = /Mobi|Android/i.test(navigator.userAgent)
+        ? 'tap to start'
+        : 'press spacebar to start';
+      info.style.display = 'block';
+      info.style.opacity = '1';
     } catch(err) {
       console.error('Apple Music authorization failed:', err);
       dsp.classList.remove('show');
