@@ -5739,15 +5739,31 @@ function onKeyUp(event) {
  
     function togglePlayPause() {
         // DSP mode: control Apple Music playback
-  if (currentMode === 'dsp') {
+        if (currentMode === 'dsp') {
     if (isPlaying) {
-      audioContext.resume()
-        .then(() => MusicKit.getInstance().play())
-        .catch(err => console.warn('MusicKit.play() failed:', err));
+      // 1) Hide the start message
+      document.getElementById('info').style.display = 'none';
+
+      // 2) Hook the MusicKit player element into our analyser
+      const musicEl = MusicKit.getInstance().player.audioElement;
+      musicEl.crossOrigin = 'anonymous';
+      if (audioSrc) audioSrc.disconnect();
+      audioSrc = audioContext.createMediaElementSource(musicEl);
+      audioSrc.connect(analyser);
+      analyser.connect(audioContext.destination);
+
+      // 3) Play Apple Music immediately (still part of the key event)
+      const playPromise = MusicKit.getInstance().play();
+      if (playPromise) {
+        playPromise.catch(err => console.warn('MusicKit.play() failed:', err));
+      }
+
+      // 4) Resume the AudioContext so our analyser runs
+      audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
     } else {
+      // Pause Apple Music and suspend visuals
       MusicKit.getInstance().pause();
-      audioContext.suspend()
-        .catch(err => console.warn('AudioContext.suspend() failed:', err));
+      audioContext.suspend().catch(err => console.warn('AudioContext.suspend() failed:', err));
     }
     return;
   }
