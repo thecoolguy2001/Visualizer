@@ -5319,30 +5319,9 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
     function onKeyDown(event) {
       switch (event.key) {
         case ' ':
-          event.preventDefault();
-          togglePlayPause();
-
-          if (currentMode === 'dsp') {
-            if (isPlaying) {
-              // Resume visuals and Apple Music
-              audioContext.resume().then(() => MusicKit.getInstance().play());
-            } else {
-              // Pause visuals and Apple Music
-              MusicKit.getInstance().pause();
-              audioContext.suspend();
-            }
-          }
-
-          if (currentMode === 'playlist') {
-            if (isPlaying) {
-              // Play the already-loaded playlist audio
-              audioElement.play().catch(err => console.warn('Playlist playback failed:', err));
-            } else {
-              // Pause the playlist audio
-              audioElement.pause();
-            }
-          }
-        break;
+  event.preventDefault();
+  togglePlayPause();
+  break;
         case 'm':
           event.preventDefault();
           console.log('M key pressed, toggling mute at:', performance.now());
