@@ -5737,61 +5737,88 @@ function onKeyUp(event) {
   }, 3000);
 }
  
-    function togglePlayPause() {
-        // DSP mode: control Apple Music playback
-        if (currentMode === 'dsp') {
+function togglePlayPause() {
+  // Toggle play/pause state
+  isPlaying = !isPlaying;
+
+  // DSP mode: Apple Music playback
+  if (currentMode === 'dsp') {
     if (isPlaying) {
-      // 1) Hide the start message
+      // Hide the start prompt
       document.getElementById('info').style.display = 'none';
-
-      // 2) Hook the MusicKit player element into our analyser
-      const musicEl = MusicKit.getInstance().player.audioElement;
-      musicEl.crossOrigin = 'anonymous';
-      if (audioSrc) audioSrc.disconnect();
-      audioSrc = audioContext.createMediaElementSource(musicEl);
-      audioSrc.connect(analyser);
-      analyser.connect(audioContext.destination);
-
-      // 3) Play Apple Music immediately (still part of the key event)
-      const playPromise = MusicKit.getInstance().play();
-      if (playPromise) {
-        playPromise.catch(err => console.warn('MusicKit.play() failed:', err));
+      // Hook analyser to MusicKit audio element
+      const player = MusicKit.getInstance().player;
+      if (player && player.audioElement) {
+        const musicEl = player.audioElement;
+        musicEl.crossOrigin = 'anonymous';
+        if (audioSrc) audioSrc.disconnect();
+        audioSrc = audioContext.createMediaElementSource(musicEl);
+        audioSrc.connect(analyser);
+        analyser.connect(audioContext.destination);
       }
-
-      // 4) Resume the AudioContext so our analyser runs
+      // Directly play under user gesture
+      const playPromise = MusicKit.getInstance().play();
+      if (playPromise) playPromise.catch(err => console.warn('MusicKit.play() failed:', err));
+      // Resume audio context for visualizer
       audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
     } else {
-      // Pause Apple Music and suspend visuals
       MusicKit.getInstance().pause();
       audioContext.suspend().catch(err => console.warn('AudioContext.suspend() failed:', err));
     }
     return;
   }
-  if (audioContext.state === 'suspended') {
-    audioContext.resume();
+
+  // Playlist mode: HTMLAudioElement playback
+  if (currentMode === 'playlist') {
+    if (isPlaying) {
+      // Hide the start prompt
+      document.getElementById('info').style.display = 'none';
+      // Play immediately under user gesture
+      const playPromise = audioElement.play();
+      if (playPromise) playPromise.catch(err => console.warn('audioElement.play() failed:', err));
+      // Resume audio context for visualizer
+      audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
+    } else {
+      // Pause playback and show prompt
+      audioElement.pause();
+      const info = document.getElementById('info');
+      info.style.display = 'block';
+      info.style.opacity = '0';
+      const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+      info.textContent = isMobile ? 'tap to start' : 'press spacebar to start';
+      void info.offsetWidth;
+      info.style.opacity = '1';
+    }
+    return;
   }
-  
+
+  // Fallback/other modes: fileSelect or default audioElement
+  if (audioContext.state === 'suspended') {
+    audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
+  }
+
   if (!isPlaying) {
-    // If in fileSelect mode with a custom user playlist, load the current user song
     if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 0) {
       loadCurrentUserSong().then(() => {
-        audioElement.play();
+        const p = audioElement.play();
+        if (p) p.catch(err => console.warn('audioElement.play() failed:', err));
         isPlaying = true;
       });
     } else {
-      audioElement.play();
+      const p = audioElement.play();
+      if (p) p.catch(err => console.warn('audioElement.play() failed:', err));
       isPlaying = true;
     }
-    document.getElementById('info').style.display = "none";
+    document.getElementById('info').style.display = 'none';
   } else {
     audioElement.pause();
     const info = document.getElementById('info');
-    info.style.display = "block";
-    info.style.opacity = "0";
+    info.style.display = 'block';
+    info.style.opacity = '0';
     const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-    info.textContent = isMobile ? "tap to start" : "press spacebar to start";
+    info.textContent = isMobile ? 'tap to start' : 'press spacebar to start';
     void info.offsetWidth;
-    info.style.opacity = "1";
+    info.style.opacity = '1';
     isPlaying = false;
   }
 }
