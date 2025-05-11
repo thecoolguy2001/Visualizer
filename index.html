@@ -5319,30 +5319,9 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
     function onKeyDown(event) {
       switch (event.key) {
         case ' ':
-          event.preventDefault();
-          togglePlayPause();
-
-          if (currentMode === 'dsp') {
-            if (isPlaying) {
-              // Resume visuals and Apple Music
-              audioContext.resume().then(() => MusicKit.getInstance().play());
-            } else {
-              // Pause visuals and Apple Music
-              MusicKit.getInstance().pause();
-              audioContext.suspend();
-            }
-          }
-
-          if (currentMode === 'playlist') {
-            if (isPlaying) {
-              // Play the already-loaded playlist audio
-              audioElement.play().catch(err => console.warn('Playlist playback failed:', err));
-            } else {
-              // Pause the playlist audio
-              audioElement.pause();
-            }
-          }
-        break;
+      event.preventDefault();
+      togglePlayPause();
+      break;
         case 'm':
           event.preventDefault();
           console.log('M key pressed, toggling mute at:', performance.now());
@@ -5758,33 +5737,56 @@ function onKeyUp(event) {
   }, 3000);
 }
  
-    function togglePlayPause() {
-  if (audioContext.state === 'suspended') {
-    audioContext.resume();
+function togglePlayPause() {
+  // Flip play state
+  isPlaying = !isPlaying;
+
+  if (currentMode === 'dsp') {
+    if (isPlaying) {
+      // Directly start playback
+      MusicKit.getInstance().play().catch(err => console.warn('MusicKit.play() failed:', err));
+      // Resume context afterwards
+      audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
+    } else {
+      MusicKit.getInstance().pause();
+      audioContext.suspend().catch(err => console.warn('AudioContext.suspend() failed:', err));
+    }
+    return;
   }
-  
-  if (!isPlaying) {
-    // If in fileSelect mode with a custom user playlist, load the current user song
+
+  if (currentMode === 'playlist') {
+    if (isPlaying) {
+      // **Play immediately** in response to the key press
+      const playPromise = audioElement.play();
+      if (playPromise) playPromise.catch(err => console.warn('audioElement.play() failed:', err));
+    } else {
+      audioElement.pause();
+    }
+    return;
+  }
+
+  // Fallback for other modes
+  if (isPlaying) {
+    // Existing fileSelect logic
     if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 0) {
       loadCurrentUserSong().then(() => {
-        audioElement.play();
-        isPlaying = true;
+        const p = audioElement.play();
+        if (p) p.catch(err => console.warn('audioElement.play() failed:', err));
       });
     } else {
-      audioElement.play();
-      isPlaying = true;
+      const p = audioElement.play();
+      if (p) p.catch(err => console.warn('audioElement.play() failed:', err));
     }
-    document.getElementById('info').style.display = "none";
+    document.getElementById('info').style.display = 'none';
   } else {
     audioElement.pause();
     const info = document.getElementById('info');
-    info.style.display = "block";
-    info.style.opacity = "0";
+    info.style.display = 'block';
+    info.style.opacity = '0';
     const isMobile = /Mobi|Android/i.test(navigator.userAgent);
     info.textContent = isMobile ? "tap to start" : "press spacebar to start";
     void info.offsetWidth;
     info.style.opacity = "1";
-    isPlaying = false;
   }
 }
     
