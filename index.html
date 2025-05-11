@@ -5334,19 +5334,14 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
           }
 
           if (currentMode === 'playlist') {
-      if (isPlaying) {
-        // Reload and play the current song
-        audioElement.src = playlist[currentSongIndex];
-        audioElement.load();
-        audioContext.resume().then(() => {
-          audioElement.play().catch(err => {
-            console.warn('Playlist playback failed:', err);
-          });
-        });
-      } else {
-        audioElement.pause();
-      }
-    }
+            if (isPlaying) {
+              // Play the already-loaded playlist audio
+              audioElement.play().catch(err => console.warn('Playlist playback failed:', err));
+            } else {
+              // Pause the playlist audio
+              audioElement.pause();
+            }
+          }
         break;
         case 'm':
           event.preventDefault();
