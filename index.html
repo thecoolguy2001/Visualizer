@@ -5758,69 +5758,32 @@ function onKeyUp(event) {
   }, 3000);
 }
  
-function togglePlayPause() {
-  // Flip play/pause state
-  isPlaying = !isPlaying;
-
-  // DSP mode: Apple MusicKit control
-  if (currentMode === 'dsp') {
-    if (isPlaying) {
-      MusicKit.getInstance().play().catch(err => console.warn('MusicKit.play() failed:', err));
-      audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
-    } else {
-      MusicKit.getInstance().pause();
-      audioContext.suspend().catch(err => console.warn('AudioContext.suspend() failed:', err));
-    }
-    return;
+    function togglePlayPause() {
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
   }
-
-  // Playlist mode: HTMLAudioElement control
-  if (currentMode === 'playlist') {
-    if (isPlaying) {
-      // Play immediately on user gesture
-      const playPromise = audioElement.play();
-      if (playPromise) playPromise.catch(err => console.warn('audioElement.play() failed:', err));
-      // Then resume audio context for analyser
-      audioContext.resume().catch(err => console.warn('AudioContext.resume() failed:', err));
-    } else {
-      audioElement.pause();
-    }
-    // Hide or show info banner
-    const info = document.getElementById('info');
-    if (isPlaying) {
-      info.style.display = 'none';
-    } else {
-      info.style.display = 'block';
-      info.style.opacity = '0';
-      const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-      info.textContent = isMobile ? 'tap to start' : 'press spacebar to start';
-      void info.offsetWidth;
-      info.style.opacity = '1';
-    }
-    return;
-  }
-
-  // FileSelect and other modes: original logic
+  
   if (!isPlaying) {
+    // If in fileSelect mode with a custom user playlist, load the current user song
     if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 0) {
       loadCurrentUserSong().then(() => {
-        audioElement.play().catch(err => console.warn('audioElement.play() failed:', err));
+        audioElement.play();
         isPlaying = true;
       });
     } else {
-      audioElement.play().catch(err => console.warn('audioElement.play() failed:', err));
+      audioElement.play();
       isPlaying = true;
     }
-    document.getElementById('info').style.display = 'none';
+    document.getElementById('info').style.display = "none";
   } else {
     audioElement.pause();
     const info = document.getElementById('info');
-    info.style.display = 'block';
-    info.style.opacity = '0';
+    info.style.display = "block";
+    info.style.opacity = "0";
     const isMobile = /Mobi|Android/i.test(navigator.userAgent);
-    info.textContent = isMobile ? 'tap to start' : 'press spacebar to start';
+    info.textContent = isMobile ? "tap to start" : "press spacebar to start";
     void info.offsetWidth;
-    info.style.opacity = '1';
+    info.style.opacity = "1";
     isPlaying = false;
   }
 }
