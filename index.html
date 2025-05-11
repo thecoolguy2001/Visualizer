@@ -289,27 +289,46 @@
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
-  // Initialize Apple MusicKit JS
-  async function initAppleMusic() {
-    const { token } = await fetch(`${window.location.origin}/api/apple-music-token`).then(res => res.json());
-    MusicKit.configure({
-      developerToken: token,
-      app: { name: 'Visualizer Website', build: '1.0.0' }
-    });
-  }
-  initAppleMusic();
-    // Initialize SoundCloud SDK
+    // Initialize Apple MusicKit safely
+    async function initAppleMusic() {
+      try {
+        const res = await fetch(`${window.location.origin}/api/apple-music-token`);
+        if (!res.ok) {
+          console.warn('Apple Music token fetch failed:', res.status);
+          return;
+        }
+        const { token } = await res.json();
+        MusicKit.configure({
+          developerToken: token,
+          app: { name: 'Visualizer Website', build: '1.0.0' }
+        });
+      } catch (err) {
+        console.warn('initAppleMusic error:', err);
+      }
+    }
+    initAppleMusic();
+
+    // Initialize SoundCloud SDK safely
     (async () => {
-      const { clientId } = await fetch(`${window.location.origin}/api/soundcloud-client-id`).then(r => r.json());
-      SC.initialize({ client_id: clientId });
+      try {
+        const res = await fetch(`${window.location.origin}/api/soundcloud-client-id`);
+        if (!res.ok) {
+          console.warn('SoundCloud client ID fetch failed:', res.status);
+          return;
+        }
+        const { clientId } = await res.json();
+        SC.initialize({ client_id: clientId });
+      } catch (err) {
+        console.warn('SoundCloud init error:', err);
+      }
     })();
-  
-  // Helper to fetch Spotify access token from backend
-  async function fetchSpotifyToken() {
-    const { token } = await fetch(`${window.location.origin}/api/spotify-token`).then(res => res.json());
-    return token;
-  }
-</script>
+
+    // Helper to fetch Spotify access token from backend
+    async function fetchSpotifyToken() {
+      const { token } = await fetch(`${window.location.origin}/api/spotify-token`).then(res => res.json());
+      return token;
+    }
+  </script>
   <script>
     const clock = new THREE.Clock();
     let audioElement = document.getElementById('audio');
@@ -5300,10 +5319,35 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
     function onKeyDown(event) {
       switch (event.key) {
         case ' ':
-        event.preventDefault();
-        togglePlayPause();
-        break;
+          event.preventDefault();
+          togglePlayPause();
 
+          if (currentMode === 'dsp') {
+            if (isPlaying) {
+              // Resume visuals and Apple Music
+              audioContext.resume().then(() => MusicKit.getInstance().play());
+            } else {
+              // Pause visuals and Apple Music
+              MusicKit.getInstance().pause();
+              audioContext.suspend();
+            }
+          }
+
+          if (currentMode === 'playlist') {
+      if (isPlaying) {
+        // Reload and play the current song
+        audioElement.src = playlist[currentSongIndex];
+        audioElement.load();
+        audioContext.resume().then(() => {
+          audioElement.play().catch(err => {
+            console.warn('Playlist playback failed:', err);
+          });
+        });
+      } else {
+        audioElement.pause();
+      }
+    }
+        break;
         case 'm':
           event.preventDefault();
           console.log('M key pressed, toggling mute at:', performance.now());
@@ -5720,52 +5764,27 @@ function onKeyUp(event) {
 }
  
     function togglePlayPause() {
-  // Toggle the playing state
-  isPlaying = !isPlaying;
-
-  // DSP mode: control Apple Music via MusicKit
-  if (currentMode === 'dsp') {
-    if (isPlaying) {
-      audioContext.resume()
-        .then(() => MusicKit.getInstance().play())
-        .catch(err => console.warn('MusicKit.play() failed:', err));
-    } else {
-      MusicKit.getInstance().pause();
-      audioContext.suspend()
-        .catch(err => console.warn('AudioContext.suspend() failed:', err));
-    }
-    return;
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
   }
-
-  // Playlist mode: control the HTMLAudioElement
-  if (currentMode === 'playlist') {
-    if (isPlaying) {
-      audioContext.resume()
-        .then(() => audioElement.play())
-        .catch(err => console.warn('audioElement.play() failed:', err));
-    } else {
-      audioElement.pause();
-    }
-    return;
-  }
-
-  // FileSelect or fallback modes: original play/pause logic
+  
   if (!isPlaying) {
+    // If in fileSelect mode with a custom user playlist, load the current user song
     if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 0) {
       loadCurrentUserSong().then(() => {
-        audioElement.play().catch(err => console.warn('audioElement.play() failed:', err));
+        audioElement.play();
         isPlaying = true;
       });
     } else {
-      audioElement.play().catch(err => console.warn('audioElement.play() failed:', err));
+      audioElement.play();
       isPlaying = true;
     }
-    document.getElementById('info').style.display = 'none';
+    document.getElementById('info').style.display = "none";
   } else {
     audioElement.pause();
     const info = document.getElementById('info');
-    info.style.display = 'block';
-    info.style.opacity = '0';
+    info.style.display = "block";
+    info.style.opacity = "0";
     const isMobile = /Mobi|Android/i.test(navigator.userAgent);
     info.textContent = isMobile ? "tap to start" : "press spacebar to start";
     void info.offsetWidth;
