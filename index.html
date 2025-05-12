@@ -153,7 +153,8 @@
 /* DSP overlay styling */
 #dspOverlay {
   position: absolute;
-  top: 50%; left: 50%;
+  top: 50%;
+  left: 50%;
   transform: translate(-50%, -40%);
   width: 300px;
   background-color: rgba(0,0,0,0.9);
@@ -357,7 +358,9 @@
     let userPlaylist = [];               // Array of {src, title} objects for user songs
 let userPlaylistActive = false;      // Flag indicating that the user has activated the mode by pressing 'P'
 const MAX_USER_PLAYLIST = 15;        // Maximum songs allowed
-let currentUserSongIndex = 0;       // If true, each effect uses the camera feed as input
+let currentUserSongIndex = 0;   
+
+    // If true, each effect uses the camera feed as input
     
     
 
@@ -1403,8 +1406,14 @@ function createTrippyColors() {
   const trippyGroup = new THREE.Group();
   trippyGroup.name = "TrippyColors";
 
+  // Calculate the needed plane size to fill the view at z=0.
+  const distance = camera.position.z; // Distance from camera to plane at z=0
+  const fovInRadians = (camera.fov * Math.PI) / 180.0;
+  const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+  const planeWidth = planeHeight * camera.aspect;
+
   // Fullscreen plane
-  const geometry = new THREE.PlaneGeometry(window.innerWidth, window.innerHeight, 1, 1);
+  const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight, 1, 1);
 
   // Keep the same uniform structure, so your animate code still applies:
   const material = new THREE.ShaderMaterial({
@@ -2271,8 +2280,14 @@ function createOceanEffect() {
 }
 // 1. Replace the existing createScribbleEffect() function with this new version:
 function createScribbleEffect() {
+  // Calculate the needed plane size to fill the view at z=0.
+  const distance = camera.position.z; // Distance from camera to plane at z=0
+  const fovInRadians = (camera.fov * Math.PI) / 180.0;
+  const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+  const planeWidth = planeHeight * camera.aspect;
+
   // Fullscreen plane
-  const geometry = new THREE.PlaneBufferGeometry(window.innerWidth, window.innerHeight);
+  const geometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight);
   const material = new THREE.ShaderMaterial({
     transparent: true,
     blending: THREE.AdditiveBlending,
