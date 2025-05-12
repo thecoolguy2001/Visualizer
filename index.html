@@ -527,11 +527,16 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
       }     
 
       function switchMode(mode) {
-        const dsp = document.getElementById('dspOverlay');
+      const dsp = document.getElementById('dspOverlay');
   if (dsp && mode !== 'dsp') {
     dsp.classList.remove('show');
     dsp.style.display = 'none';
   }
+      // If switching away from DSP, pause Apple Music playback and suspend the AudioContext
+      if (currentMode === 'dsp' && mode !== 'dsp') {
+        MusicKit.getInstance().pause();
+        audioContext.suspend().catch(err => console.warn('AudioContext.suspend() failed:', err));
+      }
         
       if (mode !== 'fileSelect') {
         userPlaylist = [];
