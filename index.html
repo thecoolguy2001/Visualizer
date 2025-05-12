@@ -527,6 +527,22 @@ let currentUserSongIndex = 0;       // If true, each effect uses the camera feed
       }     
 
       function switchMode(mode) {
+    // Pause any active playback when switching modes
+    if (isPlaying) {
+      // Pause audio or MusicKit depending on mode
+      audioElement.pause();
+      audioContext.suspend().catch(err => console.warn('AudioContext.suspend() failed:', err));
+      // Reset play state
+      isPlaying = false;
+      // Show the start prompt
+      const info = document.getElementById('info');
+      info.style.display = 'block';
+      info.style.opacity = '0';
+      const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+      info.textContent = isMobile ? 'tap to start' : 'press spacebar to start';
+      void info.offsetWidth;
+      info.style.opacity = '1';
+    }
       const dsp = document.getElementById('dspOverlay');
   if (dsp && mode !== 'dsp') {
     dsp.classList.remove('show');
