@@ -350,6 +350,7 @@
     let userCameraStream = null;
     let userCameraVideo = null;
     let userCameraTexture = null;
+    let userMicrophoneStream = null; // To store the microphone stream
     let shuffleMode = false;
     let shuffleInterval = null;
     let fileSelectTriggered = false;
@@ -563,24 +564,30 @@ function hideDspOverlay() {
       function switchMode(mode) {
       const dsp = document.getElementById('dspOverlay');
   if (dsp && mode !== 'dsp') {
-    dsp.classList.remove('show');
-    dsp.style.display = 'none';
+    hideDspOverlay();
   }
-      // If switching away from DSP, pause Apple Music playback and suspend the AudioContext
-      if (currentMode === 'dsp' && mode !== 'dsp') {
-        MusicKit.getInstance().pause();
-        audioContext.suspend().catch(err => console.warn('AudioContext.suspend() failed:', err));
-      }
-        
-      if (mode !== 'fileSelect') {
-        userPlaylist = [];
-        userPlaylistActive = false;
-        currentUserSongIndex = 0;
-        console.log('User playlist reset because mode changed to', mode);
-      }
-      currentMode = mode;
-      currentModeIndex = modes.indexOf(mode);
-      displayMode();
+  // If switching away from DSP, pause Apple Music playback and suspend the AudioContext
+  if (currentMode === 'dsp' && mode !== 'dsp') {
+    MusicKit.getInstance().pause();
+    audioContext.suspend().catch(err => console.warn('AudioContext.suspend() failed:', err));
+  }
+
+  // Stop microphone stream if switching away from audioDevice mode
+  if (currentMode === 'audioDevice' && userMicrophoneStream) {
+    userMicrophoneStream.getTracks().forEach(track => track.stop());
+    userMicrophoneStream = null;
+    console.log('Microphone stream stopped.');
+  }
+    
+  if (mode !== 'fileSelect') {
+    userPlaylist = [];
+    userPlaylistActive = false;
+    currentUserSongIndex = 0;
+    console.log('User playlist reset because mode changed to', mode);
+  }
+  currentMode = mode;
+  currentModeIndex = modes.indexOf(mode);
+  displayMode();
             
         // Reset any existing audio source connections
         if (audioSrc) {
@@ -675,6 +682,8 @@ function hideDspOverlay() {
               audioSrc = audioContext.createMediaStreamSource(stream);
               // Connect the mic input ONLY to the analyser (do not connect to destination)
               audioSrc.connect(analyser);
+              // Store the microphone stream so it can be stopped later
+              userMicrophoneStream = stream;
             })
             .catch(error => {
               console.error('Error accessing audio device:', error);
@@ -4385,7 +4394,7 @@ function createKaleidoTunnelEffect() {
               // Mids drive frequency and speed
               float currentFreq = uWaveFrequency * (1.0 + uAudioMid * 1.5) * uEffectIntensity;
               float currentSpeed = uWaveSpeed * (1.0 + uAudioMid * 0.8) * uEffectIntensity;
-              // Bass also subtly warps radius
+              // Bass also warps radius
               float currentRadiusWarp = uRadiusWarpAmount * uAudioBass * uEffectIntensity;
 
               // --- Warped Coordinates for Pattern ---
