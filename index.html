@@ -363,7 +363,38 @@ let currentUserSongIndex = 0;
     // If true, each effect uses the camera feed as input
     
     
+function hideDspOverlay() {
+  const dsp = document.getElementById('dspOverlay');
+  if (dsp) {
+    // Handler for transitionend, also used by fallback
+    const setDisplayNoneAndCleanup = () => {
+      dsp.style.display = 'none';
+      dsp.removeEventListener('transitionend', setDisplayNoneAndCleanup); // Ensure removal
+    };
 
+    if (dsp.classList.contains('show')) {
+      dsp.classList.remove('show'); // Start transition
+      
+      dsp.addEventListener('transitionend', setDisplayNoneAndCleanup, { once: true });
+
+      // Fallback timeout: if transitionend doesn't fire after a bit longer than the transition time,
+      // or if there was no transition (e.g., if opacity was already 0), force display: none.
+      setTimeout(() => {
+        // Only hide if it's still meant to be hidden (i.e., 'show' class is not present)
+        // and display is not already 'none'.
+        if (!dsp.classList.contains('show') && dsp.style.display !== 'none') {
+          console.log('DSP overlay: transition fallback triggered for hiding.');
+          setDisplayNoneAndCleanup();
+        }
+      }, 550); // CSS transition is 0.5s (500ms)
+    } else {
+      // If 'show' class is not present, but it's somehow not display:none, fix it.
+      if (dsp.style.display !== 'none') {
+         dsp.style.display = 'none';
+      }
+    }
+  }
+}
         
     const modes = ['fileSelect', 'audioDevice', 'playlist', 'dsp'];
     let currentModeIndex = modes.indexOf(currentMode);
@@ -739,7 +770,7 @@ let currentUserSongIndex = 0;
 
       // Start playback
      
-      dsp.classList.remove('show');
+      hideDspOverlay(); // Replaced dsp.classList.remove('show');
       // Reset play state so the next spacebar press starts playback
       isPlaying = false;
       const info = document.getElementById('info');
@@ -750,7 +781,7 @@ let currentUserSongIndex = 0;
       info.style.opacity = '1';
     } catch(err) {
       console.error('Apple Music authorization failed:', err);
-      dsp.classList.remove('show');
+      hideDspOverlay(); // Replaced dsp.classList.remove('show');
       isPlaying = true;
       startVisualizerWithDummyData();
     }
@@ -812,12 +843,13 @@ let currentUserSongIndex = 0;
             analyser.connect(audioContext.destination);
           }
 
-          dsp.classList.remove('show');
+          hideDspOverlay(); // Replaced dsp.classList.remove('show');
           isPlaying = true;
         });
 
         player.connect().catch(err => {
           console.error('Spotify player.connect() failed:', err);
+          hideDspOverlay(); // Added call here for connect error
         });
       };
 
@@ -828,7 +860,7 @@ let currentUserSongIndex = 0;
       }
     } catch (err) {
       console.error('Spotify connection failed:', err);
-      dsp.classList.remove('show');
+      hideDspOverlay(); // Replaced dsp.classList.remove('show');
       isPlaying = true;
       startVisualizerWithDummyData();
     }
@@ -844,24 +876,17 @@ let currentUserSongIndex = 0;
       audioSrc.connect(analyser);
       analyser.connect(audioContext.destination);
       audioEl.play();
-      dsp.classList.remove('show');
+      hideDspOverlay(); // Replaced dsp.classList.remove('show');
       isPlaying = true;
     } catch (err) {
       console.error('SoundCloud connection failed:', err);
-      dsp.classList.remove('show');
+      hideDspOverlay(); // Replaced dsp.classList.remove('show');
       isPlaying = true;
       startVisualizerWithDummyData();
     }
   };
   document.getElementById('dspCancel').onclick = () => {
-    if (dsp) {
-      dsp.classList.remove('show');
-      // hide after transition
-      dsp.addEventListener('transitionend', function handler() {
-        dsp.style.display = 'none';
-        dsp.removeEventListener('transitionend', handler);
-      }, { once: true });
-    }
+    hideDspOverlay(); // Replaced existing logic
     switchMode('playlist');
   };
 }
