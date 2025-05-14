@@ -659,6 +659,9 @@ function hideDspOverlay() {
           break;
           
           case 'audioDevice': {
+            if (audioContext.state === 'suspended') {
+              audioContext.resume().catch(err => console.warn('AudioContext.resume() failed for audioDevice mode:', err));
+            }
             // Disconnect any existing audio source and clear previous connections
             if (audioSrc) {
               audioSrc.disconnect();
@@ -1434,7 +1437,7 @@ function createWaves() {
   scene.add(mesh);
   visualElements.push(mesh);
 }
-        
+
 function createTrippyColors() {
   // Keep the same group name so other code references remain correct
   const trippyGroup = new THREE.Group();
