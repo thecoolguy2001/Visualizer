@@ -884,7 +884,7 @@ function hideDspOverlay() {
       const track = await SC.stream('/tracks/YOUR_SOUNDCLOUD_TRACK_ID');
       const audioEl = track._player; 
       if (audioSrc) audioSrc.disconnect();
-      audioSrc = audioContext.createMediaElementSource(audioEl);
+      audioSrc = audioContext.createMediaStreamSource(audioEl);
       audioSrc.connect(analyser);
       analyser.connect(audioContext.destination);
       audioEl.play();
@@ -1638,12 +1638,14 @@ function createTrippyColors() {
 
         
     function createPortal() {
-  // Compute full-screen geometry dimensions.
-  const aspect = window.innerWidth / window.innerHeight;
-  const baseHeight = 2000;  // Base height (can be adjusted)
-  const baseWidth = baseHeight * aspect; // ensures full width coverage
+  // Calculate geometry to fill camera FOV at z=0
+  const distance = camera.position.z; // Distance from camera to plane at z=0
+  const fovInRadians = (camera.fov * Math.PI) / 180.0;
+  // Use a slight multiplier if needed to ensure full coverage for effects like this
+  const planeHeight = 2 * distance * Math.tan(fovInRadians / 2) * 1.2; // 20% larger
+  const planeWidth = planeHeight * camera.aspect; // Maintain aspect from calculated height
 
-  const geometry = new THREE.PlaneGeometry(baseWidth, baseHeight, 1, 1);
+  const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight, 1, 1);
   
   const material = new THREE.ShaderMaterial({
     uniforms: {
@@ -3126,10 +3128,14 @@ function createPopArtEffect() {
 }
 
 function createNeonGridEffect() {
-  // Use a large plane with many subdivisions
-  const gridSize = 1500;
-  const divisions = 100;
-  const geometry = new THREE.PlaneBufferGeometry(gridSize, gridSize, divisions, divisions);
+  // Calculate geometry to fill camera FOV at z=0
+  const distance = camera.position.z; // Distance from camera to plane at z=0
+  const fovInRadians = (camera.fov * Math.PI) / 180.0;
+  // Increase size slightly to ensure it covers edges when tilted/rotated
+  const planeHeight = 2 * distance * Math.tan(fovInRadians / 2) * 1.5; // 50% larger
+  const planeWidth = planeHeight * camera.aspect * 1.5; // Keep aspect, 50% larger
+  const divisions = 100; // Keep divisions for potential vertex effects
+  const geometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight, divisions, divisions);
 
   const material = new THREE.ShaderMaterial({
       uniforms: {
@@ -3140,7 +3146,8 @@ function createNeonGridEffect() {
           effectIntensity: { value: 1.0 },
           lineWidth: { value: 0.05 }, // Relative line width
           glowPower: { value: 3.0 }, // Power for glow calculation
-          gridColor: { value: new THREE.Color(0x00ffff) } // Cyan color
+          gridColor: { value: new THREE.Color(0x00ffff) }, // Cyan color
+          resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) } // Added resolution
       },
       vertexShader: `
           uniform float time;
@@ -3181,6 +3188,7 @@ function createNeonGridEffect() {
           uniform float lineWidth;
           uniform float glowPower;
           uniform vec3 gridColor;
+          uniform vec2 resolution;
 
           varying vec2 vUv;
           varying float vDisplacement; // Use displacement for color variation
@@ -4077,7 +4085,7 @@ function createGeometricPulseEffect() {
                // 5. Treble Zap Force (sudden random direction change)
                if (trebleAvg > 0.5) { // Trigger on high treble
                    const zapChance = Math.random();
-                   if (zapChance < trebleAvg * 0.1) { // Low chance per frame, increases with treble
+                   if (zapChance < trebleAvg * 0.1 * intensity) { // Low chance per frame, increases with treble
                        const zapDirection = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
                        const zapMagnitude = (0.5 + Math.random() * 0.5) * trebleZapStrength * intensity; // Random strength
                        currentVelocity.addScaledVector(zapDirection, zapMagnitude);
