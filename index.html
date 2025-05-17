@@ -1156,7 +1156,6 @@ function createWaves() {
       audioSeg6:       { value: 0.0 }, // e.g., High Treble
       effectIntensity: { value: 1.0 },
       lineThickness:   { value: 0.02 },
-      resolution:      { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
       uSeed:           { value: Math.random() * 100.0 }, // random seed for unique behavior
       // Add uniforms for visual mode
       cameraTexture:   { value: null },
@@ -1220,7 +1219,9 @@ function createWaves() {
       uniform float treble;
       uniform float effectIntensity;
       uniform float lineThickness;
-      uniform vec2 resolution;
+      // uniform vec2 resolution; -- removed
+      // Add camera aspect uniform
+      uniform float cameraAspect;
       // Add uniforms for visual mode
       uniform sampler2D cameraTexture;
       uniform float visualMode; // 0: off, 1: Waves show camera feed, 2: Background shows camera feed
@@ -1240,8 +1241,9 @@ function createWaves() {
       }
       
       void main() {
-        // Use full UV range again
+        // Use vUv for all positioning, with aspect ratio adjustment
         vec2 st = vUv;
+        st.x *= cameraAspect;
 
         float waveTime = time * (1.0 + mid * 2.0);
         // Increase thickness reactivity slightly
@@ -1334,7 +1336,9 @@ function createWaves() {
         
         // --- Visual Mode Logic ---
         if (visualMode > 0.5 && cameraActive > 0.5) {
-           vec2 screenUV = gl_FragCoord.xy / resolution.xy;
+           // Use vUv for screenUV, with aspect adjustment for camera feed if needed
+           vec2 screenUV = vUv;
+           screenUV.x *= cameraAspect;
            vec4 cameraColor = texture2D(cameraTexture, screenUV);
 
            if (abs(visualMode - 1.0) < 0.1) {
@@ -1375,6 +1379,9 @@ function createWaves() {
     blending: THREE.NormalBlending // Confirm Normal Blending
   });
   
+  // After creating the material, add camera.aspect as a uniform
+  material.uniforms.cameraAspect = { value: camera.aspect };
+
   const waves = new THREE.Mesh(geometry, material);
   waves.name = "Waves";
   // Center the plane vertically, keep tilt for depth
