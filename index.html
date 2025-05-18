@@ -597,6 +597,10 @@ function hideDspOverlay() {
             
         switch (mode) {
           case 'fileSelect': {
+            // Reset user playlist for file-select mode
+            userPlaylist = [];
+            userPlaylistActive = true;
+            currentUserSongIndex = 0;
             if (/Mobi|Android/i.test(navigator.userAgent)) {
               // On mobile, reset the trigger flag so that one tap will open the file browser.
               fileSelectTriggered = false;
