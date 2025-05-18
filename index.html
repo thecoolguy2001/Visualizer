@@ -279,8 +279,8 @@
   <div id="dspOverlay">
     <h2>Connect Service</h2>
     <button id="connectApple" type="button">Connect to Apple Music</button>
-    <button id="connectSpotify" type="button">Connect to Spotify</button>
-    <button id="connectSoundCloud" type="button">Connect to SoundCloud</button>
+    <!-- <button id="connectSpotify" type="button">Connect to Spotify</button> -->
+    <!-- <button id="connectSoundCloud" type="button">Connect to SoundCloud</button> -->
 
     <div style="text-align:right; margin-top:15px;">
       <button type="button" id="dspCancel">Cancel</button>
@@ -803,6 +803,7 @@ function hideDspOverlay() {
     }
   };
     
+  /* 
   // Spotify integration
   document.getElementById('connectSpotify').onclick = async () => {
     try {
@@ -881,7 +882,9 @@ function hideDspOverlay() {
       startVisualizerWithDummyData();
     }
   };
+  */
     
+  /* 
   // SoundCloud integration
   document.getElementById('connectSoundCloud').onclick = async () => {
     try {
@@ -901,6 +904,7 @@ function hideDspOverlay() {
       startVisualizerWithDummyData();
     }
   };
+  */
   document.getElementById('dspCancel').onclick = () => {
     hideDspOverlay(); // Replaced existing logic
     switchMode('playlist');
