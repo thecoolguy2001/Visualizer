@@ -150,7 +150,6 @@
   opacity: 0;
   animation: fadeInUp 0.5s forwards;
 }
-/* DSP overlay styling */
 #dspOverlay {
   position: absolute;
   top: 50%;
@@ -168,6 +167,7 @@
   z-index: 10000;
   display: none;
   font-size: 1em;
+  pointer-events: none;
 }
 #dspOverlay.show {
   display: block;
@@ -209,6 +209,12 @@
     width: 100%;
     min-height: 44px;
     margin: 8px 0;
+  }
+
+  /* Re-enable taps only on the connect & cancel buttons */
+  #dspOverlay.show #connectApple,
+  #dspOverlay.show #dspCancel {
+    pointer-events: auto;
   }
 
 /* Creator Modal animation */
