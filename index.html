@@ -184,7 +184,7 @@
   margin-top: 4px;
   box-sizing: border-box;
 }
-#dspOverlay button {
+  #dspOverlay button {
     display: block;
     width: 100%;
     padding: 10px 20px;
@@ -196,7 +196,17 @@
     font-family: Arial, sans-serif;
     font-size: 16px;
     cursor: pointer;
-}
+  }
+
+  /* Ensure cancel is on top of the Apple Music button */
+  #dspOverlay.show #dspCancel {
+    position: relative;
+    z-index: 2;
+  }
+  #dspOverlay.show #connectApple {
+    position: relative;
+    z-index: 1;
+  }
 
 /* Creator Modal animation */
   #creatorModal {
@@ -282,8 +292,8 @@
     <!-- <button id="connectSpotify" type="button">Connect to Spotify</button> -->
     <!-- <button id="connectSoundCloud" type="button">Connect to SoundCloud</button> -->
 
-    <div style="text-align:right;">
-      <button type="button" id="dspCancel" style="display:inline-block; width:auto; padding:10px 20px; margin:8px 0;">Cancel</button>
+    <div style="text-align:right; margin-top:15px;">
+      <button type="button" id="dspCancel">Cancel</button>
     </div>
   </div>
   
@@ -688,6 +698,8 @@ function hideDspOverlay() {
               audioSrc = audioContext.createMediaStreamSource(stream);
               // Connect the mic input ONLY to the analyser (do not connect to destination)
               audioSrc.connect(analyser);
+              // Double-check no audio is sent to speakers
+              try { analyser.disconnect(audioContext.destination); } catch(e) { }
               // Store the microphone stream so it can be stopped later
               userMicrophoneStream = stream;
             })
