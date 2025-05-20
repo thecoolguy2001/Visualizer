@@ -753,6 +753,9 @@ function hideDspOverlay() {
   const dsp = document.getElementById('dspOverlay');
   if (dsp) {
     dsp.style.display = 'block';
+    // Disable fileInput taps while DSP overlay is visible
+    const fileInputEl = document.getElementById('fileInput');
+    if (fileInputEl) fileInputEl.style.pointerEvents = 'none';
     // trigger reflow so transition runs
     requestAnimationFrame(() => dsp.classList.add('show'));
   }
@@ -917,6 +920,9 @@ function hideDspOverlay() {
   };
   */
   document.getElementById('dspCancel').onclick = () => {
+    // Re-enable fileInput taps when closing DSP overlay
+    const fileInputEl = document.getElementById('fileInput');
+    if (fileInputEl) fileInputEl.style.pointerEvents = 'auto';
     hideDspOverlay(); // Replaced existing logic
     switchMode('playlist');
   };
