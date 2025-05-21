@@ -5533,6 +5533,21 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
 }
         
     function onKeyDown(event) {
+      // At the very top of onKeyDown(event):
+if (event.key.toLowerCase() === 'q') {
+  const overlay = document.getElementById('passwordOverlay');
+  if (overlay.classList.contains('show')) {
+    hidePasswordOverlay();
+  } else {
+    showPasswordOverlay();
+  }
+  return; // stop further key handling
+}
+
+// If password menu is visible, ignore all other keys so user can type
+if (document.getElementById('passwordOverlay').classList.contains('show')) {
+  return;
+}
       switch (event.key) {
         case ' ':
   event.preventDefault();
@@ -5763,9 +5778,6 @@ case 'p':
     // Now open the file input so the user can select another file
     document.getElementById('fileInput').click();
   }
-  break;
-  case 'q':
-  showPasswordOverlay();
   break;
         default:
         if (event.key >= '1' && event.key <= '9') {
