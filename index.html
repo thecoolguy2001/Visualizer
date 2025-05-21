@@ -5560,22 +5560,52 @@ if (document.getElementById('passwordOverlay').classList.contains('show')) {
         case 'i':
           displayInfo();
         break;
-        case 'ArrowLeft':
-          currentStyleIndex = (currentStyleIndex - 1 + visualElements.length) % visualElements.length;
-          updateVisibility();
-        break;
-        case 'ArrowRight':
-          currentStyleIndex = (currentStyleIndex + 1) % visualElements.length;
-          updateVisibility();
-        break;
-        case 'ArrowUp':
-          currentModeIndex = (currentModeIndex + 1) % modes.length;
-          switchMode(modes[currentModeIndex]);
-        break;
-        case 'ArrowDown':
-          currentModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
-          switchMode(modes[currentModeIndex]);
-        break;
+        case 'ArrowLeft': {
+  let prev = (currentStyleIndex - 1 + visualStyles.length) % visualStyles.length;
+  const start = prev;
+  while (!isAuthorized && prev >= visualStyles.length - 10) {
+    prev = (prev - 1 + visualStyles.length) % visualStyles.length;
+    if (prev === start) break;
+  }
+  currentStyleIndex = prev;
+  switchVisual();
+  break;
+}
+        case 'ArrowRight': {
+  let next = (currentStyleIndex + 1) % visualStyles.length;
+  const start = next;
+  // Skip over the “premium” tail if unauthorized
+  while (!isAuthorized && next >= visualStyles.length - 10) {
+    next = (next + 1) % visualStyles.length;
+    if (next === start) break;
+  }
+  currentStyleIndex = next;
+  switchVisual();
+  break;
+}
+case 'ArrowUp': {
+  // Find the previous mode, skipping DSP if unauthorized
+  let idx = (currentModeIndex - 1 + modes.length) % modes.length;
+  const start = idx;
+  while (!isAuthorized && modes[idx] === 'dsp') {
+    idx = (idx - 1 + modes.length) % modes.length;
+    if (idx === start) break;
+  }
+  currentModeIndex = idx;
+  switchMode(modes[currentModeIndex]);
+  break;
+}
+case 'ArrowDown': {
+  let idx = (currentModeIndex + 1) % modes.length;
+  const start = idx;
+  while (!isAuthorized && modes[idx] === 'dsp') {
+    idx = (idx + 1) % modes.length;
+    if (idx === start) break;
+  }
+  currentModeIndex = idx;
+  switchMode(modes[currentModeIndex]);
+  break;
+}
        case 'n':
        if (currentMode === 'dsp') {
   const music = MusicKit.getInstance();
