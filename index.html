@@ -5830,39 +5830,32 @@ function onKeyUp(event) {
     
 function displayInfo() {
   const songInfoEl = document.getElementById('songInfo');
+  // — Insert this block to also show the mode —
+  const modeEl = document.getElementById('modeIndicator');
+  if (modeEl) {
+    modeEl.textContent = 'mode: ' + currentMode;
+    modeEl.style.opacity = 1;
+    // hide after 3 s, matching the song info fade
+    setTimeout(() => { modeEl.style.opacity = 0; }, 3000);
+  }
+  // — existing song display logic below —
   let title = '';
-
   if (currentMode === 'dsp') {
-    // If in DSP mode, try to get the Apple Music track title
     const mk = MusicKit.getInstance();
     const now = mk.player.nowPlayingItem;
-    if (now && now.title) {
-      title = now.title;
-    } else {
-      // Not yet playing or no item—optionally show placeholder
-      title = '—';
-    }
+    title = now?.title || '—';
   } else if (currentMode === 'playlist') {
-    // Your existing playlist logic
-    title = playlist[currentSongIndex]
-      .replace(/^.*[\\\/]/, '')      // strip any path
-      .replace(/\.[^/.]+$/, '');     // strip ext
+    title = playlist[currentSongIndex].replace(/^.*[\\\/]/, '').replace(/\.[^/.]+$/, '');
   } else if (currentMode === 'fileSelect' && userPlaylistActive) {
-    // Your existing user‐loaded file logic
     title = userPlaylist[currentUserSongIndex]?.title || '—';
   } else {
-    // Audio-device, default, etc.
     title = selectedFileName || '—';
   }
-
-  songInfoEl.textContent = 'Song: ' + title;
+  songInfoEl.textContent = 'song: ' + title;
   songInfoEl.style.opacity = 1;
-
-  // Auto-hide after a few seconds (if you have that in your original)
-  setTimeout(() => {
-    songInfoEl.style.opacity = 0;
-  }, 3000);
+  setTimeout(() => { songInfoEl.style.opacity = 0; }, 3000);
 }
+
     function showActionMessage(message) {
   const actionMessage = document.getElementById('actionMessage');
   if (!actionMessage) return;
