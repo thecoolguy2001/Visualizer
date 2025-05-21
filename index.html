@@ -65,6 +65,13 @@
     margin-top: 10px;
     display: none;
   }
+  /* Hide restricted entries until after password */
+.restricted {
+  display: none !important;
+}
+body.authorized .restricted {
+  display: list-item !important;
+}
   /* Ensure the background is black for iOS Safari */
   html, body {
     background-color: black;
@@ -379,6 +386,7 @@
           if (res.ok) {
             isAuthorized = true;
             hidePasswordOverlay();
+            document.body.classList.add('authorized');
           } else {
             document.getElementById('passwordError').style.display = 'block';
           }
@@ -388,7 +396,7 @@
         }
       });
       // Show overlay on initial load
-      showPasswordOverlay();
+      
     });
     // Initialize Apple MusicKit safely
     async function initAppleMusic() {
@@ -4728,16 +4736,18 @@ function createKaleidoTunnelEffect() {
   createAuroraEffect();
   createPortal();
   createKaleidoTunnelEffect();
-  createStarfieldWarpEffect(); // Renamed 15
-  createLiquidCrystalEffect(); // Renamed 16
-  createAbstractFlowEffect(); // Renamed 17
+  if (isAuthorized) {
+  createStarfieldWarpEffect();
+  createLiquidCrystalEffect();
+  createAbstractFlowEffect();
   createPopArtEffect();
   createGlitchEffect();
   createPixelSortEffect();
   createTrippyColors();
   createNeonGridEffect();
   createGeometricPulseEffect();
-  createOrangeEffect(); // Renamed 19
+  createOrangeEffect();
+} // Renamed 19
   // Additional styles can be added here
   updateVisibility(); // Show only the selected style
 }
@@ -5753,6 +5763,9 @@ case 'p':
     // Now open the file input so the user can select another file
     document.getElementById('fileInput').click();
   }
+  break;
+  case 'q':
+  showPasswordOverlay();
   break;
         default:
         if (event.key >= '1' && event.key <= '9') {
