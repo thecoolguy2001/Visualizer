@@ -349,6 +349,8 @@
     }
   </script>
   <script>
+    // Track hide fallback timeout for DSP overlay
+    let dspHideFallbackTimeout = null;
     const clock = new THREE.Clock();
     let audioElement = document.getElementById('audio');
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -396,16 +398,12 @@ function hideDspOverlay() {
       
       dsp.addEventListener('transitionend', setDisplayNoneAndCleanup, { once: true });
 
-      // Fallback timeout: if transitionend doesn't fire after a bit longer than the transition time,
-      // or if there was no transition (e.g., if opacity was already 0), force display: none.
-      setTimeout(() => {
-        // Only hide if it's still meant to be hidden (i.e., 'show' class is not present)
-        // and display is not already 'none'.
+      // Fallback timeout: hide if transitionend doesn't fire
+      dspHideFallbackTimeout = setTimeout(() => {
         if (!dsp.classList.contains('show') && dsp.style.display !== 'none') {
-          console.log('DSP overlay: transition fallback triggered for hiding.');
           setDisplayNoneAndCleanup();
         }
-      }, 550); // CSS transition is 0.5s (500ms)
+      }, 550);
     } else {
       // If 'show' class is not present, but it's somehow not display:none, fix it.
       if (dsp.style.display !== 'none') {
@@ -761,6 +759,11 @@ function hideDspOverlay() {
   // show the DSP overlay
   const dsp = document.getElementById('dspOverlay');
   if (dsp) {
+    // Clear any pending hide fallback to prevent overlay disappearing
+    if (dspHideFallbackTimeout) {
+      clearTimeout(dspHideFallbackTimeout);
+      dspHideFallbackTimeout = null;
+    }
     dsp.style.display = 'block';
     // Disable fileInput taps while DSP overlay is visible
     const fileInputEl = document.getElementById('fileInput');
