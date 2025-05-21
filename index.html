@@ -928,6 +928,10 @@ function hideDspOverlay() {
     }
   };
   */
+  // Intercept raw touch events on Cancel to prevent Safari's hit-area re-targeting
+  const cancelBtn = document.getElementById('dspCancel');
+  cancelBtn.addEventListener('touchstart', event => event.stopPropagation());
+  cancelBtn.addEventListener('touchend', event => event.stopPropagation());
   document.getElementById('dspCancel').onclick = () => {
     // Re-enable fileInput taps when closing DSP overlay
     const fileInputEl = document.getElementById('fileInput');
