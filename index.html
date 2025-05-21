@@ -939,7 +939,10 @@ function hideDspOverlay() {
     // Re-enable fileInput taps when closing DSP overlay
     const fileInputEl = document.getElementById('fileInput');
     if (fileInputEl) fileInputEl.style.pointerEvents = 'auto';
-    hideDspOverlay(); // Replaced existing logic
+    // Immediately hide DSP overlay without transition or leftover timers
+    const dspEl = document.getElementById('dspOverlay');
+    dspEl.classList.remove('show');
+    dspEl.style.display = 'none';
     switchMode('playlist');
   };
 }
