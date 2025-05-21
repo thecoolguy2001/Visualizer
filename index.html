@@ -5462,20 +5462,32 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
           currentModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
           switchMode(modes[currentModeIndex]);
         break;
-        case 'n':
-  if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 1) {
-    playNextUserSong();
-  } else if (currentMode === 'playlist') {
-    playNextSongInPlaylist();
-  }
-  break;
-case 'b':
-  if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 1) {
-    playPreviousUserSong();
-  } else if (currentMode === 'playlist') {
-    playPreviousSongInPlaylist();
-  }
-  break;
+       case 'n':
+         if (currentMode === 'dsp') {
+           const music = MusicKit.getInstance();
+           music.player.skipToNextItem();
+           displayInfo();
+           break;
+         }
+         if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 1) {
+           playNextUserSong();
+         } else if (currentMode === 'playlist') {
+           playNextSongInPlaylist();
+         }
+         break;
+       case 'b':
+         if (currentMode === 'dsp') {
+           const music = MusicKit.getInstance();
+           music.player.skipToPreviousItem();
+           displayInfo();
+           break;
+         }
+         if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 1) {
+           playPreviousUserSong();
+         } else if (currentMode === 'playlist') {
+           playPreviousSongInPlaylist();
+         }
+         break;
   case 'v':
   event.preventDefault();
   const activeEffect = visualElements[currentStyleIndex];
