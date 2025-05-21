@@ -807,6 +807,13 @@ function hideDspOverlay() {
           audioSrc = audioContext.createMediaStreamSource(mediaStream);
           audioSrc.connect(analyser);
           analyser.connect(audioContext.destination);
+          // Update track name display
+          const nowPlaying = music.player.nowPlayingItem;
+          if (nowPlaying) {
+            const songInfoEl = document.getElementById('songInfo');
+            songInfoEl.textContent = 'song: ' + nowPlaying.title;
+            songInfoEl.style.opacity = 1;
+          }
         }
       });
 
