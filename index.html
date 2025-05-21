@@ -5467,12 +5467,14 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
   const music = MusicKit.getInstance();
   // Remember play state
   const wasPlaying = music.player.isPlaying;
-  // Skip
-  music.player.skipToNextItem();
-  // If we were paused, immediately pause again
-  if (!wasPlaying) music.player.pause();
-  // Refresh on-screen info
-  displayInfo();
+  music.player.skipToNextItem()
+    .then(() => {
+      if (!wasPlaying) {
+        music.player.pause();
+      }
+      displayInfo();
+    })
+    .catch(err => console.error('Error skipping to next:', err));
   break;
 }
          if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 1) {
@@ -5485,9 +5487,14 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
        if (currentMode === 'dsp') {
   const music = MusicKit.getInstance();
   const wasPlaying = music.player.isPlaying;
-  music.player.skipToPreviousItem();
-  if (!wasPlaying) music.player.pause();
-  displayInfo();
+  music.player.skipToPreviousItem()
+    .then(() => {
+      if (!wasPlaying) {
+        music.player.pause();
+      }
+      displayInfo();
+    })
+    .catch(err => console.error('Error skipping to previous:', err));
   break;
 }
          if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 1) {
