@@ -22,6 +22,49 @@
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
   <script src="https://connect.soundcloud.com/sdk/sdk-3.3.2.js"></script>
   <style>
+  /* Password overlay styling */
+  #passwordOverlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 300px;
+    background-color: rgba(0, 0, 0, 0.9);
+    color: white;
+    font-family: Arial, sans-serif;
+    border: 2px solid grey;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    display: none;
+    z-index: 10001;
+  }
+  #passwordOverlay.show {
+    display: block;
+  }
+  #passwordOverlay input {
+    width: 100%;
+    padding: 8px;
+    margin: 10px 0;
+    box-sizing: border-box;
+  }
+  #passwordOverlay button {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+    background-color: rgba(0,0,0,0.8);
+    border: 2px solid grey;
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
+    font-family: Arial, sans-serif;
+  }
+  #passwordOverlay #passwordError {
+    color: red;
+    margin-top: 10px;
+    display: none;
+  }
   /* Ensure the background is black for iOS Safari */
   html, body {
     background-color: black;
@@ -255,6 +298,12 @@
 </style>
 </head>
 <body>
+  <div id="passwordOverlay">
+    <h2>Enter Password</h2>
+    <input type="password" id="passwordInput" placeholder="Password">
+    <button id="passwordSubmit">Submit</button>
+    <div id="passwordError">Incorrect password</div>
+  </div>
   <div id="info">press spacebar to start</div>
   <div id="modeIndicator"></div>
   <audio id="audio" preload="auto"></audio>
@@ -308,6 +357,39 @@
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script>
+    // Password protection
+    let isAuthorized = false;
+    function showPasswordOverlay() {
+      document.getElementById('passwordError').style.display = 'none';
+      document.getElementById('passwordOverlay').classList.add('show');
+    }
+    function hidePasswordOverlay() {
+      document.getElementById('passwordOverlay').classList.remove('show');
+      document.getElementById('passwordInput').value = '';
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('passwordSubmit').addEventListener('click', async () => {
+        const pw = document.getElementById('passwordInput').value;
+        try {
+          const res = await fetch('/api/verify-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pw })
+          });
+          if (res.ok) {
+            isAuthorized = true;
+            hidePasswordOverlay();
+          } else {
+            document.getElementById('passwordError').style.display = 'block';
+          }
+        } catch (err) {
+          console.error('Password verification failed:', err);
+          document.getElementById('passwordError').style.display = 'block';
+        }
+      });
+      // Show overlay on initial load
+      showPasswordOverlay();
+    });
     // Initialize Apple MusicKit safely
     async function initAppleMusic() {
       try {
@@ -578,6 +660,15 @@ function hideDspOverlay() {
       }     
 
       function switchMode(mode) {
+      // Restrict file-select playlist, DSP mode, and Creator mode until authorized
+      if (!isAuthorized && (
+          (mode === 'fileSelect' && userPlaylistActive) ||
+          mode === 'dsp' ||
+          mode === 'creatorMode'
+        )) {
+        showPasswordOverlay();
+        return;
+      }
       const dsp = document.getElementById('dspOverlay');
   if (dsp && mode !== 'dsp') {
     hideDspOverlay();
