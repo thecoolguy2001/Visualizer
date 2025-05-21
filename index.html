@@ -794,23 +794,6 @@ function hideDspOverlay() {
       }
       await music.setQueue({ playlist: playlistId });
 
-      // Immediately display the first Apple Music track title
-      const firstItem = music.player.nowPlayingItem;
-      if (firstItem) {
-        const songInfoEl = document.getElementById('songInfo');
-        songInfoEl.textContent = 'song: ' + firstItem.title;
-        songInfoEl.style.opacity = 1;
-      }
-      // Update track title when the current item changes
-      music.addEventListener('mediaItemDidChange', () => {
-        const current = music.player.nowPlayingItem;
-        if (current) {
-          const songInfoEl = document.getElementById('songInfo');
-          songInfoEl.textContent = 'song: ' + current.title;
-          songInfoEl.style.opacity = 1;
-        }
-      });
-
       // Hook analyser once playback actually starts
       // Once playback truly starts, capture the media stream for analysis
       music.addEventListener('playbackStateDidChange', event => {
@@ -5845,20 +5828,41 @@ function onKeyUp(event) {
   }
 }
     
-    function displayInfo() {
-      // Display current mode
-      displayMode();
+function displayInfo() {
+  const songInfoEl = document.getElementById('songInfo');
+  let title = '';
 
-      // Display song information
-      const songInfo = document.getElementById('songInfo');
-      songInfo.textContent = `song: ${selectedFileName}`;
-      songInfo.style.opacity = 1;
-
-      // Fade out song information after 3 seconds
-      setTimeout(() => {
-        songInfo.style.opacity = 0;
-      }, 3000);
+  if (currentMode === 'dsp') {
+    // If in DSP mode, try to get the Apple Music track title
+    const mk = MusicKit.getInstance();
+    const now = mk.player.nowPlayingItem;
+    if (now && now.title) {
+      title = now.title;
+    } else {
+      // Not yet playing or no item—optionally show placeholder
+      title = '—';
     }
+  } else if (currentMode === 'playlist') {
+    // Your existing playlist logic
+    title = playlist[currentSongIndex]
+      .replace(/^.*[\\\/]/, '')      // strip any path
+      .replace(/\.[^/.]+$/, '');     // strip ext
+  } else if (currentMode === 'fileSelect' && userPlaylistActive) {
+    // Your existing user‐loaded file logic
+    title = userPlaylist[currentUserSongIndex]?.title || '—';
+  } else {
+    // Audio-device, default, etc.
+    title = selectedFileName || '—';
+  }
+
+  songInfoEl.textContent = 'Song: ' + title;
+  songInfoEl.style.opacity = 1;
+
+  // Auto-hide after a few seconds (if you have that in your original)
+  setTimeout(() => {
+    songInfoEl.style.opacity = 0;
+  }, 3000);
+}
     function showActionMessage(message) {
   const actionMessage = document.getElementById('actionMessage');
   if (!actionMessage) return;
