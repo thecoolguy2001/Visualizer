@@ -5562,23 +5562,26 @@ if (document.getElementById('passwordOverlay').classList.contains('show')) {
         break;
         case 'ArrowLeft': {
   const total = visualElements.length;
-  let prev = (currentStyleIndex - 1 + total) % total;
-  // If not authorized, skip any index >= total-10
-  while (!isAuthorized && prev >= total - 10) {
-    prev = (prev - 1 + total) % total;
+  const allowed = [];
+  for (let i = 0; i < total; i++) {
+    if (isAuthorized || i < total - 10) allowed.push(i);
   }
-  currentStyleIndex = prev;
+  const pos = allowed.indexOf(currentStyleIndex);
+  const prevPos = (pos - 1 + allowed.length) % allowed.length;
+  currentStyleIndex = allowed[prevPos];
   updateVisibility();
   break;
 }
 case 'ArrowRight': {
   const total = visualElements.length;
-  let next = (currentStyleIndex + 1) % total;
-  // If not authorized, skip any index >= total-10
-  while (!isAuthorized && next >= total - 10) {
-    next = (next + 1) % total;
+  // Build allowed list: free effects always, premium only if authorized
+  const allowed = [];
+  for (let i = 0; i < total; i++) {
+    if (isAuthorized || i < total - 10) allowed.push(i);
   }
-  currentStyleIndex = next;
+  const pos = allowed.indexOf(currentStyleIndex);
+  const nextPos = (pos + 1) % allowed.length;
+  currentStyleIndex = allowed[nextPos];
   updateVisibility();
   break;
 }
