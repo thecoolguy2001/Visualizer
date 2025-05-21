@@ -5463,12 +5463,18 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
           switchMode(modes[currentModeIndex]);
         break;
        case 'n':
-         if (currentMode === 'dsp') {
-           const music = MusicKit.getInstance();
-           music.player.skipToNextItem();
-           displayInfo();
-           break;
-         }
+       if (currentMode === 'dsp') {
+  const music = MusicKit.getInstance();
+  // Remember play state
+  const wasPlaying = music.player.isPlaying;
+  // Skip
+  music.player.skipToNextItem();
+  // If we were paused, immediately pause again
+  if (!wasPlaying) music.player.pause();
+  // Refresh on-screen info
+  displayInfo();
+  break;
+}
          if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 1) {
            playNextUserSong();
          } else if (currentMode === 'playlist') {
@@ -5476,12 +5482,14 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
          }
          break;
        case 'b':
-         if (currentMode === 'dsp') {
-           const music = MusicKit.getInstance();
-           music.player.skipToPreviousItem();
-           displayInfo();
-           break;
-         }
+       if (currentMode === 'dsp') {
+  const music = MusicKit.getInstance();
+  const wasPlaying = music.player.isPlaying;
+  music.player.skipToPreviousItem();
+  if (!wasPlaying) music.player.pause();
+  displayInfo();
+  break;
+}
          if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 1) {
            playPreviousUserSong();
          } else if (currentMode === 'playlist') {
