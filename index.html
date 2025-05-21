@@ -5561,26 +5561,25 @@ if (document.getElementById('passwordOverlay').classList.contains('show')) {
           displayInfo();
         break;
         case 'ArrowLeft': {
-  let prev = (currentStyleIndex - 1 + visualStyles.length) % visualStyles.length;
-  const start = prev;
-  while (!isAuthorized && prev >= visualStyles.length - 10) {
-    prev = (prev - 1 + visualStyles.length) % visualStyles.length;
-    if (prev === start) break;
+  const total = visualElements.length;
+  let prev = (currentStyleIndex - 1 + total) % total;
+  // If not authorized, skip any index >= total-10
+  while (!isAuthorized && prev >= total - 10) {
+    prev = (prev - 1 + total) % total;
   }
   currentStyleIndex = prev;
-  switchVisual();
+  updateVisibility();
   break;
 }
-        case 'ArrowRight': {
-  let next = (currentStyleIndex + 1) % visualStyles.length;
-  const start = next;
-  // Skip over the “premium” tail if unauthorized
-  while (!isAuthorized && next >= visualStyles.length - 10) {
-    next = (next + 1) % visualStyles.length;
-    if (next === start) break;
+case 'ArrowRight': {
+  const total = visualElements.length;
+  let next = (currentStyleIndex + 1) % total;
+  // If not authorized, skip any index >= total-10
+  while (!isAuthorized && next >= total - 10) {
+    next = (next + 1) % total;
   }
   currentStyleIndex = next;
-  switchVisual();
+  updateVisibility();
   break;
 }
 case 'ArrowUp': {
@@ -5595,7 +5594,7 @@ case 'ArrowUp': {
   switchMode(modes[currentModeIndex]);
   break;
 }
-case 'ArrowDown': {
+       case 'ArrowDown': {
   let idx = (currentModeIndex + 1) % modes.length;
   const start = idx;
   while (!isAuthorized && modes[idx] === 'dsp') {
