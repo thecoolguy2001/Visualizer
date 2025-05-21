@@ -794,6 +794,23 @@ function hideDspOverlay() {
       }
       await music.setQueue({ playlist: playlistId });
 
+      // Immediately display the first Apple Music track title
+      const firstItem = music.player.nowPlayingItem;
+      if (firstItem) {
+        const songInfoEl = document.getElementById('songInfo');
+        songInfoEl.textContent = 'song: ' + firstItem.title;
+        songInfoEl.style.opacity = 1;
+      }
+      // Update track title when the current item changes
+      music.addEventListener('mediaItemDidChange', () => {
+        const current = music.player.nowPlayingItem;
+        if (current) {
+          const songInfoEl = document.getElementById('songInfo');
+          songInfoEl.textContent = 'song: ' + current.title;
+          songInfoEl.style.opacity = 1;
+        }
+      });
+
       // Hook analyser once playback actually starts
       // Once playback truly starts, capture the media stream for analysis
       music.addEventListener('playbackStateDidChange', event => {
@@ -807,13 +824,6 @@ function hideDspOverlay() {
           audioSrc = audioContext.createMediaStreamSource(mediaStream);
           audioSrc.connect(analyser);
           analyser.connect(audioContext.destination);
-          // Update track name display
-          const nowPlaying = music.player.nowPlayingItem;
-          if (nowPlaying) {
-            const songInfoEl = document.getElementById('songInfo');
-            songInfoEl.textContent = 'song: ' + nowPlaying.title;
-            songInfoEl.style.opacity = 1;
-          }
         }
       });
 
