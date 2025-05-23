@@ -6003,27 +6003,37 @@ function onKeyUp(event) {
     
 function displayInfo() {
   const songInfoEl = document.getElementById('songInfo');
-  // — Insert this block to also show the mode —
-  const modeEl = document.getElementById('modeIndicator');
+  const modeEl     = document.getElementById('modeIndicator');
+
+  // Show current mode
   if (modeEl) {
     modeEl.textContent = 'mode: ' + currentMode;
     modeEl.style.opacity = 1;
-    // hide after 3 s, matching the song info fade
     setTimeout(() => { modeEl.style.opacity = 0; }, 3000);
   }
-  // — existing song display logic below —
+
+  // Decide which title to display
   let title = '';
   if (currentMode === 'dsp') {
-    const mk = MusicKit.getInstance();
-    const now = mk.player.nowPlayingItem;
+    const now = MusicKit.getInstance().player.nowPlayingItem;
     title = now?.title || '—';
   } else if (currentMode === 'playlist') {
-    title = playlist[currentSongIndex].replace(/^.*[\\\/]/, '').replace(/\.[^/.]+$/, '');
-  } else if (currentMode === 'fileSelect' && userPlaylistActive) {
+    title = playlist[currentSongIndex]
+      .replace(/^.*[\\\/]/, '')
+      .replace(/\.[^/.]+$/, '') || '—';
+  } else if (
+    currentMode === 'fileSelect' &&
+    userPlaylistActive &&
+    userPlaylist.length > 1
+  ) {
+    // **Only** use the playlist branch when you actually have a multi-file playlist**
     title = userPlaylist[currentUserSongIndex]?.title || '—';
   } else {
+    // Single-file mode (or anything else) → show the one you picked
     title = selectedFileName || '—';
   }
+
+  // Render it
   songInfoEl.textContent = 'song: ' + title;
   songInfoEl.style.opacity = 1;
   setTimeout(() => { songInfoEl.style.opacity = 0; }, 3000);
