@@ -6420,11 +6420,11 @@ function playPreviousUserSong() {
 
     // Pinch & two-finger gesture tracking
     let touchStartTouches = 0;
-    let pinchStartDistance = 0;
-    const pinchThreshold = 50;        // Minimum change to register a pinch
+    // Pinch-to-game removed
     // Two-finger hold for augment
     let twoFingerHoldTimer = null;
     const twoFingerHoldThreshold = 600;  // ms to hold two fingers to trigger augment
+    let twoFingerHoldActive = false;
     
     // Configurable thresholds (in ms and pixels)
     const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
@@ -6443,19 +6443,21 @@ function playPreviousUserSong() {
     }
     
     function onTouchStart(e) {
+      if (e.target.id === 'passwordInput') return;
       e.preventDefault();
       touchStartTime = Date.now();
       touchStartX = e.touches[0].clientX;
       touchStartY = e.touches[0].clientY;
       touchStartTouches = e.touches.length;
       if (touchStartTouches === 2) {
-        // Start pinch tracking for two-finger gestures
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        pinchStartDistance = Math.hypot(dx, dy);
+        // Pinch-to-game removed
         clearTimeout(longPressTimer);
         // Start two-finger hold to augment
-        twoFingerHoldTimer = setTimeout(() => augmentEffect(), twoFingerHoldThreshold);
+        twoFingerHoldActive = false;
+        twoFingerHoldTimer = setTimeout(() => {
+          twoFingerHoldActive = true;
+          augmentEffect();
+        }, twoFingerHoldThreshold);
         return;
       }
       // Only consider single-finger touches
@@ -6473,19 +6475,8 @@ function playPreviousUserSong() {
         clearTimeout(longPressTimer);
         // Cancel two-finger hold if fingers move
         clearTimeout(twoFingerHoldTimer);
-        // Pinch detection
-        const dx = e.touches[0].clientX - e.touches[1].clientX;
-        const dy = e.touches[0].clientY - e.touches[1].clientY;
-        const dist = Math.hypot(dx, dy);
-        if (dist - pinchStartDistance > pinchThreshold) {
-          // Pinch out → Game mode
-          switchMode('gameMode');  
-          pinchStartDistance = dist;
-        } else if (pinchStartDistance - dist > pinchThreshold) {
-          // Pinch in → Visual mode
-          toggleCameraBackground();
-          pinchStartDistance = dist;
-        }
+        twoFingerHoldActive = false;
+        // Pinch-to-game removed
         return;
       }
       e.preventDefault();
@@ -6494,11 +6485,17 @@ function playPreviousUserSong() {
     }
     
     function onTouchEnd(e) {
+      if (e.target.id === 'passwordInput') return;
       e.preventDefault();
       // Clear two-finger hold when touch ends
       clearTimeout(twoFingerHoldTimer);
       clearTimeout(longPressTimer);
       if (touchStartTouches === 2) {
+        // If augment was triggered by two-finger hold, consume the event without swipe logic
+        if (twoFingerHoldActive) {
+          twoFingerHoldActive = false;
+          return;
+        }
         // Two-finger drag for next/back
         const touch1 = e.changedTouches[0];
         const touch2 = e.changedTouches[1] || e.changedTouches[0];
@@ -6602,7 +6599,14 @@ function playPreviousUserSong() {
     
     // Call initTouchControls() once the DOM is ready
     document.addEventListener('DOMContentLoaded', initTouchControls);
-    
+
+    // Allow Enter key to submit password
+    document.getElementById('passwordInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        document.getElementById('passwordSubmit').click();
+      }
+    });
+
     init();
   </script>
 </body>
