@@ -6417,9 +6417,6 @@ let tapCount = 0;
 let tapTimer = null;
 let longPressTimer = null;
 
-// Password menu on long single-finger hold
-let passwordHoldTimer = null;
-const passwordHoldThreshold = 5000; // 5 seconds
 
 // Two-finger hold for augment
 let twoFingerHoldTimer = null;
@@ -6478,16 +6475,11 @@ const pinchThreshold = 50;        // Minimum change to register a pinch
         // Long press detected – show the help menu
         toggleHelpOverlay();
       }, longPressThreshold);
-      // Start single-finger hold timer for password menu
-      passwordHoldTimer = setTimeout(() => {
-        hideHelpOverlay();
-        showPasswordOverlay();
-      }, passwordHoldThreshold);
+      
     }
     
     function onTouchMove(e) {
-      // Cancel password hold if finger moves
-      clearTimeout(passwordHoldTimer);
+     
       if (e.touches.length === 2) {
         // Cancel one-finger timers
         clearTimeout(longPressTimer);
@@ -6512,8 +6504,7 @@ const pinchThreshold = 50;        // Minimum change to register a pinch
     
     function onTouchEnd(e) {
       e.preventDefault();
-      // Clear password hold timer
-      clearTimeout(passwordHoldTimer);
+      
       // Clear two-finger hold timer
       clearTimeout(twoFingerHoldTimer);
       // Clear double-tap-hold if finger lifted
