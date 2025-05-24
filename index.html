@@ -891,16 +891,22 @@ function hideDspOverlay() {
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
-      // Fetch the user's most-played (heavy rotation) songs
-      const heavy = await music.api.historyHeavyRotation({ limit: 25 });
-      // Support both array and { data: array } responses
-      const heavyData = Array.isArray(heavy) ? heavy : heavy.data || [];
-      const songIds = heavyData.map(item => item.id);
-      if (!songIds.length) {
-        throw new Error('No heavy rotation songs available');
+      // Attempt to fetch the user's most-played (heavy rotation) songs
+      let heavyData = [];
+      try {
+        const heavy = await music.api.historyHeavyRotation({ limit: 25 });
+        heavyData = Array.isArray(heavy) ? heavy : (heavy.data || []);
+      } catch (err) {
+        console.warn('Heavy rotation fetch failed:', err);
       }
-      // Set the playback queue to the user’s heavy-rotation tracks
-      await music.setQueue({ songs: songIds, autoplay: true });
+      if (heavyData.length > 0) {
+        const songIds = heavyData.map(item => item.id);
+        await music.setQueue({ songs: songIds, autoplay: true });
+      } else {
+        console.warn('No heavy rotation data available, falling back to default playlist');
+        // Fallback: use a default Apple-curated playlist
+        await music.setQueue({ playlist: 'pl.u-xxxxxxxxxxxxxxxx' });
+      }
 
       // Hook analyser once playback actually starts
       // Once playback truly starts, capture the media stream for analysis
