@@ -6417,9 +6417,9 @@ function playPreviousUserSong() {
     let tapTimer = null;
     let longPressTimer = null;
 
-    // Two-finger hold for augment
-    let twoFingerHoldTimer = null;
-    const twoFingerHoldThreshold = 600;  // ms to hold two fingers to trigger augment
+    // Double-tap-hold for augment
+    let doubleTapHoldTimer = null;
+    const doubleTapHoldThreshold = 600;  // ms to hold after second tap to trigger augment
 
     // Pinch & two-finger gesture tracking
     let touchStartTouches = 0;
@@ -6455,10 +6455,7 @@ function playPreviousUserSong() {
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         pinchStartDistance = Math.hypot(dx, dy);
         clearTimeout(longPressTimer);
-        // Start two-finger hold timer for augment
-        twoFingerHoldTimer = setTimeout(() => {
-          augmentEffect();
-        }, twoFingerHoldThreshold);
+        // No two-finger hold timers (removed)
         return;
       }
       // Only consider single-finger touches
@@ -6480,8 +6477,8 @@ function playPreviousUserSong() {
       if (e.touches.length === 2) {
         // Cancel one-finger timers
         clearTimeout(longPressTimer);
-        // Cancel two-finger hold if fingers move
         clearTimeout(twoFingerHoldTimer);
+        clearTimeout(twoFingerAugTimer);
         // Pinch detection
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -6504,27 +6501,10 @@ function playPreviousUserSong() {
     
     function onTouchEnd(e) {
       e.preventDefault();
-      // Clear two-finger hold timer
-      clearTimeout(twoFingerHoldTimer);
       // Clear double-tap-hold if finger lifted
       clearTimeout(doubleTapHoldTimer);
       clearTimeout(longPressTimer);
-      // Three-finger swipe: up = show password, down = hide password
-      if (touchStartTouches === 3) {
-        const touch = e.changedTouches[0];
-        const dy = touch.clientY - touchStartY;
-        const distance = Math.abs(dy);
-        if (distance >= swipeThreshold) {
-          if (dy < 0) {
-            showPasswordOverlay();  // swipe up
-          } else {
-            hidePasswordOverlay();  // swipe down
-          }
-          tapCount = 0;
-          clearTimeout(tapTimer);
-          return;
-        }
-      }
+      // (twoFingerHoldTimer and twoFingerAugTimer removed)
       if (touchStartTouches === 2) {
         // Two-finger drag for next/back
         const touch1 = e.changedTouches[0];
@@ -6542,8 +6522,12 @@ function playPreviousUserSong() {
             }
             updateVisibility();
           } else {
-            // (Vertical two-finger drag no longer triggers password overlay)
-            // (No action needed)
+            // Vertical two-finger drag (down = show password overlay)
+            if (dy > 0) {
+              showPasswordOverlay();
+            } else {
+              // Up swipe, could be ignored or used for something else.
+            }
           }
           tapCount = 0;
           clearTimeout(tapTimer);
