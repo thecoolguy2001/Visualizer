@@ -6436,7 +6436,7 @@ function playPreviousUserSong() {
     const tapMaxDuration = 200;      // Max duration (ms) for a tap
     const tapDelay = 300;            // Time window (ms) to wait for additional taps
     const swipeThreshold = 50;       // Minimum movement (pixels) to be considered a swipe
-    const pinchThreshold = 60;  // Increase so pinch (zoom) is harder to trigger
+    const pinchThreshold = 100;  // Make pinch much harder to trigger
     
     // Initialize touch event listeners (call this after the DOM loads)
     function initTouchControls() {
@@ -6449,7 +6449,7 @@ function playPreviousUserSong() {
     }
     
     function onTouchStart(e) {
-      if (e.target.id === 'passwordInput') return;
+      if (e.target.id === 'passwordInput' || e.target.id === 'passwordSubmit') return;
       e.preventDefault();
       touchStartTime = Date.now();
       touchStartX = e.touches[0].clientX;
@@ -6507,7 +6507,7 @@ function playPreviousUserSong() {
     }
     
     function onTouchEnd(e) {
-      if (e.target.id === 'passwordInput') return;
+      if (e.target.id === 'passwordInput' || e.target.id === 'passwordSubmit') return;
       e.preventDefault();
       // Clear two-finger hold when touch ends
       clearTimeout(twoFingerHoldTimer);
@@ -6516,8 +6516,12 @@ function playPreviousUserSong() {
         // Handle pinch end
         if (pinchActive) {
           pinchActive = false;
-          // Zoom gestures map to 'v' key to toggle/cycle visual mode
-          onKeyDown({ key: 'v', preventDefault: () => {}, stopPropagation: () => {} });
+          // Pinch-in toggles/cycles visual mode; pinch-out only ends it
+          if (pinchDirection === 'in') {
+            onKeyDown({ key: 'v', preventDefault: () => {}, stopPropagation: () => {} });
+          } else if (pinchDirection === 'out' && isCameraMode) {
+            onKeyDown({ key: 'v', preventDefault: () => {}, stopPropagation: () => {} });
+          }
           return;
         }
         // Handle two-finger tap (no pinch, no hold)
