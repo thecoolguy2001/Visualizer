@@ -891,30 +891,20 @@ function hideDspOverlay() {
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
-      // Attempt to find a user library playlist named "Visualizer"
-      let userPlaylists = [];
+      // Fetch and play all songs from the user’s Library
+      let librarySongs = [];
       try {
-        // Fetch up to 100 library playlists
-        const lib = await music.api.library.playlists({ limit: 100 });
-        userPlaylists = lib.data || [];
-      } catch (e) {
-        console.warn('Library playlists fetch failed:', e);
+        const libSongs = await music.api.library.songs({ limit: 100 });
+        librarySongs = libSongs.data || [];
+      } catch (err) {
+        console.warn('Library songs fetch failed:', err);
       }
-      // Debug: print out all playlist names
-      console.log('Fetched user playlists:', userPlaylists.map(p =>
-        p.attributes && p.attributes.name ? p.attributes.name : '(no name)'
-      ));
-      // Look for a playlist titled "Visualizer" (case-insensitive)
-      const vizPl = userPlaylists.find(p =>
-        p.attributes && p.attributes.name &&
-        p.attributes.name.toLowerCase() === 'visualizer'
-      );
-      if (vizPl) {
-        // Use the user's "Visualizer" playlist
-        await music.setQueue({ playlist: vizPl.id });
+      if (librarySongs.length > 0) {
+        const songIds = librarySongs.map(item => item.id);
+        await music.setQueue({ songs: songIds, autoplay: true });
       } else {
-        // Fallback: search for Apple’s “New Music Daily” playlist dynamically
-        console.warn('No "Visualizer" playlist; searching for New Music Daily');
+        // Fallback: search catalog for “New Music Daily”
+        console.warn('No library songs found; searching for New Music Daily');
         const searchRes = await music.api.search('New Music Daily', {
           types: ['playlists'],
           limit: 1
