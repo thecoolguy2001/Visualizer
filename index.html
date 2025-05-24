@@ -909,9 +909,18 @@ function hideDspOverlay() {
         // Use the user's "Visualizer" playlist
         await music.setQueue({ playlist: vizPl.id });
       } else {
-        // Fallback: New Music Daily
-        console.warn('No "Visualizer" playlist; using New Music Daily');
-        await music.setQueue({ playlist: 'pl.u-xxxxxxxxxxxxxxxx' });
+        // Fallback: search for Apple’s “New Music Daily” playlist dynamically
+        console.warn('No "Visualizer" playlist; searching for New Music Daily');
+        const searchRes = await music.api.search('New Music Daily', {
+          types: ['playlists'],
+          limit: 1
+        });
+        const fallbackPl = searchRes.playlists?.data[0];
+        if (fallbackPl && fallbackPl.id) {
+          await music.setQueue({ playlist: fallbackPl.id });
+        } else {
+          console.error('New Music Daily playlist not found');
+        }
       }
 
       // Hook analyser once playback actually starts
