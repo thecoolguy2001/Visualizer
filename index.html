@@ -6436,6 +6436,7 @@ function playPreviousUserSong() {
     const tapMaxDuration = 200;      // Max duration (ms) for a tap
     const tapDelay = 300;            // Time window (ms) to wait for additional taps
     const swipeThreshold = 50;       // Minimum movement (pixels) to be considered a swipe
+    const pinchThreshold = 60;  // Increase so pinch (zoom) is harder to trigger
     
     // Initialize touch event listeners (call this after the DOM loads)
     function initTouchControls() {
@@ -6485,7 +6486,6 @@ function playPreviousUserSong() {
         const pdy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.hypot(pdx, pdy);
         const diff = dist - pinchStartDistance;
-        const pinchThreshold = 30;
         if (Math.abs(diff) > pinchThreshold) {
           // User is pinching
           pinchActive = true;
