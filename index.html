@@ -887,14 +887,16 @@ function hideDspOverlay() {
   
 
   // wire up the Connect/Cancel buttons
-  document.getElementById('connectApple').onclick = async () => {
+      document.getElementById('connectApple').onclick = async () => {
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
       // Fetch the user's most-played (heavy rotation) songs
       const heavy = await music.api.historyHeavyRotation({ limit: 25 });
-      const songIds = heavy.data.map(item => item.id);
-      if (songIds.length === 0) {
+      // Support both array and { data: array } responses
+      const heavyData = Array.isArray(heavy) ? heavy : heavy.data || [];
+      const songIds = heavyData.map(item => item.id);
+      if (!songIds.length) {
         throw new Error('No heavy rotation songs available');
       }
       // Set the playback queue to the user’s heavy-rotation tracks
