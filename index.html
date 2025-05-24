@@ -6420,7 +6420,9 @@ function playPreviousUserSong() {
 
     // Pinch & two-finger gesture tracking
     let touchStartTouches = 0;
-    // Pinch-to-game removed
+    let pinchStartDistance = 0;
+    let pinchActive = false;
+    let pinchDirection = null; // "in" or "out"
     // Two-finger hold for augment
     let twoFingerHoldTimer = null;
     const twoFingerHoldThreshold = 600;  // ms to hold two fingers to trigger augment
@@ -6450,9 +6452,13 @@ function playPreviousUserSong() {
       touchStartY = e.touches[0].clientY;
       touchStartTouches = e.touches.length;
       if (touchStartTouches === 2) {
-        // Pinch-to-game removed
+        // Two-finger start: record pinch baseline and start hold timer
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        pinchStartDistance = Math.hypot(dx, dy);
+        pinchActive = false;
+        pinchDirection = null;
         clearTimeout(longPressTimer);
-        // Start two-finger hold to augment
         twoFingerHoldActive = false;
         twoFingerHoldTimer = setTimeout(() => {
           twoFingerHoldActive = true;
@@ -6471,12 +6477,25 @@ function playPreviousUserSong() {
     
     function onTouchMove(e) {
       if (e.touches.length === 2) {
-        // Cancel one-finger timers
+        // Handle pinch gestures
+        const pdx = e.touches[0].clientX - e.touches[1].clientX;
+        const pdy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(pdx, pdy);
+        const diff = dist - pinchStartDistance;
+        const pinchThreshold = 30;
+        if (Math.abs(diff) > pinchThreshold) {
+          // User is pinching
+          pinchActive = true;
+          pinchDirection = diff > 0 ? 'out' : 'in';
+          // Reset baseline to detect further pinches
+          pinchStartDistance = dist;
+          // Cancel augment hold
+          clearTimeout(twoFingerHoldTimer);
+        }
+        // Cancel timers on any two-finger move
         clearTimeout(longPressTimer);
-        // Cancel two-finger hold if fingers move
         clearTimeout(twoFingerHoldTimer);
         twoFingerHoldActive = false;
-        // Pinch-to-game removed
         return;
       }
       e.preventDefault();
@@ -6491,14 +6510,31 @@ function playPreviousUserSong() {
       clearTimeout(twoFingerHoldTimer);
       clearTimeout(longPressTimer);
       if (touchStartTouches === 2) {
-        // If augment was triggered by two-finger hold, consume the event without swipe logic
+        // Handle pinch end
+        if (pinchActive) {
+          pinchActive = false;
+          // Zoom gestures map to 'v' key to toggle/cycle visual mode
+          onKeyDown({ key: 'v', preventDefault: () => {}, stopPropagation: () => {} });
+          return;
+        }
+        // Handle two-finger tap (no pinch, no hold)
+        const endTime = Date.now();
+        const dt = endTime - touchStartTime;
+        const touch1 = e.changedTouches[0];
+        const touch2 = e.changedTouches[1] || e.changedTouches[0];
+        const mdx = ((touch1.clientX + touch2.clientX)/2) - touchStartX;
+        const mdy = ((touch1.clientY + touch2.clientY)/2) - touchStartY;
+        const mDist = Math.hypot(mdx, mdy);
+        if (!twoFingerHoldActive && dt < tapMaxDuration && mDist < swipeThreshold) {
+          displayInfo();
+          return;
+        }
+        // If augment was triggered, consume event
         if (twoFingerHoldActive) {
           twoFingerHoldActive = false;
           return;
         }
-        // Two-finger drag for next/back
-        const touch1 = e.changedTouches[0];
-        const touch2 = e.changedTouches[1] || e.changedTouches[0];
+        // Two-finger drag for next/back (unchanged)
         const dx = ((touch1.clientX + touch2.clientX) / 2) - touchStartX;
         const dy = ((touch1.clientY + touch2.clientY) / 2) - touchStartY;
         const distance = Math.hypot(dx, dy);
