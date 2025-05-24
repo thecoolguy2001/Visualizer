@@ -6417,12 +6417,15 @@ function playPreviousUserSong() {
     let tapTimer = null;
     let longPressTimer = null;
 
+    // Double-tap-hold for augment
+    let doubleTapHoldTimer = null;
+    const doubleTapHoldThreshold = 600;  // ms to hold after second tap to trigger augment
+
     // Pinch & two-finger gesture tracking
     let touchStartTouches = 0;
     let pinchStartDistance = 0;
     const pinchThreshold = 50;        // Minimum change to register a pinch
-    let twoFingerHoldTimer = null;
-    let twoFingerAugTimer = null;
+    // (twoFingerHoldTimer and twoFingerAugTimer removed)
     
     // Configurable thresholds (in ms and pixels)
     const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
@@ -6447,18 +6450,22 @@ function playPreviousUserSong() {
       touchStartY = e.touches[0].clientY;
       touchStartTouches = e.touches.length;
       if (touchStartTouches === 2) {
-        // Start pinch and two-finger hold tracking
+        // Start pinch tracking for two-finger gestures
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         pinchStartDistance = Math.hypot(dx, dy);
         clearTimeout(longPressTimer);
-        // Two-finger hold → Info, then Augment
-        twoFingerHoldTimer = setTimeout(() => displayInfo(), longPressThreshold);
-        twoFingerAugTimer = setTimeout(() => augmentEffect(), longPressThreshold * 2);
+        // No two-finger hold timers (removed)
         return;
       }
       // Only consider single-finger touches
       if (e.touches.length > 1) return;
+      // If this is the second tap, start the double-tap-hold timer for augment
+      if (tapCount === 1) {
+        doubleTapHoldTimer = setTimeout(() => {
+          augmentEffect();
+        }, doubleTapHoldThreshold);
+      }
       // Start long press timer
       longPressTimer = setTimeout(() => {
         // Long press detected – show the help menu
@@ -6494,9 +6501,10 @@ function playPreviousUserSong() {
     
     function onTouchEnd(e) {
       e.preventDefault();
+      // Clear double-tap-hold if finger lifted
+      clearTimeout(doubleTapHoldTimer);
       clearTimeout(longPressTimer);
-      clearTimeout(twoFingerHoldTimer);
-      clearTimeout(twoFingerAugTimer);
+      // (twoFingerHoldTimer and twoFingerAugTimer removed)
       if (touchStartTouches === 2) {
         // Two-finger drag for next/back
         const touch1 = e.changedTouches[0];
@@ -6506,24 +6514,20 @@ function playPreviousUserSong() {
         const distance = Math.hypot(dx, dy);
         if (distance >= swipeThreshold) {
           if (Math.abs(dx) > Math.abs(dy)) {
-            // Horizontal two-finger drag
-                      // Horizontal two-finger drag → Next/Previous song
-          if (dx < 0) {
-              // Drag left → Next song
+            // Horizontal two-finger drag → Next/Previous song
+            if (dx < 0) {
               playNextSongInPlaylist();
             } else {
-                           // Drag right → Previous song
-                           playPreviousSongInPlaylist();
+              playPreviousSongInPlaylist();
             }
             updateVisibility();
           } else {
-            // Vertical two-finger drag (back)
-            if (dy < 0) {
-              currentModeIndex = (currentModeIndex + 1) % modes.length;
+            // Vertical two-finger drag (down = show password overlay)
+            if (dy > 0) {
+              showPasswordOverlay();
             } else {
-              currentModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
+              // Up swipe, could be ignored or used for something else.
             }
-            switchMode(modes[currentModeIndex]);
           }
           tapCount = 0;
           clearTimeout(tapTimer);
@@ -6591,6 +6595,8 @@ function playPreviousUserSong() {
               audioElement.muted = !audioElement.muted;
               showActionMessage("mute: " + (audioElement.muted ? "on" : "off"));
             }
+            // Clear double-tap-hold timer when tap sequence completes
+            clearTimeout(doubleTapHoldTimer);
             tapCount = 0;
           }, tapDelay);
         }
