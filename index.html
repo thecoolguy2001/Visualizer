@@ -6436,7 +6436,8 @@ function playPreviousUserSong() {
     const tapMaxDuration = 200;      // Max duration (ms) for a tap
     const tapDelay = 300;            // Time window (ms) to wait for additional taps
     const swipeThreshold = 50;       // Minimum movement (pixels) to be considered a swipe
-    const pinchThreshold = 100;  // Make pinch much harder to trigger
+    const pinchThreshold = 150;  // Increase pinch threshold to reduce false positives
+    // A larger threshold prevents minor two-finger movements from being detected as pinch
     
     // Initialize touch event listeners (call this after the DOM loads)
     function initTouchControls() {
