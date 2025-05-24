@@ -6557,20 +6557,19 @@ function playPreviousUserSong() {
       // (Existing swipe and tap logic follows here.)
       if (distance >= swipeThreshold) {
         if (Math.abs(dx) > Math.abs(dy)) {
-          if (dx > 0) {
-            currentStyleIndex = (currentStyleIndex + 1) % visualElements.length;
-          } else {
-            currentStyleIndex = (currentStyleIndex - 1 + visualElements.length) % visualElements.length;
-          }
-          updateVisibility();
+          // Horizontal swipe: delegate to keyboard logic for effects
+          onKeyDown({
+            key: dx > 0 ? 'ArrowRight' : 'ArrowLeft',
+            preventDefault: () => {},
+            stopPropagation: () => {}
+          });
         } else {
-          if (dy < 0) {
-            currentModeIndex = (currentModeIndex + 1) % modes.length;
-            switchMode(modes[currentModeIndex]);
-          } else {
-            currentModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
-            switchMode(modes[currentModeIndex]);
-          }
+          // Vertical swipe: delegate to keyboard logic for modes
+          onKeyDown({
+            key: dy < 0 ? 'ArrowUp' : 'ArrowDown',
+            preventDefault: () => {},
+            stopPropagation: () => {}
+          });
         }
         tapCount = 0;
         clearTimeout(tapTimer);
