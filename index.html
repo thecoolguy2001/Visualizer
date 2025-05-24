@@ -6417,15 +6417,14 @@ function playPreviousUserSong() {
     let tapTimer = null;
     let longPressTimer = null;
 
-    // Double-tap-hold for augment
-    let doubleTapHoldTimer = null;
-    const doubleTapHoldThreshold = 600;  // ms to hold after second tap to trigger augment
 
     // Pinch & two-finger gesture tracking
     let touchStartTouches = 0;
     let pinchStartDistance = 0;
     const pinchThreshold = 50;        // Minimum change to register a pinch
-    // (twoFingerHoldTimer and twoFingerAugTimer removed)
+    // Two-finger hold for augment
+    let twoFingerHoldTimer = null;
+    const twoFingerHoldThreshold = 600;  // ms to hold two fingers to trigger augment
     
     // Configurable thresholds (in ms and pixels)
     const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
@@ -6455,17 +6454,12 @@ function playPreviousUserSong() {
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         pinchStartDistance = Math.hypot(dx, dy);
         clearTimeout(longPressTimer);
-        // No two-finger hold timers (removed)
+        // Start two-finger hold to augment
+        twoFingerHoldTimer = setTimeout(() => augmentEffect(), twoFingerHoldThreshold);
         return;
       }
       // Only consider single-finger touches
       if (e.touches.length > 1) return;
-      // If this is the second tap, start the double-tap-hold timer for augment
-      if (tapCount === 1) {
-        doubleTapHoldTimer = setTimeout(() => {
-          augmentEffect();
-        }, doubleTapHoldThreshold);
-      }
       // Start long press timer
       longPressTimer = setTimeout(() => {
         // Long press detected – show the help menu
@@ -6477,8 +6471,8 @@ function playPreviousUserSong() {
       if (e.touches.length === 2) {
         // Cancel one-finger timers
         clearTimeout(longPressTimer);
+        // Cancel two-finger hold if fingers move
         clearTimeout(twoFingerHoldTimer);
-        clearTimeout(twoFingerAugTimer);
         // Pinch detection
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -6501,10 +6495,9 @@ function playPreviousUserSong() {
     
     function onTouchEnd(e) {
       e.preventDefault();
-      // Clear double-tap-hold if finger lifted
-      clearTimeout(doubleTapHoldTimer);
+      // Clear two-finger hold when touch ends
+      clearTimeout(twoFingerHoldTimer);
       clearTimeout(longPressTimer);
-      // (twoFingerHoldTimer and twoFingerAugTimer removed)
       if (touchStartTouches === 2) {
         // Two-finger drag for next/back
         const touch1 = e.changedTouches[0];
@@ -6522,11 +6515,11 @@ function playPreviousUserSong() {
             }
             updateVisibility();
           } else {
-            // Vertical two-finger drag (down = show password overlay)
-            if (dy > 0) {
+            // Vertical two-finger drag: up → password; down → hide password
+            if (dy < 0) {
               showPasswordOverlay();
-            } else {
-              // Up swipe, could be ignored or used for something else.
+            } else if (dy > 0) {
+              hidePasswordOverlay();
             }
           }
           tapCount = 0;
@@ -6595,8 +6588,6 @@ function playPreviousUserSong() {
               audioElement.muted = !audioElement.muted;
               showActionMessage("mute: " + (audioElement.muted ? "on" : "off"));
             }
-            // Clear double-tap-hold timer when tap sequence completes
-            clearTimeout(doubleTapHoldTimer);
             tapCount = 0;
           }, tapDelay);
         }
