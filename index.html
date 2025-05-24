@@ -900,6 +900,10 @@ function hideDspOverlay() {
       } catch (e) {
         console.warn('Library playlists fetch failed:', e);
       }
+      // Debug: print out all playlist names
+      console.log('Fetched user playlists:', userPlaylists.map(p =>
+        p.attributes && p.attributes.name ? p.attributes.name : '(no name)'
+      ));
       // Look for a playlist titled "Visualizer" (case-insensitive)
       const vizPl = userPlaylists.find(p =>
         p.attributes && p.attributes.name &&
