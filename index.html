@@ -6417,9 +6417,9 @@ function playPreviousUserSong() {
     let tapTimer = null;
     let longPressTimer = null;
 
-    // Double-tap-hold for augment
-    let doubleTapHoldTimer = null;
-    const doubleTapHoldThreshold = 600;  // ms to hold after second tap to trigger augment
+       // Two-finger hold for augment
+       let twoFingerHoldTimer = null;
+    const twoFingerHoldThreshold = 600;  // ms to hold two fingers to trigger augment
 
     // Pinch & two-finger gesture tracking
     let touchStartTouches = 0;
@@ -6455,7 +6455,10 @@ function playPreviousUserSong() {
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         pinchStartDistance = Math.hypot(dx, dy);
         clearTimeout(longPressTimer);
-        // No two-finger hold timers (removed)
+                // Start two-finger hold timer for augment
+        twoFingerHoldTimer = setTimeout(() => {
+          augmentEffect();
+        }, twoFingerHoldThreshold);
         return;
       }
       // Only consider single-finger touches
@@ -6501,7 +6504,8 @@ function playPreviousUserSong() {
     
     function onTouchEnd(e) {
       e.preventDefault();
-      // Clear double-tap-hold if finger lifted
+            // Clear two-finger hold timer
+      clearTimeout(twoFingerHoldTimer);
       clearTimeout(doubleTapHoldTimer);
       clearTimeout(longPressTimer);
       // (twoFingerHoldTimer and twoFingerAugTimer removed)
