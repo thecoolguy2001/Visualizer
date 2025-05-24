@@ -891,20 +891,27 @@ function hideDspOverlay() {
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
-      // Attempt to fetch the user's most-played (heavy rotation) songs
-      let heavyData = [];
+      // Try heavy rotation first, then recently played if unavailable
+      let appleData = [];
       try {
         const heavy = await music.api.historyHeavyRotation({ limit: 25 });
-        heavyData = Array.isArray(heavy) ? heavy : (heavy.data || []);
+        appleData = Array.isArray(heavy) ? heavy : (heavy.data || []);
       } catch (err) {
         console.warn('Heavy rotation fetch failed:', err);
       }
-      if (heavyData.length > 0) {
-        const songIds = heavyData.map(item => item.id);
+      if (!appleData.length) {
+        try {
+          const recent = await music.api.historyRecentlyPlayed({ limit: 25 });
+          appleData = Array.isArray(recent) ? recent : (recent.data || []);
+        } catch (err) {
+          console.warn('Recently played fetch failed:', err);
+        }
+      }
+      if (appleData.length > 0) {
+        const songIds = appleData.map(item => item.id);
         await music.setQueue({ songs: songIds, autoplay: true });
       } else {
-        console.warn('No heavy rotation data available, falling back to default playlist');
-        // Fallback: use a default Apple-curated playlist
+        console.warn('No user history available, falling back to default playlist');
         await music.setQueue({ playlist: 'pl.u-xxxxxxxxxxxxxxxx' });
       }
 
