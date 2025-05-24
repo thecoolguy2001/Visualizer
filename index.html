@@ -473,30 +473,7 @@ let currentUserSongIndex = 0;
 
     // If true, each effect uses the camera feed as input
     
-    // --- Swipe cycling helpers for mobile ---
-    // Cycle modes, skipping DSP when unauthorized
-    function cycleMode(delta) {
-      let idx = currentModeIndex;
-      const len = modes.length;
-      do {
-        idx = (idx + delta + len) % len;
-      } while (!isAuthorized && modes[idx] === 'dsp');
-      currentModeIndex = idx;
-      switchMode(modes[idx]);
-    }
-
-    // Cycle effects, skipping last ten when unauthorized
-    function cycleEffect(delta) {
-      const total = visualElements.length;
-      const allowed = [];
-      for (let i = 0; i < total; i++) {
-        if (isAuthorized || i < total - 10) allowed.push(i);
-      }
-      const pos = allowed.indexOf(currentStyleIndex);
-      const nextPos = (pos + (delta > 0 ? 1 : -1) + allowed.length) % allowed.length;
-      currentStyleIndex = allowed[nextPos];
-      updateVisibility();
-    }
+    
 function hideDspOverlay() {
   const dsp = document.getElementById('dspOverlay');
   if (dsp) {
@@ -558,27 +535,6 @@ function hideDspOverlay() {
         window.addEventListener('resize', onWindowResize, false);
         document.body.addEventListener('keydown', onKeyDown, false);
             
-        // --- Mobile swipe gesture handling ---
-        let touchStartX = 0, touchStartY = 0;
-        document.body.addEventListener('touchstart', function(e) {
-          if (e.touches.length === 1) {
-            touchStartX = e.touches[0].clientX;
-            touchStartY = e.touches[0].clientY;
-          }
-        });
-        document.body.addEventListener('touchend', function(e) {
-          if (e.changedTouches.length === 1) {
-            const dx = e.changedTouches[0].clientX - touchStartX;
-            const dy = e.changedTouches[0].clientY - touchStartY;
-            if (Math.abs(dx) > Math.abs(dy)) {
-              // horizontal swipe: effects
-              cycleEffect(dx > 0 ? 1 : -1);
-            } else {
-              // vertical swipe: modes
-              cycleMode(dy < 0 ? 1 : -1);
-            }
-          }
-        });
         // Update the info message text based on whether it's mobile or not
         const info = document.getElementById('info');
   if (info) {
