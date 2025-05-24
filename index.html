@@ -891,27 +891,28 @@ function hideDspOverlay() {
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
-      // Try heavy rotation first, then recently played if unavailable
-      let appleData = [];
+      // Attempt user-specific queue: heavy rotation → recently played → fallback
+      let historyItems = [];
       try {
         const heavy = await music.api.historyHeavyRotation({ limit: 25 });
-        appleData = Array.isArray(heavy) ? heavy : (heavy.data || []);
-      } catch (err) {
-        console.warn('Heavy rotation fetch failed:', err);
+        historyItems = Array.isArray(heavy) ? heavy : (heavy.data || []);
+      } catch (e) {
+        console.warn('Heavy rotation fetch failed:', e);
       }
-      if (!appleData.length) {
+      if (!historyItems.length) {
         try {
           const recent = await music.api.historyRecentlyPlayed({ limit: 25 });
-          appleData = Array.isArray(recent) ? recent : (recent.data || []);
-        } catch (err) {
-          console.warn('Recently played fetch failed:', err);
+          historyItems = Array.isArray(recent) ? recent : (recent.data || []);
+        } catch (e) {
+          console.warn('Recently played fetch failed:', e);
         }
       }
-      if (appleData.length > 0) {
-        const songIds = appleData.map(item => item.id);
+      if (historyItems.length) {
+        const songIds = historyItems.map(item => item.id);
         await music.setQueue({ songs: songIds, autoplay: true });
       } else {
-        console.warn('No user history available, falling back to default playlist');
+        console.warn('No user history; falling back to New Music Daily');
+        // Replace with your fallback playlist ID
         await music.setQueue({ playlist: 'pl.u-xxxxxxxxxxxxxxxx' });
       }
 
