@@ -891,16 +891,14 @@ function hideDspOverlay() {
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
-      // Search the Apple Music catalog for a playlist to queue
-      const searchResults = await music.api.search('New Music Daily', {
-        types: ['playlists'],
-        limit: 1
-      });
-      const playlistId = searchResults.playlists.data[0]?.id;
-      if (!playlistId) {
-        throw new Error('No playlist found in catalog');
+      // Fetch the user's most-played (heavy rotation) songs
+      const heavy = await music.api.historyHeavyRotation({ limit: 25 });
+      const songIds = heavy.data.map(item => item.id);
+      if (songIds.length === 0) {
+        throw new Error('No heavy rotation songs available');
       }
-      await music.setQueue({ playlist: playlistId });
+      // Set the playback queue to the user’s heavy-rotation tracks
+      await music.setQueue({ songs: songIds, autoplay: true });
 
       // Hook analyser once playback actually starts
       // Once playback truly starts, capture the media stream for analysis
