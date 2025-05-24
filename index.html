@@ -891,28 +891,26 @@ function hideDspOverlay() {
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
-      // Attempt user-specific queue: heavy rotation → recently played → fallback
-      let historyItems = [];
+      // Attempt to find a user library playlist named "Visualizer"
+      let userPlaylists = [];
       try {
-        const heavy = await music.api.historyHeavyRotation({ limit: 25 });
-        historyItems = Array.isArray(heavy) ? heavy : (heavy.data || []);
+        // Fetch up to 100 library playlists
+        const lib = await music.api.library.playlists({ limit: 100 });
+        userPlaylists = lib.data || [];
       } catch (e) {
-        console.warn('Heavy rotation fetch failed:', e);
+        console.warn('Library playlists fetch failed:', e);
       }
-      if (!historyItems.length) {
-        try {
-          const recent = await music.api.historyRecentlyPlayed({ limit: 25 });
-          historyItems = Array.isArray(recent) ? recent : (recent.data || []);
-        } catch (e) {
-          console.warn('Recently played fetch failed:', e);
-        }
-      }
-      if (historyItems.length) {
-        const songIds = historyItems.map(item => item.id);
-        await music.setQueue({ songs: songIds, autoplay: true });
+      // Look for a playlist titled "Visualizer" (case-insensitive)
+      const vizPl = userPlaylists.find(p =>
+        p.attributes && p.attributes.name &&
+        p.attributes.name.toLowerCase() === 'visualizer'
+      );
+      if (vizPl) {
+        // Use the user's "Visualizer" playlist
+        await music.setQueue({ playlist: vizPl.id });
       } else {
-        console.warn('No user history; falling back to New Music Daily');
-        // Replace with your fallback playlist ID
+        // Fallback: New Music Daily
+        console.warn('No "Visualizer" playlist; using New Music Daily');
         await music.setQueue({ playlist: 'pl.u-xxxxxxxxxxxxxxxx' });
       }
 
