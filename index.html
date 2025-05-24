@@ -6409,24 +6409,23 @@ function playPreviousUserSong() {
     }
   });
 }   
-// --- Touch control variables ---
-let touchStartX = 0;
-let touchStartY = 0;
-let touchStartTime = 0;
-let tapCount = 0;
-let tapTimer = null;
-let longPressTimer = null;
+    // --- Touch control variables ---
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    let tapCount = 0;
+    let tapTimer = null;
+    let longPressTimer = null;
 
+    // Two-finger hold for augment
+    let twoFingerHoldTimer = null;
+    const twoFingerHoldThreshold = 600;  // ms to hold two fingers to trigger augment
 
-// Two-finger hold for augment
-let twoFingerHoldTimer = null;
-const twoFingerHoldThreshold = 600;  // ms to hold two fingers to trigger augment
-
-// Pinch & two-finger gesture tracking
-let touchStartTouches = 0;
-let pinchStartDistance = 0;
-const pinchThreshold = 50;        // Minimum change to register a pinch
-// (twoFingerHoldTimer and twoFingerAugTimer removed)
+    // Pinch & two-finger gesture tracking
+    let touchStartTouches = 0;
+    let pinchStartDistance = 0;
+    const pinchThreshold = 50;        // Minimum change to register a pinch
+    // (twoFingerHoldTimer and twoFingerAugTimer removed)
     
     // Configurable thresholds (in ms and pixels)
     const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
@@ -6475,11 +6474,9 @@ const pinchThreshold = 50;        // Minimum change to register a pinch
         // Long press detected – show the help menu
         toggleHelpOverlay();
       }, longPressThreshold);
-      
     }
     
     function onTouchMove(e) {
-     
       if (e.touches.length === 2) {
         // Cancel one-finger timers
         clearTimeout(longPressTimer);
@@ -6489,8 +6486,11 @@ const pinchThreshold = 50;        // Minimum change to register a pinch
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.hypot(dx, dy);
-        // Remove pinch out → Game mode (only keep pinch in → Visual mode)
-        if (pinchStartDistance - dist > pinchThreshold) {
+        if (dist - pinchStartDistance > pinchThreshold) {
+          // Pinch out → Game mode
+          switchMode('gameMode');  
+          pinchStartDistance = dist;
+        } else if (pinchStartDistance - dist > pinchThreshold) {
           // Pinch in → Visual mode
           toggleCameraBackground();
           pinchStartDistance = dist;
@@ -6504,12 +6504,27 @@ const pinchThreshold = 50;        // Minimum change to register a pinch
     
     function onTouchEnd(e) {
       e.preventDefault();
-      
       // Clear two-finger hold timer
       clearTimeout(twoFingerHoldTimer);
       // Clear double-tap-hold if finger lifted
       clearTimeout(doubleTapHoldTimer);
       clearTimeout(longPressTimer);
+      // Three-finger swipe: up = show password, down = hide password
+      if (touchStartTouches === 3) {
+        const touch = e.changedTouches[0];
+        const dy = touch.clientY - touchStartY;
+        const distance = Math.abs(dy);
+        if (distance >= swipeThreshold) {
+          if (dy < 0) {
+            showPasswordOverlay();  // swipe up
+          } else {
+            hidePasswordOverlay();  // swipe down
+          }
+          tapCount = 0;
+          clearTimeout(tapTimer);
+          return;
+        }
+      }
       if (touchStartTouches === 2) {
         // Two-finger drag for next/back
         const touch1 = e.changedTouches[0];
