@@ -894,50 +894,16 @@ function hideDspOverlay() {
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
-      // 1) Try to queue a library playlist named "Visualizer"
-      let lib = [];
-      try {
-        const res = await music.api.library.playlists({ limit: 100 });
-        lib = res.data || [];
-      } catch (e) {
-        console.warn('Library playlists fetch failed:', e);
-      }
-      const vizPl = lib.find(p =>
-        p.attributes?.name?.toLowerCase() === 'visualizer'
-      );
-      if (vizPl) {
-        await music.setQueue({ playlist: vizPl.id });
+      // Always queue Apple’s “New Music Daily” playlist
+      const searchRes = await music.api.search('New Music Daily', {
+        types: ['playlists'],
+        limit: 1
+      });
+      const daily = searchRes.playlists?.data[0];
+      if (daily?.id) {
+        await music.setQueue({ playlist: daily.id, autoplay: true });
       } else {
-        // 2) Try heavy-rotation history
-        let items = [];
-        try {
-          const heavy = await music.api.historyHeavyRotation({ limit: 25 });
-          items = Array.isArray(heavy) ? heavy : (heavy.data || []);
-        } catch (_) {}
-        // 3) If none, try recently played
-        if (!items.length) {
-          try {
-            const recent = await music.api.historyRecentlyPlayed({ limit: 25 });
-            items = Array.isArray(recent) ? recent : (recent.data || []);
-          } catch (_) {}
-        }
-        if (items.length) {
-          const ids = items.map(i => i.id);
-          await music.setQueue({ songs: ids, autoplay: true });
-        } else {
-          // 4) Fallback to New Music Daily via catalog search
-          console.warn('No user history; searching for New Music Daily');
-          const searchRes = await music.api.search('New Music Daily', {
-            types: ['playlists'],
-            limit: 1
-          });
-          const fallback = searchRes.playlists?.data[0];
-          if (fallback?.id) {
-            await music.setQueue({ playlist: fallback.id });
-          } else {
-            console.error('New Music Daily not found');
-          }
-        }
+        console.error('New Music Daily playlist not found');
       }
       // Hook analyser once playback actually starts
       music.addEventListener('playbackStateDidChange', event => {
