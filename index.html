@@ -894,16 +894,50 @@ function hideDspOverlay() {
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
-      // Always queue Apple’s “New Music Daily” playlist
-      const searchRes = await music.api.search('New Music Daily', {
-        types: ['playlists'],
-        limit: 1
-      });
-      const daily = searchRes.playlists?.data[0];
-      if (daily?.id) {
-        await music.setQueue({ playlist: daily.id, autoplay: true });
+      // 1) Debug: log library playlists
+      let libraryPlaylists = [];
+      try {
+        const libRes = await music.api.library.playlists({ limit: 100 });
+        libraryPlaylists = libRes.data || [];
+      } catch (err) {
+        console.warn('Library playlists fetch error:', err);
+      }
+      console.log('Library playlists:', libraryPlaylists);
+
+      // 2) Look for a "Visualizer" playlist
+      const vizPl = libraryPlaylists.find(p =>
+        p.attributes?.name?.toLowerCase() === 'visualizer'
+      );
+      if (vizPl) {
+        await music.setQueue({ playlist: vizPl.id, autoplay: true });
       } else {
-        console.error('New Music Daily playlist not found');
+        // 3) Debug: log recently played history
+        let recentTracks = [];
+        try {
+          const recentRes = await music.api.historyRecentlyPlayed({ limit: 25 });
+          recentTracks = Array.isArray(recentRes) ? recentRes : (recentRes.data || []);
+        } catch (err) {
+          console.warn('Recently played fetch error:', err);
+        }
+        console.log('Recently played tracks:', recentTracks);
+
+        if (recentTracks.length) {
+          const trackIds = recentTracks.map(item => item.id);
+          await music.setQueue({ songs: trackIds, autoplay: true });
+        } else {
+          // 4) Fallback: search for New Music Daily
+          console.warn('No user data; searching for New Music Daily');
+          const searchRes = await music.api.search('New Music Daily', {
+            types: ['playlists'],
+            limit: 1
+          });
+          const dailyPl = searchRes.playlists?.data[0];
+          if (dailyPl?.id) {
+            await music.setQueue({ playlist: dailyPl.id, autoplay: true });
+          } else {
+            console.error('New Music Daily playlist not found');
+          }
+        }
       }
       // Hook analyser once playback actually starts
       music.addEventListener('playbackStateDidChange', event => {
