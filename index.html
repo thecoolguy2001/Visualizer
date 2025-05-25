@@ -914,10 +914,16 @@ function hideDspOverlay() {
         // 3) Debug: log recently played history
         let recentTracks = [];
         try {
-          const recentRes = await music.api.recentPlayed({ limit: 25 });
+          const recentRes = await music.api.recentPlayed({ limit: 25, offset: 0 });
           recentTracks = Array.isArray(recentRes) ? recentRes : (recentRes.data || []);
         } catch (err) {
-          console.warn('Recently played fetch error:', err);
+          if (err && err.code === 'CONTENT_UNAVAILABLE') {
+            console.warn('No recently played history (CONTENT_UNAVAILABLE)');
+          } else {
+            console.warn('Recently played fetch error:', err);
+          }
+          // Ensure we treat errors as empty data
+          recentTracks = [];
         }
         console.log('Recently played tracks:', recentTracks);
 
