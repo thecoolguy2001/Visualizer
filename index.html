@@ -914,7 +914,7 @@ function hideDspOverlay() {
         // 3) Debug: log recently played history
         let recentTracks = [];
         try {
-          const recentRes = await music.api.recentlyPlayed({ limit: 25 });
+          const recentRes = await music.api.recentPlayed({ limit: 25 });
           recentTracks = Array.isArray(recentRes) ? recentRes : (recentRes.data || []);
         } catch (err) {
           console.warn('Recently played fetch error:', err);
