@@ -891,6 +891,14 @@ function hideDspOverlay() {
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
+      // Debug: log user token and library contents
+      console.log('MusicKit userToken:', music.userToken);
+      music.api.library.playlists({ limit: 5 })
+        .then(res => console.log('Library playlists (up to 5):', res.data))
+        .catch(err => console.error('Library playlists error:', err));
+      music.api.library.songs({ limit: 5 })
+        .then(res => console.log('Library songs (up to 5):', res.data))
+        .catch(err => console.error('Library songs error:', err));
       // Fetch and play all songs from the user’s Library
       let librarySongs = [];
       try {
