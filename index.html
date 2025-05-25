@@ -418,7 +418,8 @@ body.authorized .restricted {
         console.warn('initAppleMusic error:', err);
       }
     }
-    initAppleMusic();
+    // Begin Apple Music initialization and capture its promise
+    const appleInitPromise = initAppleMusic();
 
     // Initialize SoundCloud SDK safely
     (async () => {
@@ -888,6 +889,8 @@ function hideDspOverlay() {
 
   // wire up the Connect/Cancel buttons
       document.getElementById('connectApple').onclick = async () => {
+    // Wait for MusicKit to be fully configured before authorizing
+    await appleInitPromise;
     try {
       const music = MusicKit.getInstance();
       await music.authorize();
@@ -899,29 +902,52 @@ function hideDspOverlay() {
       music.api.library.songs({ limit: 5 })
         .then(res => console.log('Library songs (up to 5):', res.data))
         .catch(err => console.error('Library songs error:', err));
-      // Fetch and play all songs from the user’s Library
-      let librarySongs = [];
+      // Attempt to queue a user library playlist named "Visualizer"
+      let userPlaylists = [];
       try {
-        const libSongs = await music.api.library.songs({ limit: 100 });
-        librarySongs = libSongs.data || [];
-      } catch (err) {
-        console.warn('Library songs fetch failed:', err);
+        const lib = await music.api.library.playlists({ limit: 100 });
+        userPlaylists = lib.data || [];
+      } catch (e) {
+        console.warn('Library playlists fetch failed:', e);
       }
-      if (librarySongs.length > 0) {
-        const songIds = librarySongs.map(item => item.id);
-        await music.setQueue({ songs: songIds, autoplay: true });
+      const vizPl = userPlaylists.find(p =>
+        p.attributes?.name?.toLowerCase() === 'visualizer'
+      );
+      if (vizPl) {
+        // Use the user's "Visualizer" playlist if found
+        await music.setQueue({ playlist: vizPl.id });
       } else {
-        // Fallback: search catalog for “New Music Daily”
-        console.warn('No library songs found; searching for New Music Daily');
-        const searchRes = await music.api.search('New Music Daily', {
-          types: ['playlists'],
-          limit: 1
-        });
-        const fallbackPl = searchRes.playlists?.data[0];
-        if (fallbackPl && fallbackPl.id) {
-          await music.setQueue({ playlist: fallbackPl.id });
+        // Fallback: try heavy rotation, then recently played, then New Music Daily
+        let historyItems = [];
+        try {
+          const heavy = await music.api.historyHeavyRotation({ limit: 25 });
+          historyItems = Array.isArray(heavy) ? heavy : (heavy.data || []);
+        } catch (err) {
+          console.warn('Heavy rotation fetch failed:', err);
+        }
+        if (!historyItems.length) {
+          try {
+            const recent = await music.api.historyRecentlyPlayed({ limit: 25 });
+            historyItems = Array.isArray(recent) ? recent : (recent.data || []);
+          } catch (err) {
+            console.warn('Recently played fetch failed:', err);
+          }
+        }
+        if (historyItems.length) {
+          const songIds = historyItems.map(item => item.id);
+          await music.setQueue({ songs: songIds, autoplay: true });
         } else {
-          console.error('New Music Daily playlist not found');
+          console.warn('No user history; searching for New Music Daily');
+          const searchRes = await music.api.search('New Music Daily', {
+            types: ['playlists'],
+            limit: 1
+          });
+          const fallbackPl = searchRes.playlists?.data[0];
+          if (fallbackPl?.id) {
+            await music.setQueue({ playlist: fallbackPl.id });
+          } else {
+            console.error('New Music Daily playlist not found');
+          }
         }
       }
 
