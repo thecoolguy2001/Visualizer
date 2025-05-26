@@ -916,6 +916,8 @@ function hideDspOverlay() {
         try {
           const recentRes = await music.api.recentPlayed({ limit: 25, offset: 0 });
           recentTracks = Array.isArray(recentRes) ? recentRes : (recentRes.data || []);
+          // Filter to only include actual songs
+          recentTracks = recentTracks.filter(item => item.type === 'songs');
         } catch (err) {
           if (err && err.code === 'CONTENT_UNAVAILABLE') {
             console.warn('No recently played history (CONTENT_UNAVAILABLE)');
