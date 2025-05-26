@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta charset="UTF-8">
   <title>Visualizer</title>
@@ -25,49 +26,81 @@
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
   <script src="https://connect.soundcloud.com/sdk/sdk-3.3.2.js"></script>
   <style>
-  /* Password overlay styling with animated show/hide */
+  /* Password overlay: sleek Apple Vision Pro style */
   #passwordOverlay {
     position: absolute;
     top: 50%;
     left: 50%;
-    /* Start slightly lower for animation */
+    /* start slightly lower for animation */
     transform: translate(-50%, -40%);
-    width: 300px;
-    background-color: rgba(0, 0, 0, 0.9);
-    color: white;
-    font-family: Arial, sans-serif;
-    border: 2px solid grey;
-    border-radius: 8px;
-    padding: 20px;
+    width: 280px;
+    max-width: 90%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(30px);
+    border-radius: 24px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+    color: #fff;
+    font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    padding: 16px;
     text-align: center;
     display: none;
     opacity: 0;
+    /* Keep the existing animation timing */
     transition: opacity 0.5s ease, transform 0.5s ease;
     z-index: 10001;
   }
   #passwordOverlay.show {
     display: block;
-    /* Final centered position */
+    /* final centered position */
     transform: translate(-50%, -50%);
     opacity: 1;
   }
+  /* Apple‐style Vision Pro input */
   #passwordOverlay input {
     width: 100%;
-    padding: 8px;
-    margin: 10px 0;
+    padding: 12px;
+    margin: 8px 0;
     box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    color: #fff;
+    font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    outline: none;
+    backdrop-filter: blur(10px);
+    transition: background 0.3s ease, border-color 0.3s ease;
   }
+  #passwordOverlay input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+  }
+  #passwordOverlay input:focus {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.8);
+  }
+  /* Apple‐style Vision Pro submit button */
   #passwordOverlay button {
-    display: block;
     width: 100%;
-    padding: 10px;
-    margin-top: 10px;
-    background-color: rgba(0,0,0,0.8);
-    border: 2px solid grey;
-    border-radius: 8px;
-    color: white;
+    padding: 12px;
+    margin-top: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 12px;
+    color: #fff;
+    font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
     cursor: pointer;
-    font-family: Arial, sans-serif;
+    backdrop-filter: blur(10px);
+    transition: background 0.3s ease, border-color 0.3s ease;
+  }
+  #passwordOverlay button:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.6);
+  }
+  #passwordOverlay button:active {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.8);
   }
   #passwordOverlay #passwordError {
     color: red;
@@ -152,32 +185,35 @@ body.authorized .restricted {
     transition: opacity 1s;
   }   
   
-  #helpOverlay {  
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  /* Initial transform offset: starts 10px lower than centered */
-  transform: translate(-50%, -40%);
-  width: 300px; /* or auto if you prefer */
-  background-color: rgba(0, 0, 0, 0.8);
-  color: white;
-  font-family: Arial, sans-serif;
-  border: 2px solid grey;
-  border-radius: 8px;
-  padding: 20px;
-  opacity: 0;  /* start hidden */
-  transition: opacity 0.5s ease, transform 0.5s ease;
-  z-index: 9999; /* on top of other overlays */
-  display: none;  /* keep hidden by default */
-}
+  /* Help overlay: sleek Apple Vision Pro style, matching password menu */
+  #helpOverlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* start slightly lower for animation */
+    transform: translate(-50%, -40%);
+    width: 280px;
+    max-width: 90%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(30px);
+    border-radius: 24px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+    color: #fff;
+    font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    padding: 16px;
+    text-align: left;
+    display: none;
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    z-index: 10000;
+  }
 
-/* When the overlay should be visible, add the "show" class */
-#helpOverlay.show {
-  display: block;   /* ensure it's in the document flow */
-  opacity: 1;
-  /* Raise up to centered position */
-  transform: translate(-50%, -50%);
-}
+  #helpOverlay.show {
+    display: block;
+    /* final centered position */
+    transform: translate(-50%, -50%);
+    opacity: 1;
+  }
   
   #helpOverlay h2,
   #helpOverlay ul {
@@ -187,7 +223,7 @@ body.authorized .restricted {
   
   #helpOverlay ul {
     list-style-type: none;
-    margin-top: 10px;
+    margin-top: 20px;
   }   
   
   #helpOverlay li {
@@ -213,85 +249,71 @@ body.authorized .restricted {
   position: absolute;
   top: 50%;
   left: 50%;
+  /* start slightly lower for animation */
   transform: translate(-50%, -40%);
-  width: 300px;
-  background-color: rgba(0,0,0,0.9);
-  color: white;
-  font-family: Arial, sans-serif;
-  border: 2px solid grey;
-  border-radius: 8px;
-  padding: 20px;
+  width: 280px;
+  max-width: 90%;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(30px);
+  border-radius: 24px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  color: #fff;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  padding: 16px;
+  text-align: center;
+  display: none;
   opacity: 0;
   transition: opacity 0.5s ease, transform 0.5s ease;
   z-index: 10000;
-  display: none;
-  font-size: 1em;
 }
 #dspOverlay.show {
   display: block;
-  opacity: 1;
+  /* final centered position */
   transform: translate(-50%, -50%);
-  pointer-events: auto;
+  opacity: 1;
 }
-#dspOverlay label {
-  display: block;
-  margin-bottom: 10px;
-}
-#dspOverlay input {
+
+/* DSP overlay buttons: Apple Vision Pro style */
+#dspOverlay button {
   width: 100%;
-  padding: 5px;
-  margin-top: 4px;
-  box-sizing: border-box;
+  padding: 12px;
+  margin: 8px 0;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 12px;
+  color: #fff;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: background 0.3s ease, border-color 0.3s ease;
 }
-  #dspOverlay button {
-    display: block;
-    width: 100%;
-    padding: 10px 20px;
-    margin: 8px 0;
-    background-color: rgba(0, 0, 0, 0.8);
-    border: 2px solid grey;
-    border-radius: 8px;
-    color: white;
-    font-family: Arial, sans-serif;
-    font-size: 16px;
-    cursor: pointer;
-  }
+#dspOverlay button:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+#dspOverlay button:active {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.8);
+}
 
-  /* Ensure cancel is on top of the Apple Music button */
-  #dspOverlay.show #dspCancel {
-    position: relative;
-    z-index: 2;
-  }
-  #dspOverlay.show #connectApple {
-    position: relative;
-    z-index: 1;
-    width: 100%;
-    min-height: 44px;
-    margin: 8px 0;
-  }
-
-  /* Re-enable taps only on the connect & cancel buttons */
-  #dspOverlay.show #connectApple,
-  #dspOverlay.show #dspCancel {
-    pointer-events: auto;
-  }
-
-/* Creator Modal animation */
+  /* Creator Modal: sleek Apple Vision Pro style */
   #creatorModal {
     position: fixed;
     top: 50%;
     left: 50%;
-    transform: translate(0%, 0%);
+    display: none;
     opacity: 0;
     transition: opacity 0.5s ease, transform 0.5s ease;
-    display: none;
     z-index: 10000;
     overflow: auto;
   }
   #creatorModal.show {
     display: block;
-    opacity: 1;
+    /* final centered position */
     transform: translate(0%, -3%);
+    opacity: 1;
   }
 
 
