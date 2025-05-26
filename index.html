@@ -25,12 +25,13 @@
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
   <script src="https://connect.soundcloud.com/sdk/sdk-3.3.2.js"></script>
   <style>
-  /* Password overlay styling */
+  /* Password overlay styling with animated show/hide */
   #passwordOverlay {
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
+    /* Start slightly lower for animation */
+    transform: translate(-50%, -40%);
     width: 300px;
     background-color: rgba(0, 0, 0, 0.9);
     color: white;
@@ -40,10 +41,15 @@
     padding: 20px;
     text-align: center;
     display: none;
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.5s ease;
     z-index: 10001;
   }
   #passwordOverlay.show {
     display: block;
+    /* Final centered position */
+    transform: translate(-50%, -50%);
+    opacity: 1;
   }
   #passwordOverlay input {
     width: 100%;
@@ -370,12 +376,25 @@ body.authorized .restricted {
     // Password protection
     let isAuthorized = false;
     function showPasswordOverlay() {
+      const overlay = document.getElementById('passwordOverlay');
       document.getElementById('passwordError').style.display = 'none';
-      document.getElementById('passwordOverlay').classList.add('show');
+      // Prepare for animation
+      overlay.style.display = 'block';
+      // Force reflow to ensure the transition will run
+      void overlay.offsetWidth;
+      overlay.classList.add('show');
     }
     function hidePasswordOverlay() {
-      document.getElementById('passwordOverlay').classList.remove('show');
-      document.getElementById('passwordInput').value = '';
+      const overlay = document.getElementById('passwordOverlay');
+      // Start hide transition
+      overlay.classList.remove('show');
+      // After transition ends, hide completely and clear input
+      const onEnd = () => {
+        overlay.style.display = 'none';
+        document.getElementById('passwordInput').value = '';
+        overlay.removeEventListener('transitionend', onEnd);
+      };
+      overlay.addEventListener('transitionend', onEnd);
     }
     document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('passwordSubmit').addEventListener('click', async () => {
