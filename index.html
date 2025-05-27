@@ -6641,11 +6641,8 @@ function playPreviousUserSong() {
     const tapMaxDuration = 200;      // Max duration (ms) for a tap
     const tapDelay = 300;            // Time window (ms) to wait for additional taps
     const swipeThreshold = 50;       // Minimum movement (pixels) to be considered a swipe
-    const pinchThreshold = 150;      // Increase pinch threshold to reduce false positives
-    // Two-finger gesture thresholds
-    const twoFingerTapMaxDuration = 300;  // Max duration for two-finger tap (more lenient)
-    const twoFingerDragThreshold = 80;    // Higher threshold for two-finger drag to avoid accidental triggers
-    const twoFingerTapMaxMovement = 25;   // Max movement allowed for two-finger tap
+    const pinchThreshold = 150;  // Increase pinch threshold to reduce false positives
+    // A larger threshold prevents minor two-finger movements from being detected as pinch
     
     // Initialize touch event listeners (call this after the DOM loads)
     function initTouchControls() {
@@ -6783,51 +6780,45 @@ function playPreviousUserSong() {
           return;
         }
         
-        // Calculate movement and duration for two-finger gesture classification
+        // Handle two-finger tap vs drag with better detection
         const endTime = Date.now();
         const dt = endTime - touchStartTime;
         const touch1 = e.changedTouches[0];
         const touch2 = e.changedTouches[1] || e.changedTouches[0];
         
-        // Calculate average movement of both fingers
-        const avgX = (touch1.clientX + touch2.clientX) / 2;
-        const avgY = (touch1.clientY + touch2.clientY) / 2;
-        const avgMovement = Math.hypot(avgX - touchStartX, avgY - touchStartY);
+        // Calculate movement from initial touch positions
+        const dx = ((touch1.clientX + touch2.clientX) / 2) - touchStartX;
+        const dy = ((touch1.clientY + touch2.clientY) / 2) - touchStartY;
+        const distance = Math.hypot(dx, dy);
         
-        // Calculate individual finger movements for more accurate detection
-        const finger1Movement = twoFingerStartPositions.length > 0 ? 
-          Math.hypot(touch1.clientX - twoFingerStartPositions[0].x, touch1.clientY - twoFingerStartPositions[0].y) : avgMovement;
-        const finger2Movement = twoFingerStartPositions.length > 1 ? 
-          Math.hypot(touch2.clientX - twoFingerStartPositions[1].x, touch2.clientY - twoFingerStartPositions[1].y) : avgMovement;
-        const maxFingerMovement = Math.max(finger1Movement, finger2Movement);
+        // Stricter tap detection: shorter duration and less movement allowed
+        const tapDurationThreshold = 150; // Shorter than tapMaxDuration for two-finger taps
+        const tapMovementThreshold = 25;  // Smaller than swipeThreshold for taps
         
-        console.log(`Two-finger gesture: duration=${dt}ms, avgMovement=${avgMovement.toFixed(1)}px, maxFingerMovement=${maxFingerMovement.toFixed(1)}px`);
-        
-        // Prioritize two-finger tap detection (stricter criteria)
-        if (dt <= twoFingerTapMaxDuration && maxFingerMovement <= twoFingerTapMaxMovement) {
+        if (dt < tapDurationThreshold && distance < tapMovementThreshold) {
           console.log('Two-finger tap detected - showing info');
           displayInfo();
           return;
         }
         
-        // Two-finger drag detection (requires more significant movement)
-        if (avgMovement >= twoFingerDragThreshold) {
-          const dx = avgX - touchStartX;
-          const dy = avgY - touchStartY;
-          
+        // For drag detection, require more significant movement and longer duration
+        const dragMinDuration = 100; // Minimum time to be considered a drag
+        const dragMinDistance = 60;  // Larger threshold for intentional drags
+        
+        if (dt >= dragMinDuration && distance >= dragMinDistance) {
+          console.log('Two-finger drag detected, distance:', distance);
           if (Math.abs(dx) > Math.abs(dy)) {
             // Horizontal two-finger drag → Next/Previous song
-            console.log(`Two-finger horizontal drag detected: dx=${dx.toFixed(1)}px`);
+            console.log('Horizontal drag:', dx > 0 ? 'right' : 'left');
             if (dx < 0) {
               playNextSongInPlaylist();
-              showActionMessage("next song");
             } else {
               playPreviousSongInPlaylist();
-              showActionMessage("previous song");
             }
+            updateVisibility();
           } else {
             // Vertical two-finger drag: up → password; down → hide password
-            console.log(`Two-finger vertical drag detected: dy=${dy.toFixed(1)}px`);
+            console.log('Vertical drag:', dy > 0 ? 'down' : 'up');
             if (dy < 0) {
               showPasswordOverlay();
             } else if (dy > 0) {
@@ -6839,8 +6830,8 @@ function playPreviousUserSong() {
           return;
         }
         
-        // If neither tap nor drag criteria are met, do nothing
-        console.log('Two-finger gesture did not meet criteria for tap or drag');
+        // If it's neither a clear tap nor a clear drag, do nothing
+        console.log('Two-finger gesture ambiguous - ignoring (duration:', dt, 'distance:', distance, ')');
         return;
       }
       const touchEndTime = Date.now();
