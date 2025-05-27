@@ -479,26 +479,55 @@ body.authorized .restricted {
   <script>
     // Password protection
     let isAuthorized = false;
+    let passwordOverlayAnimating = false; // Flag to prevent animation conflicts
+    
     function showPasswordOverlay() {
+      if (passwordOverlayAnimating) return; // Prevent multiple animations
+      
       const overlay = document.getElementById('passwordOverlay');
+      if (overlay.classList.contains('show')) return; // Already showing
+      
+      passwordOverlayAnimating = true;
       document.getElementById('passwordError').style.display = 'none';
+      
       // Prepare for animation
       overlay.style.display = 'block';
       // Force reflow to ensure the transition will run
       void overlay.offsetWidth;
       overlay.classList.add('show');
+      
+      // Reset animation flag after transition
+      setTimeout(() => {
+        passwordOverlayAnimating = false;
+      }, 500); // Match CSS transition duration
     }
+    
     function hidePasswordOverlay() {
+      if (passwordOverlayAnimating) return; // Prevent multiple animations
+      
       const overlay = document.getElementById('passwordOverlay');
+      if (!overlay.classList.contains('show')) return; // Already hidden
+      
+      passwordOverlayAnimating = true;
+      
       // Start hide transition
       overlay.classList.remove('show');
+      
       // After transition ends, hide completely and clear input
       const onEnd = () => {
         overlay.style.display = 'none';
         document.getElementById('passwordInput').value = '';
         overlay.removeEventListener('transitionend', onEnd);
+        passwordOverlayAnimating = false; // Reset animation flag
       };
       overlay.addEventListener('transitionend', onEnd);
+      
+      // Fallback timeout in case transitionend doesn't fire
+      setTimeout(() => {
+        if (passwordOverlayAnimating) {
+          onEnd();
+        }
+      }, 600); // Slightly longer than CSS transition
     }
     document.addEventListener('DOMContentLoaded', function() {
       document.getElementById('passwordSubmit').addEventListener('click', async () => {
@@ -6604,6 +6633,8 @@ function playPreviousUserSong() {
     let twoFingerHoldTimer = null;
     const twoFingerHoldThreshold = 600;  // ms to hold two fingers to trigger augment
     let twoFingerHoldActive = false;
+    let twoFingerMovementThreshold = 30; // pixels - allow small movements without canceling hold
+    let twoFingerStartPositions = []; // store initial positions to track movement
     
     // Configurable thresholds (in ms and pixels)
     const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
@@ -6639,9 +6670,20 @@ function playPreviousUserSong() {
         pinchDirection = null;
         clearTimeout(longPressTimer);
         twoFingerHoldActive = false;
+        
+        // Store initial positions for movement tracking
+        twoFingerStartPositions = [
+          { x: e.touches[0].clientX, y: e.touches[0].clientY },
+          { x: e.touches[1].clientX, y: e.touches[1].clientY }
+        ];
+        
+        console.log('Two-finger touch started, setting hold timer');
         twoFingerHoldTimer = setTimeout(() => {
+          console.log('Two-finger hold timer triggered - starting augment');
           twoFingerHoldActive = true;
-          augmentEffect();
+          if (!augmentInterval) {
+            augmentInterval = setInterval(augmentEffect, 300);
+          }
         }, twoFingerHoldThreshold);
         return;
       }
@@ -6656,24 +6698,44 @@ function playPreviousUserSong() {
     
     function onTouchMove(e) {
       if (e.touches.length === 2) {
-        // Handle pinch gestures
+        // Handle pinch gestures and two-finger movement
         const pdx = e.touches[0].clientX - e.touches[1].clientX;
         const pdy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.hypot(pdx, pdy);
         const diff = dist - pinchStartDistance;
+        
+        // Check if this is a significant pinch gesture
         if (Math.abs(diff) > pinchThreshold) {
+          console.log('Pinch detected, canceling hold timer');
           // User is pinching
           pinchActive = true;
           pinchDirection = diff > 0 ? 'out' : 'in';
           // Reset baseline to detect further pinches
           pinchStartDistance = dist;
-          // Cancel augment hold
+          // Cancel augment hold only for significant pinch
           clearTimeout(twoFingerHoldTimer);
+          twoFingerHoldActive = false;
+        } else if (twoFingerStartPositions.length === 2) {
+          // Check if fingers have moved too much (but not pinching)
+          const finger1Movement = Math.hypot(
+            e.touches[0].clientX - twoFingerStartPositions[0].x,
+            e.touches[0].clientY - twoFingerStartPositions[0].y
+          );
+          const finger2Movement = Math.hypot(
+            e.touches[1].clientX - twoFingerStartPositions[1].x,
+            e.touches[1].clientY - twoFingerStartPositions[1].y
+          );
+          
+          // Only cancel hold if movement is significant
+          if (finger1Movement > twoFingerMovementThreshold || finger2Movement > twoFingerMovementThreshold) {
+            console.log('Significant two-finger movement detected, canceling hold timer');
+            clearTimeout(twoFingerHoldTimer);
+            twoFingerHoldActive = false;
+          }
         }
-        // Cancel timers on any two-finger move
+        
+        // Cancel single-finger long press timer
         clearTimeout(longPressTimer);
-        clearTimeout(twoFingerHoldTimer);
-        twoFingerHoldActive = false;
         return;
       }
       e.preventDefault();
@@ -6684,10 +6746,28 @@ function playPreviousUserSong() {
     function onTouchEnd(e) {
       if (e.target.id === 'passwordInput' || e.target.id === 'passwordSubmit') return;
       e.preventDefault();
-      // Clear two-finger hold when touch ends
-      clearTimeout(twoFingerHoldTimer);
+      // Clear timers when touch ends
       clearTimeout(longPressTimer);
+      
       if (touchStartTouches === 2) {
+        console.log('Two-finger touch ended');
+        
+        // Stop augment if it was active
+        if (twoFingerHoldActive) {
+          console.log('Stopping augment effect');
+          twoFingerHoldActive = false;
+          if (augmentInterval) {
+            clearInterval(augmentInterval);
+            augmentInterval = null;
+            resetAugmentation();
+          }
+          clearTimeout(twoFingerHoldTimer);
+          return;
+        }
+        
+        // Clear the hold timer if touch ends before timer completes
+        clearTimeout(twoFingerHoldTimer);
+        
         // Handle pinch end
         if (pinchActive) {
           pinchActive = false;
@@ -6699,6 +6779,7 @@ function playPreviousUserSong() {
           }
           return;
         }
+        
         // Handle two-finger tap (no pinch, no hold)
         const endTime = Date.now();
         const dt = endTime - touchStartTime;
@@ -6707,13 +6788,8 @@ function playPreviousUserSong() {
         const mdx = ((touch1.clientX + touch2.clientX)/2) - touchStartX;
         const mdy = ((touch1.clientY + touch2.clientY)/2) - touchStartY;
         const mDist = Math.hypot(mdx, mdy);
-        if (!twoFingerHoldActive && dt < tapMaxDuration && mDist < swipeThreshold) {
+        if (dt < tapMaxDuration && mDist < swipeThreshold) {
           displayInfo();
-          return;
-        }
-        // If augment was triggered, consume event
-        if (twoFingerHoldActive) {
-          twoFingerHoldActive = false;
           return;
         }
         // Two-finger drag for next/back (unchanged)
@@ -6810,9 +6886,25 @@ function playPreviousUserSong() {
     }
     
     function onTouchCancel(e) {
+      console.log('Touch canceled');
       clearTimeout(longPressTimer);
       clearTimeout(tapTimer);
+      clearTimeout(twoFingerHoldTimer);
+      
+      // Stop augment if it was active
+      if (twoFingerHoldActive) {
+        console.log('Touch canceled - stopping augment effect');
+        twoFingerHoldActive = false;
+        if (augmentInterval) {
+          clearInterval(augmentInterval);
+          augmentInterval = null;
+          resetAugmentation();
+        }
+      }
+      
       tapCount = 0;
+      pinchActive = false;
+      twoFingerStartPositions = [];
     }
     
     // Call initTouchControls() once the DOM is ready
