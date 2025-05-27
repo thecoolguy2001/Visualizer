@@ -280,7 +280,7 @@ body.authorized .restricted {
 #dspOverlay button {
   width: 100%;
   padding: 12px;
-  margin-top: 8px;
+  margin: 8px 0;
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.4);
   border-radius: 12px;
@@ -5750,6 +5750,24 @@ if (event.key.toLowerCase() === 'q') {
 if (document.getElementById('passwordOverlay').classList.contains('show')) {
   return;
 }
+
+// If creator modal is visible, ignore all other keys so user can type (except 'c' to close)
+const creatorModal = document.getElementById('creatorModal');
+if (creatorModal && creatorModal.classList.contains('show')) {
+  // Allow 'c' key to close the modal only if user is not actively typing in a text field
+  if (event.key.toLowerCase() === 'c') {
+    const activeElement = document.activeElement;
+    const isTypingInTextarea = activeElement && activeElement.tagName === 'TEXTAREA' && creatorModal.contains(activeElement);
+    if (!isTypingInTextarea) {
+      // User is not typing in a textarea, allow 'c' to close the modal
+      event.preventDefault();
+      toggleCreatorMode();
+    }
+    // If user is typing, do nothing (let them type 'c' in the textarea)
+  }
+  return; // Block all other keyboard shortcuts
+}
+
       switch (event.key) {
         case ' ':
   event.preventDefault();
