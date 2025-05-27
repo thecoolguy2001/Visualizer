@@ -6525,65 +6525,119 @@ function toggleCreatorMode() {
         errEl.style.display = 'none';
         console.log('Previous error message cleared');
       }
-    // Get the code from each textarea
-    let createCode = document.getElementById('creatorCreateCode').value;
-    let animateInitialCode = document.getElementById('creatorAnimateInitialCode').value;
-    let animateReactiveCode = document.getElementById('creatorAnimateReactiveCode').value;
-    let adjustIntensityCode = document.getElementById('creatorAdjustIntensityCode').value;
-
-    try {
-      // Create functions using the Function constructor
-      let userCreateFunction = new Function(createCode);
-      let userAnimateInitialFunction = new Function(animateInitialCode);
-      let userAnimateReactiveFunction = new Function(animateReactiveCode);
-      let userAdjustIntensityFunction = new Function(adjustIntensityCode);
-
-      // Build and register the custom effect as before
-      let customEffect = {
-        name: "CustomEffect" + (visualElements.length + 1),
-        create: userCreateFunction,
-        animateInitial: userAnimateInitialFunction,
-        animateReactive: userAnimateReactiveFunction,
-        adjustIntensity: userAdjustIntensityFunction
-      };
-      customEffect.create();
-      let newEffect = visualElements.find(elem => elem.name === customEffect.name);
-      if (newEffect) {
-        newEffect.userData.customAnimateInitial = customEffect.animateInitial;
-        newEffect.userData.customAnimateReactive = customEffect.animateReactive;
-        newEffect.userData.customAdjustIntensity = customEffect.adjustIntensity;
-      } else {
-        console.warn("Custom effect not found; ensure create() sets the correct name.");
+          // Get the code from each textarea
+      let createCode = document.getElementById('creatorCreateCode').value.trim();
+      let animateInitialCode = document.getElementById('creatorAnimateInitialCode').value.trim();
+      let animateReactiveCode = document.getElementById('creatorAnimateReactiveCode').value.trim();
+      let adjustIntensityCode = document.getElementById('creatorAdjustIntensityCode').value.trim();
+      
+      console.log('Validating input code...');
+      console.log('Create code length:', createCode.length);
+      console.log('Animate initial code length:', animateInitialCode.length);
+      console.log('Animate reactive code length:', animateReactiveCode.length);
+      console.log('Adjust intensity code length:', adjustIntensityCode.length);
+      
+      // Function to show error message
+      function showError(message) {
+        console.error('Showing error:', message);
+        let errorEl = document.querySelector('#creatorModal .error-message');
+        if (!errorEl) {
+          errorEl = document.createElement('div');
+          errorEl.className = 'error-message';
+          errorEl.style.cssText = 'color: #ff4444; margin-top: 12px; text-align: center; font-size: 14px; padding: 8px; background: rgba(255, 68, 68, 0.1); border-radius: 8px; border: 1px solid rgba(255, 68, 68, 0.3);';
+          // Insert before the buttons
+          const buttonsDiv = document.querySelector('#creatorModal .creatorButtons');
+          if (buttonsDiv) {
+            buttonsDiv.parentNode.insertBefore(errorEl, buttonsDiv);
+          }
+        }
+        errorEl.textContent = message;
+        errorEl.style.display = 'block';
       }
+      
+      // Validate that at least the create function is provided
+      if (!createCode) {
+        showError('Error: Create Function Code is required');
+        return;
+      }
+      
+      try {
+        console.log('Creating functions from code...');
+        
+        // Create functions using the Function constructor
+        let userCreateFunction;
+        let userAnimateInitialFunction;
+        let userAnimateReactiveFunction;
+        let userAdjustIntensityFunction;
+        
+        // Try to create the main function first
+        try {
+          userCreateFunction = new Function(createCode);
+          console.log('Create function created successfully');
+        } catch (e) {
+          throw new Error('Invalid Create Function Code: ' + e.message);
+        }
+        
+        // Create other functions (allow empty ones)
+        try {
+          userAnimateInitialFunction = animateInitialCode ? new Function(animateInitialCode) : function() {};
+          console.log('Animate initial function created');
+        } catch (e) {
+          throw new Error('Invalid Animate Initial Code: ' + e.message);
+        }
+        
+        try {
+          userAnimateReactiveFunction = animateReactiveCode ? new Function(animateReactiveCode) : function() {};
+          console.log('Animate reactive function created');
+        } catch (e) {
+          throw new Error('Invalid Animate Reactive Code: ' + e.message);
+        }
+        
+        try {
+          userAdjustIntensityFunction = adjustIntensityCode ? new Function(adjustIntensityCode) : function() {};
+          console.log('Adjust intensity function created');
+        } catch (e) {
+          throw new Error('Invalid Adjust Intensity Code: ' + e.message);
+        }
+        
+        // Build and register the custom effect
+        let customEffect = {
+         name: "CustomEffect" + (visualElements.length + 1),
+         create: userCreateFunction,
+         animateInitial: userAnimateInitialFunction,
+         animateReactive: userAnimateReactiveFunction,
+         adjustIntensity: userAdjustIntensityFunction
+        };
+        
+        console.log('Executing create function...');
+        // Try to execute the create function
+        customEffect.create();
+        
+        let newEffect = visualElements.find(elem => elem.name === customEffect.name);
+        if (newEffect) {
+          newEffect.userData.customAnimateInitial = customEffect.animateInitial;
+          newEffect.userData.customAnimateReactive = customEffect.animateReactive;
+          newEffect.userData.customAdjustIntensity = customEffect.adjustIntensity;
+          console.log('Custom effect registered successfully');
+        } else {
+          throw new Error('Create function did not add effect to scene. Make sure your create code adds a visual element to the scene.');
+        }
 
-      showActionMessage("loaded");
+        showActionMessage("loaded");
 
-             // Hide the modal via CSS animation
-       console.log('Effect created successfully, hiding modal');
-       modal.classList.remove('show');
-       modal.addEventListener('transitionend', () => {
-         modal.remove();
-         console.log('Creator modal removed after successful submission');
-       }, { once: true });
-     } catch (e) {
-       console.error('Error in custom effect code:', e);
-       // Create or find error message element
-       let errorEl = document.querySelector('#creatorModal .error-message');
-       if (!errorEl) {
-         errorEl = document.createElement('div');
-         errorEl.className = 'error-message';
-         errorEl.style.cssText = 'color: #ff4444; margin-top: 12px; text-align: center; font-size: 14px; padding: 8px; background: rgba(255, 68, 68, 0.1); border-radius: 8px; border: 1px solid rgba(255, 68, 68, 0.3);';
-         // Insert before the buttons
-         const buttonsDiv = document.querySelector('#creatorModal .creatorButtons');
-         if (buttonsDiv) {
-           buttonsDiv.parentNode.insertBefore(errorEl, buttonsDiv);
-         }
-       }
-       errorEl.textContent = 'Error: ' + e.message;
-       errorEl.style.display = 'block';
-       console.log('Error message displayed:', e.message);
-       return;
-     }
+        // Hide the modal via CSS animation
+        console.log('Effect created successfully, hiding modal');
+        modal.classList.remove('show');
+        modal.addEventListener('transitionend', () => {
+          modal.remove();
+          console.log('Creator modal removed after successful submission');
+        }, { once: true });
+        
+      } catch (e) {
+        console.error('Error in custom effect code:', e);
+        showError('Error: ' + e.message);
+        return;
+      }
   });
   
   document.getElementById('creatorCancelButton').addEventListener('click', function(){
