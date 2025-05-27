@@ -599,6 +599,7 @@ body.authorized .restricted {
   <script>
     // Track hide fallback timeout for DSP overlay
     let dspHideFallbackTimeout = null;
+
     const clock = new THREE.Clock();
     let audioElement = document.getElementById('audio');
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
