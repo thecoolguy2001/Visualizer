@@ -5737,6 +5737,17 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
     function onKeyDown(event) {
       // At the very top of onKeyDown(event):
 if (event.key.toLowerCase() === 'q') {
+  // Check if creator modal is open and user is typing
+  const creatorModal = document.getElementById('creatorModal');
+  if (creatorModal && creatorModal.classList.contains('show')) {
+    const activeElement = document.activeElement;
+    const isTypingInTextarea = activeElement && activeElement.tagName === 'TEXTAREA' && creatorModal.contains(activeElement);
+    if (isTypingInTextarea) {
+      // User is typing in textarea, don't trigger password overlay
+      return;
+    }
+  }
+  
   const overlay = document.getElementById('passwordOverlay');
   if (overlay.classList.contains('show')) {
     hidePasswordOverlay();
@@ -5754,7 +5765,7 @@ if (document.getElementById('passwordOverlay').classList.contains('show')) {
 // If creator modal is visible, ignore all other keys so user can type (except 'c' to close)
 const creatorModal = document.getElementById('creatorModal');
 if (creatorModal && creatorModal.classList.contains('show')) {
-  // Allow 'c' key to close the modal only if user is not actively typing in a text field
+  // Allow 'c' key to close the modal only if user is not actively typing in a textfield
   if (event.key.toLowerCase() === 'c') {
     const activeElement = document.activeElement;
     const isTypingInTextarea = activeElement && activeElement.tagName === 'TEXTAREA' && creatorModal.contains(activeElement);
