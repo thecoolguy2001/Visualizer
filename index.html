@@ -6826,30 +6826,48 @@ function playPreviousUserSong() {
         const dragMinDuration = 150;
         const dragMinDistance = 50;
         
-        if (twoFingerIntentionalDrag || (dt >= dragMinDuration && finalDistance >= dragMinDistance)) {
-          console.log('Two-finger DRAG detected');
-          if (Math.abs(dx) > Math.abs(dy)) {
-            // Horizontal two-finger drag → Next/Previous song
-            console.log('Horizontal drag:', dx > 0 ? 'right' : 'left');
-            if (dx < 0) {
-              playNextSongInPlaylist();
-            } else {
-              playPreviousSongInPlaylist();
-            }
-            updateVisibility();
-          } else {
-            // Vertical two-finger drag: up → password; down → hide password
-            console.log('Vertical drag:', dy > 0 ? 'down' : 'up');
-            if (dy < 0) {
-              showPasswordOverlay();
-            } else if (dy > 0) {
-              hidePasswordOverlay();
-            }
-          }
-          tapCount = 0;
-          clearTimeout(tapTimer);
-          return;
-        }
+                 if (twoFingerIntentionalDrag || (dt >= dragMinDuration && finalDistance >= dragMinDistance)) {
+           console.log('Two-finger DRAG detected');
+           
+           // Calculate directional ratios for more precise detection
+           const absDx = Math.abs(dx);
+           const absDy = Math.abs(dy);
+           const horizontalRatio = absDx / (absDx + absDy);
+           const verticalRatio = absDy / (absDx + absDy);
+           
+           // Require strong directional bias to prevent cross-directional triggers
+           const directionalThreshold = 0.7; // 70% of movement must be in primary direction
+           const minDirectionalDistance = 35; // Minimum distance in primary direction
+           
+           console.log('Drag analysis - Horizontal ratio:', horizontalRatio.toFixed(2), 'Vertical ratio:', verticalRatio.toFixed(2));
+           console.log('Distances - dx:', dx.toFixed(1), 'dy:', dy.toFixed(1));
+           
+           if (horizontalRatio >= directionalThreshold && absDx >= minDirectionalDistance) {
+             // Clearly horizontal drag → Next/Previous song
+             console.log('HORIZONTAL drag confirmed:', dx > 0 ? 'right' : 'left');
+             if (dx < 0) {
+               playNextSongInPlaylist();
+             } else {
+               playPreviousSongInPlaylist();
+             }
+             updateVisibility();
+           } else if (verticalRatio >= directionalThreshold && absDy >= minDirectionalDistance) {
+             // Clearly vertical drag → Password actions
+             console.log('VERTICAL drag confirmed:', dy > 0 ? 'down' : 'up');
+             if (dy < 0) {
+               showPasswordOverlay();
+             } else if (dy > 0) {
+               hidePasswordOverlay();
+             }
+           } else {
+             // Diagonal or unclear direction - ignore to prevent unwanted actions
+             console.log('DIAGONAL/UNCLEAR drag - ignoring (H:', horizontalRatio.toFixed(2), 'V:', verticalRatio.toFixed(2), ')');
+           }
+           
+           tapCount = 0;
+           clearTimeout(tapTimer);
+           return;
+         }
         
         // If it's neither a clear tap nor a clear drag, do nothing
         console.log('Two-finger gesture IGNORED - ambiguous input');
