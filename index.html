@@ -303,6 +303,19 @@ body.authorized .restricted {
     position: fixed;
     top: 50%;
     left: 50%;
+    /* start slightly lower for animation */
+    transform: translate(-50%, -40%);
+    width: 350px;
+    max-width: 90%;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(30px);
+    border-radius: 24px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+    color: #fff;
+    font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    padding: 16px;
+    /* Slightly wider panel for better layout */
+    text-align: left;
     display: none;
     opacity: 0;
     transition: opacity 0.5s ease, transform 0.5s ease;
@@ -312,10 +325,73 @@ body.authorized .restricted {
   #creatorModal.show {
     display: block;
     /* final centered position */
-    transform: translate(0%, -3%);
+    transform: translate(-50%, -50%);
     opacity: 1;
   }
-
+  /* Creator modal inner content */
+#creatorModal .creatorContent {
+  width: 350px;
+  margin: 0 auto;
+  color: #fff;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+#creatorModal .creatorContent h2 {
+  text-align: center;
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+#creatorModal .creatorContent label {
+  font-weight: bold;
+  display: block;
+  margin-top: 12px;
+}
+#creatorModal .creatorContent textarea {
+  width: 100%;
+  padding: 6px 12px;
+  margin-top: 4px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  color: #fff;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  outline: none;
+  backdrop-filter: blur(10px);
+  transition: background 0.3s ease, border-color 0.3s ease;
+  height: 100px; /* fixed height for visibility */
+  resize: vertical;
+}
+#creatorModal .creatorContent textarea:focus {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+#creatorModal .creatorButtons {
+  text-align: center;
+  margin-top: 16px;
+}
+#creatorModal .creatorButtons button {
+  padding: 12px 24px;
+  margin: 0 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 12px;
+  color: #fff;
+  font-family: inherit;
+  font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+#creatorModal .creatorButtons button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+#creatorModal .creatorContent textarea {
+  box-sizing: border-box;
+  resize: none;
+}
 
 @keyframes fadeInUp {
   0% {
@@ -381,6 +457,9 @@ body.authorized .restricted {
     <script>
       (adsbygoogle = window.adsbygoogle || []).push({});
     </script>
+  </div>
+  <div id="creatorError" style="display:none;color:#f66;margin-top:8px;text-align:center;">
+    Error: invalid effect code
   </div>
   <div id="dspOverlay">
     <h2>Connect Service</h2>
@@ -5857,6 +5936,11 @@ case 'ArrowUp': {
           event.preventDefault();
           toggleHelpOverlay();
         break;
+        case 'c':
+          event.preventDefault();
+          toggleCreatorMode();
+        break;
+        
         case 'o':
           event.preventDefault();
           shuffleMode = !shuffleMode;
@@ -6331,118 +6415,119 @@ function togglePlayPause() {
     }, 20); // Small delay to allow the browser to register display change
   }
     }
-    function toggleCreatorMode() {
+
+function toggleCreatorMode() {
+  // If modal already exists and is showing, hide it now
+  const existing = document.getElementById('creatorModal');
+  if (existing && existing.classList.contains('show')) {
+    existing.classList.remove('show');
+    existing.addEventListener('transitionend', () => existing.remove(), { once: true });
+    return;
+  }
+
   let modal = document.getElementById('creatorModal');
   if (modal) {
-      // simply display it and let CSS handle the fade/slide
-      modal.style.display = 'block';
     requestAnimationFrame(() => modal.classList.add('show'));
     return;
   }
   // Create the modal container covering the full screen
   modal = document.createElement('div');
   modal.id = 'creatorModal';
-  Object.assign(modal.style, {
-    position: 'fixed',
-    top: '0',
-    left: '0',
-    width: '100%',
-    height: '100%',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: '10000',
-    overflow: 'auto'
-  });
+ 
   
   // Create the inner content styled like the help overlay
   modal.innerHTML = `
-    <div style="background-color: rgba(0, 0, 0, 0.8); color: white; font-family: Arial, sans-serif; border: 2px solid grey; border-radius: 8px; padding: 20px; width: 90%; max-width: 600px; margin: 100px auto;">
-      <h2 style="text-align: center; margin-top: 0;">Create Custom Effect</h2>
-      <label style="font-weight:bold;">Create Function Code:</label><br>
-      <textarea id="creatorCreateCode" rows="10" style="width:100%; background: #333; color: white; border: 1px solid grey; padding: 5px;"></textarea><br><br>
-      <label style="font-weight:bold;">Animate Initial Code:</label><br>
-      <textarea id="creatorAnimateInitialCode" rows="5" style="width:100%; background: #333; color: white; border: 1px solid grey; padding: 5px;"></textarea><br><br>
-      <label style="font-weight:bold;">Animate Reactive Code:</label><br>
-      <textarea id="creatorAnimateReactiveCode" rows="5" style="width:100%; background: #333; color: white; border: 1px solid grey; padding: 5px;"></textarea><br><br>
-      <label style="font-weight:bold;">Adjust Intensity Code:</label><br>
-      <textarea id="creatorAdjustIntensityCode" rows="5" style="width:100%; background: #333; color: white; border: 1px solid grey; padding: 5px;"></textarea><br><br>
-      <div style="text-align: center;">\n         <button id="creatorSubmitButton" style="padding: 10px 20px; background-color: rgba(0,0,0,0.8); border: 2px solid grey; border-radius: 8px; color: white; font-family: Arial, sans-serif; font-size: 16px; cursor: pointer;">Submit Effect</button>      <button id="creatorCancelButton" style="padding: 10px 20px; background-color: transparent; border: 2px solid grey; border-radius: 8px; color: white; font-family: Arial, sans-serif; font-size: 16px; cursor: pointer;">Cancel</button>\n      </div>\n    </div>\n  `;
-  
+  <div class="creatorContent">
+    <h2>Create Custom Effect</h2>
+    <label for="creatorCreateCode">Create Function Code:</label>
+    <textarea id="creatorCreateCode" rows="10" placeholder="function createMyEffect() {
+  const group = new THREE.Group();
+  // add meshes, materials, uniforms
+  return group;
+}"></textarea>
+    <label for="creatorAnimateInitialCode">Animate Initial Code:</label>
+    <textarea id="creatorAnimateInitialCode" rows="5" placeholder="function animateInitialEffect(mesh, time) {
+  mesh.material.uniforms.uTime.value = time;
+}"></textarea>
+    <label for="creatorAnimateReactiveCode">Animate Reactive Code:</label>
+    <textarea id="creatorAnimateReactiveCode" rows="5" placeholder="function animateReactiveEffect(mesh, audioData) {
+  mesh.material.uniforms.uAudioLevel.value = audioData.bass;
+}"></textarea>
+    <label for="creatorAdjustIntensityCode">Adjust Intensity Code:</label>
+    <textarea id="creatorAdjustIntensityCode" rows="5" placeholder="function adjustEffectIntensity(mesh, level) {
+  mesh.material.uniforms.uEffectIntensity.value = level;
+}"></textarea>
+    <div class="creatorButtons">
+      <button id="creatorSubmitButton">Submit Effect</button>
+      <button id="creatorCancelButton">Cancel</button>
+    </div>
+  </div>
+`;
+
   document.body.appendChild(modal);
-  modal.style.display = 'block';
   requestAnimationFrame(() => modal.classList.add('show'));
   
   document.getElementById('creatorSubmitButton').addEventListener('click', function(){
+    // Clear any previous error
+    const errEl = document.getElementById('creatorError');
+    if (errEl) errEl.style.display = 'none';
     // Get the code from each textarea
     let createCode = document.getElementById('creatorCreateCode').value;
     let animateInitialCode = document.getElementById('creatorAnimateInitialCode').value;
     let animateReactiveCode = document.getElementById('creatorAnimateReactiveCode').value;
     let adjustIntensityCode = document.getElementById('creatorAdjustIntensityCode').value;
-    
+
     try {
       // Create functions using the Function constructor
       let userCreateFunction = new Function(createCode);
       let userAnimateInitialFunction = new Function(animateInitialCode);
       let userAnimateReactiveFunction = new Function(animateReactiveCode);
       let userAdjustIntensityFunction = new Function(adjustIntensityCode);
-      
-      // Create an object to store the custom effect functions and assign a unique name
-      let customEffect = {
-         name: "CustomEffect" + (visualElements.length + 1),
-         create: userCreateFunction,
-         animateInitial: userAnimateInitialFunction,
-         animateReactive: userAnimateReactiveFunction,
-         adjustIntensity: userAdjustIntensityFunction
-      };
 
-      // Execute the create function to create the effect.
+      // Build and register the custom effect as before
+      let customEffect = {
+        name: "CustomEffect" + (visualElements.length + 1),
+        create: userCreateFunction,
+        animateInitial: userAnimateInitialFunction,
+        animateReactive: userAnimateReactiveFunction,
+        adjustIntensity: userAdjustIntensityFunction
+      };
       customEffect.create();
-      
-      // Find the newly created effect in visualElements by its assigned name.
       let newEffect = visualElements.find(elem => elem.name === customEffect.name);
       if (newEffect) {
-         // Store the custom update functions on the effect so we can call them later.
-         newEffect.userData.customAnimateInitial = customEffect.animateInitial;
-         newEffect.userData.customAnimateReactive = customEffect.animateReactive;
-         newEffect.userData.customAdjustIntensity = customEffect.adjustIntensity;
+        newEffect.userData.customAnimateInitial = customEffect.animateInitial;
+        newEffect.userData.customAnimateReactive = customEffect.animateReactive;
+        newEffect.userData.customAdjustIntensity = customEffect.adjustIntensity;
       } else {
-         console.warn("Custom effect not found in visualElements. Make sure your create code sets the effect's name to: " + customEffect.name);
+        console.warn("Custom effect not found; ensure create() sets the correct name.");
       }
-      
-      // Display the loaded message.
+
       showActionMessage("loaded");
-      
-      // Hide the modal.
-      modal.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-  modal.style.opacity   = '0';
-  modal.style.transform = 'translate(-50%, -40%)';
-  modal.addEventListener('transitionend', function handler() {
-    modal.style.display = 'none';
-    modal.removeEventListener('transitionend', handler);
-  }, { once: true });
+
+      // Hide the modal via CSS animation
+      modal.classList.remove('show');
+      modal.addEventListener('transitionend', () => modal.remove(), { once: true });
     } catch (e) {
-      alert("Error in custom effect code: " + e);
+      // Display error inside the modal
+      if (errEl) {
+        errEl.textContent = 'Error: ' + e.message;
+        errEl.style.display = 'block';
+      }
+      return;
     }
   });
   
   document.getElementById('creatorCancelButton').addEventListener('click', function(){
     const modal = document.getElementById('creatorModal');
-  if (!modal) return;
-  // remove the class to trigger your fade/slide‐out
-  modal.classList.remove('show');
-  modal.addEventListener('transitionend', function handler() {
-    modal.style.display = 'none';
-    modal.removeEventListener('transitionend', handler);
-  }, { once: true });
-});
+    if (!modal) return;
+    // Fade out then remove entirely
+    modal.classList.remove('show');
+    modal.addEventListener('transitionend', () => {
+      modal.remove();
+    }, { once: true });
+  });
 }
 
-// Listen for the "c" key to trigger creator mode.
-document.body.addEventListener('keydown', function(event) {
-  if (event.key === 'c') {
-    event.preventDefault();
-    toggleCreatorMode();
-  }
-});
 function loadCurrentUserSong() {
   return new Promise((resolve) => {
     if (!userPlaylist[currentUserSongIndex]) {
@@ -6734,6 +6819,6 @@ function playPreviousUserSong() {
     });
 
     init();
-  </script>
+</script>
 </body>
 </html>
