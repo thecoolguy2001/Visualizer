@@ -18,6 +18,8 @@
   <!-- Apple Touch Icon -->
   <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
   <script src="https://js-cdn.music.apple.com/musickit/v1/musickit.js"></script>
+  <!-- Spotify and SoundCloud SDKs commented out - only using Apple Music for now -->
+  <!--
   <script>
     window.onSpotifyWebPlaybackSDKReady = function() {
       console.log('Spotify Web Playback SDK loaded');
@@ -25,6 +27,7 @@
   </script>
   <script src="https://sdk.scdn.co/spotify-player.js"></script>
   <script src="https://connect.soundcloud.com/sdk/sdk-3.3.2.js"></script>
+  -->
   <style>
   /* Password overlay: sleek Apple Vision Pro style */
   #passwordOverlay {
@@ -541,7 +544,8 @@ body.authorized .restricted {
     // Begin Apple Music initialization and capture its promise
     const appleInitPromise = initAppleMusic();
 
-    // Initialize SoundCloud SDK safely
+    // SoundCloud SDK initialization commented out - only using Apple Music for now
+    /*
     (async () => {
       try {
         const res = await fetch(`${window.location.origin}/api/soundcloud-client-id`);
@@ -555,12 +559,15 @@ body.authorized .restricted {
         console.warn('SoundCloud init error:', err);
       }
     })();
+    */
 
-    // Helper to fetch Spotify access token from backend
+    // Spotify token helper commented out - only using Apple Music for now
+    /*
     async function fetchSpotifyToken() {
       const { token } = await fetch(`${window.location.origin}/api/spotify-token`).then(res => res.json());
       return token;
     }
+    */
   </script>
   <script>
     // Track hide fallback timeout for DSP overlay
