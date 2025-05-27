@@ -6635,6 +6635,8 @@ function playPreviousUserSong() {
     let twoFingerHoldActive = false;
     let twoFingerMovementThreshold = 30; // pixels - allow small movements without canceling hold
     let twoFingerStartPositions = []; // store initial positions to track movement
+    let twoFingerMaxMovement = 0; // track maximum movement during the entire gesture
+    let twoFingerIntentionalDrag = false; // flag to indicate user is intentionally dragging
     
     // Configurable thresholds (in ms and pixels)
     const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
@@ -6677,6 +6679,10 @@ function playPreviousUserSong() {
           { x: e.touches[1].clientX, y: e.touches[1].clientY }
         ];
         
+        // Reset movement tracking
+        twoFingerMaxMovement = 0;
+        twoFingerIntentionalDrag = false;
+        
         console.log('Two-finger touch started, setting hold timer');
         twoFingerHoldTimer = setTimeout(() => {
           console.log('Two-finger hold timer triggered - starting augment');
@@ -6716,7 +6722,7 @@ function playPreviousUserSong() {
           clearTimeout(twoFingerHoldTimer);
           twoFingerHoldActive = false;
         } else if (twoFingerStartPositions.length === 2) {
-          // Check if fingers have moved too much (but not pinching)
+          // Track movement during the gesture
           const finger1Movement = Math.hypot(
             e.touches[0].clientX - twoFingerStartPositions[0].x,
             e.touches[0].clientY - twoFingerStartPositions[0].y
@@ -6725,6 +6731,16 @@ function playPreviousUserSong() {
             e.touches[1].clientX - twoFingerStartPositions[1].x,
             e.touches[1].clientY - twoFingerStartPositions[1].y
           );
+          
+          // Update maximum movement seen during this gesture
+          const currentMaxMovement = Math.max(finger1Movement, finger2Movement);
+          twoFingerMaxMovement = Math.max(twoFingerMaxMovement, currentMaxMovement);
+          
+          // Mark as intentional drag if movement is significant and sustained
+          if (currentMaxMovement > 40) { // Higher threshold for intentional drag detection
+            twoFingerIntentionalDrag = true;
+            console.log('Intentional drag detected during movement');
+          }
           
           // Only cancel hold if movement is significant
           if (finger1Movement > twoFingerMovementThreshold || finger2Movement > twoFingerMovementThreshold) {
@@ -6780,33 +6796,38 @@ function playPreviousUserSong() {
           return;
         }
         
-        // Handle two-finger tap vs drag with better detection
+        // Handle two-finger tap vs drag with improved detection
         const endTime = Date.now();
         const dt = endTime - touchStartTime;
         const touch1 = e.changedTouches[0];
         const touch2 = e.changedTouches[1] || e.changedTouches[0];
         
-        // Calculate movement from initial touch positions
+        // Calculate final movement from initial touch positions
         const dx = ((touch1.clientX + touch2.clientX) / 2) - touchStartX;
         const dy = ((touch1.clientY + touch2.clientY) / 2) - touchStartY;
-        const distance = Math.hypot(dx, dy);
+        const finalDistance = Math.hypot(dx, dy);
         
-        // Stricter tap detection: shorter duration and less movement allowed
-        const tapDurationThreshold = 150; // Shorter than tapMaxDuration for two-finger taps
-        const tapMovementThreshold = 25;  // Smaller than swipeThreshold for taps
+        console.log('Two-finger gesture ended - Duration:', dt, 'Final distance:', finalDistance, 'Max movement:', twoFingerMaxMovement, 'Intentional drag:', twoFingerIntentionalDrag);
         
-        if (dt < tapDurationThreshold && distance < tapMovementThreshold) {
-          console.log('Two-finger tap detected - showing info');
+        // Very strict tap detection: quick, minimal movement throughout entire gesture
+        const tapDurationThreshold = 200; // Allow slightly more time for taps
+        const tapMaxMovementThreshold = 20; // Use max movement during entire gesture, not just final
+        
+        // Check if this was clearly a tap (quick and minimal movement throughout)
+        if (dt < tapDurationThreshold && twoFingerMaxMovement < tapMaxMovementThreshold && !twoFingerIntentionalDrag) {
+          console.log('Two-finger TAP detected - showing info');
           displayInfo();
           return;
         }
         
-        // For drag detection, require more significant movement and longer duration
-        const dragMinDuration = 100; // Minimum time to be considered a drag
-        const dragMinDistance = 60;  // Larger threshold for intentional drags
+        // For drag detection, require either:
+        // 1. Intentional drag was detected during movement, OR
+        // 2. Significant final distance with reasonable duration
+        const dragMinDuration = 150;
+        const dragMinDistance = 50;
         
-        if (dt >= dragMinDuration && distance >= dragMinDistance) {
-          console.log('Two-finger drag detected, distance:', distance);
+        if (twoFingerIntentionalDrag || (dt >= dragMinDuration && finalDistance >= dragMinDistance)) {
+          console.log('Two-finger DRAG detected');
           if (Math.abs(dx) > Math.abs(dy)) {
             // Horizontal two-finger drag → Next/Previous song
             console.log('Horizontal drag:', dx > 0 ? 'right' : 'left');
@@ -6831,7 +6852,7 @@ function playPreviousUserSong() {
         }
         
         // If it's neither a clear tap nor a clear drag, do nothing
-        console.log('Two-finger gesture ambiguous - ignoring (duration:', dt, 'distance:', distance, ')');
+        console.log('Two-finger gesture IGNORED - ambiguous input');
         return;
       }
       const touchEndTime = Date.now();
@@ -6921,6 +6942,8 @@ function playPreviousUserSong() {
       tapCount = 0;
       pinchActive = false;
       twoFingerStartPositions = [];
+      twoFingerMaxMovement = 0;
+      twoFingerIntentionalDrag = false;
     }
     
     // Call initTouchControls() once the DOM is ready
