@@ -461,9 +461,7 @@ body.authorized .restricted {
       (adsbygoogle = window.adsbygoogle || []).push({});
     </script>
   </div>
-  <div id="creatorError" style="display:none;color:#f66;margin-top:8px;text-align:center;">
-    Error: invalid effect code
-  </div>
+  
   <div id="dspOverlay">
     <h2>Connect Service</h2>
     <button id="connectApple" type="button">Connect to Apple Music</button>
@@ -6456,14 +6454,23 @@ function toggleCreatorMode() {
   // If modal already exists and is showing, hide it now
   const existing = document.getElementById('creatorModal');
   if (existing && existing.classList.contains('show')) {
+    console.log('Hiding existing creator modal');
     existing.classList.remove('show');
-    existing.addEventListener('transitionend', () => existing.remove(), { once: true });
+    existing.addEventListener('transitionend', () => {
+      existing.remove();
+      console.log('Creator modal removed after transition');
+    }, { once: true });
     return;
   }
 
   let modal = document.getElementById('creatorModal');
   if (modal) {
-    requestAnimationFrame(() => modal.classList.add('show'));
+    console.log('Showing existing creator modal');
+    modal.style.display = 'block';
+    requestAnimationFrame(() => {
+      modal.classList.add('show');
+      console.log('Creator modal show class added');
+    });
     return;
   }
   // Create the modal container covering the full screen
@@ -6501,12 +6508,23 @@ function toggleCreatorMode() {
 `;
 
   document.body.appendChild(modal);
-  requestAnimationFrame(() => modal.classList.add('show'));
+  console.log('Creator modal added to DOM');
   
-  document.getElementById('creatorSubmitButton').addEventListener('click', function(){
-    // Clear any previous error
-    const errEl = document.getElementById('creatorError');
-    if (errEl) errEl.style.display = 'none';
+  // Ensure modal is displayed before adding show class for animation
+  modal.style.display = 'block';
+  requestAnimationFrame(() => {
+    modal.classList.add('show');
+    console.log('Creator modal show animation started');
+  });
+  
+      document.getElementById('creatorSubmitButton').addEventListener('click', function(){
+      console.log('Creator submit button clicked');
+      // Clear any previous error
+      const errEl = document.querySelector('#creatorModal .error-message');
+      if (errEl) {
+        errEl.style.display = 'none';
+        console.log('Previous error message cleared');
+      }
     // Get the code from each textarea
     let createCode = document.getElementById('creatorCreateCode').value;
     let animateInitialCode = document.getElementById('creatorAnimateInitialCode').value;
@@ -6540,26 +6558,44 @@ function toggleCreatorMode() {
 
       showActionMessage("loaded");
 
-      // Hide the modal via CSS animation
-      modal.classList.remove('show');
-      modal.addEventListener('transitionend', () => modal.remove(), { once: true });
-    } catch (e) {
-      // Display error inside the modal
-      if (errEl) {
-        errEl.textContent = 'Error: ' + e.message;
-        errEl.style.display = 'block';
-      }
-      return;
-    }
+             // Hide the modal via CSS animation
+       console.log('Effect created successfully, hiding modal');
+       modal.classList.remove('show');
+       modal.addEventListener('transitionend', () => {
+         modal.remove();
+         console.log('Creator modal removed after successful submission');
+       }, { once: true });
+     } catch (e) {
+       console.error('Error in custom effect code:', e);
+       // Create or find error message element
+       let errorEl = document.querySelector('#creatorModal .error-message');
+       if (!errorEl) {
+         errorEl = document.createElement('div');
+         errorEl.className = 'error-message';
+         errorEl.style.cssText = 'color: #ff4444; margin-top: 12px; text-align: center; font-size: 14px; padding: 8px; background: rgba(255, 68, 68, 0.1); border-radius: 8px; border: 1px solid rgba(255, 68, 68, 0.3);';
+         // Insert before the buttons
+         const buttonsDiv = document.querySelector('#creatorModal .creatorButtons');
+         if (buttonsDiv) {
+           buttonsDiv.parentNode.insertBefore(errorEl, buttonsDiv);
+         }
+       }
+       errorEl.textContent = 'Error: ' + e.message;
+       errorEl.style.display = 'block';
+       console.log('Error message displayed:', e.message);
+       return;
+     }
   });
   
   document.getElementById('creatorCancelButton').addEventListener('click', function(){
+    console.log('Creator cancel button clicked');
     const modal = document.getElementById('creatorModal');
     if (!modal) return;
     // Fade out then remove entirely
+    console.log('Starting cancel animation');
     modal.classList.remove('show');
     modal.addEventListener('transitionend', () => {
       modal.remove();
+      console.log('Creator modal removed after cancel');
     }, { once: true });
   });
 }
