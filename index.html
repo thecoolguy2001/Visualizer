@@ -1507,6 +1507,7 @@ function createWaves() {
       uSeed:           { value: Math.random() * 100.0 }, // random seed for unique behavior
       // Add uniforms for visual mode
       cameraTexture:   { value: null },
+      resolution:    { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
       visualMode:      { value: 0.0 }, // 0: off, 1: Waves show camera feed, 2: Background shows camera feed
       cameraActive:    { value: 0.0 }
     },
@@ -1569,6 +1570,7 @@ function createWaves() {
       uniform float lineThickness;
       // uniform vec2 resolution; -- removed
       // Add camera aspect uniform
+      uniform vec2 resolution;
       uniform float cameraAspect;
       // Add uniforms for visual mode
       uniform sampler2D cameraTexture;
@@ -1685,8 +1687,7 @@ function createWaves() {
         // --- Visual Mode Logic ---
         if (visualMode > 0.5 && cameraActive > 0.5) {
            // Use vUv for screenUV, with aspect adjustment for camera feed if needed
-           vec2 screenUV = vUv;
-           screenUV.x *= cameraAspect;
+           vec2 screenUV = gl_FragCoord.xy / resolution.xy;
            vec4 cameraColor = texture2D(cameraTexture, screenUV);
 
            if (abs(visualMode - 1.0) < 0.1) {
@@ -1705,10 +1706,6 @@ function createWaves() {
              // Mix camera background and wave color based on wave alpha
              vec3 finalColor = mix(cameraColor.rgb, waveColor, waveAlpha);
              gl_FragColor = vec4(finalColor, 1.0); // Output should be fully opaque
-
-           } else if (abs(visualMode - 3.0) < 0.1) {
-             // Style 3: Camera feed directly
-             gl_FragColor = cameraColor;
 
            } else {
              // Fallback (visual mode on but unknown style) - Render like Style 1 (the new multiplied style)
@@ -2814,9 +2811,6 @@ function createScribbleEffect() {
           // Style 2: Scribbles on camera feed background
           vec3 finalColor = mix(cameraColor.rgb, accumColor, accumAlpha);
           gl_FragColor = vec4(finalColor, 1.0); // Make background opaque
-        } else if (visualMode == 3.0) {
-          // Style 3: Camera feed only
-          gl_FragColor = cameraColor;
         } else {
           // Fallback (same as normal)
           gl_FragColor = vec4(accumColor, accumAlpha);
@@ -3161,8 +3155,8 @@ function createBlobEffect() {
     // Uniforms from JS
     uniform float time;
     uniform float uBass, uMid, uTreble;
-    uniform float effectIntensity; // drives “gooeyness”
-    uniform float uColorSpeed;     // drives hue‐cycle speed
+    uniform float effectIntensity; // drives "gooeyness"
+    uniform float uColorSpeed;     // drives hue-cycle speed
     uniform vec2 seeds[${blobCount}];
     uniform float r0[${blobCount}];
     uniform float uMaxR;
@@ -3176,7 +3170,7 @@ function createBlobEffect() {
       return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
     }
 
-    // Smooth‐min to blend metaballs “gooeyly”
+    // Smooth-min to blend metaballs "gooeyly"
     float smoothMin(float a, float b, float k) {
       float h = clamp(0.5 + 0.5*(b - a)/k, 0.0, 1.0);
       return mix(b, a, h) - k*h*(1.0 - h);
@@ -4644,7 +4638,7 @@ function createKaleidoTunnelEffect() {
   // 1) Fullscreen quad (NDC space)
   const geometry = new THREE.PlaneBufferGeometry(2, 2);
 
-  // 2) ShaderMaterial: full‐screen kaleidoscopic ring pattern, audio‐reactive
+  // 2) ShaderMaterial: full-screen kaleidoscopic ring pattern, audio-reactive
   const material = new THREE.ShaderMaterial({
     transparent: false,
     depthWrite: false,
@@ -4675,19 +4669,19 @@ function createKaleidoTunnelEffect() {
       uniform float uAudioTreble;
       uniform float uEffectIntensity;
 
-      // Simple hash to give per‐cell hue variation
+      // Simple hash to give per-cell hue variation
       float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
       }
 
-      // HSV → RGB
+      // HSV -> RGB
       vec3 hsv2rgb(vec3 c) {
         vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
         vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
         return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
       }
 
-      // 6‐way kaleidoscope fold: folds any (x,y) into a single wedge of angle = 2π/segments
+      // 6-way kaleidoscope fold: folds any (x,y) into a single wedge of angle = 2π/segments
       vec2 kaleidoFold(vec2 uv, float segments) {
         float angle = atan(uv.y, uv.x);
         float radius = length(uv);
@@ -4699,54 +4693,54 @@ function createKaleidoTunnelEffect() {
       }
 
       void main() {
-        // 1) Normalize UV → [-1,1], correct for aspect
+        // 1) Normalize UV -> [-1,1], correct for aspect
         vec2 uv = vUv * 2.0 - 1.0;
         uv.x *= (uResolution.x / uResolution.y);
 
-        // 2) Determine audio‐driven parameters
+        // 2) Determine audio-driven parameters
         float t = uTime * (0.2 + uAudioMid * 0.5);         // mids speed up time
         float bassScale = 3.0 + uAudioBass * 5.0;          // bass controls overall grid scale
         float trebleRings = 8.0 + uAudioTreble * 10.0;     // treble drives how many rings per cell
-        float segments = 6.0 + floor(uAudioMid * 2.0);     // mids can push 6→8 wedge symmetry
+        float segments = 6.0 + floor(uAudioMid * 2.0);     // mids can push 6->8 wedge symmetry
 
         // 3) Apply kaleidoscope fold on the entire (centered) UV
         vec2 folded = kaleidoFold(uv, segments);
 
-        // 4) Tile that folded coordinate into a grid of “cells”
+        // 4) Tile that folded coordinate into a grid of "cells"
         vec2 tiled = folded * bassScale;
-        // Instead of fract( ), do fract then remap so each cell’s range is [–0.5 .. +0.5]
+        // Instead of fract( ), do fract then remap so each cell's range is [–0.5 .. +0.5]
         vec2 cell = fract(tiled) - 0.5;
 
-        // 5) Compute distance from the center of this cell → 0.0 at center, up to ≈0.707 at a corner
+        // 5) Compute distance from the center of this cell -> 0.0 at center, up to ≈0.707 at a corner
         float d = length(cell);
 
-        // 6) Build a “ring” pattern: a sawtooth wave in d‐space, then threshold it
+        // 6) Build a "ring" pattern: a sawtooth wave in d-space, then threshold it
         float phase = d * trebleRings - t;       // d * ringCount, animated by time
         float saw = fract(phase);                // repeats every 1.0
-        float ringShape = abs(saw * 2.0 - 1.0);  // converts saw→triangle (0 at ring center, 1 at ring edge)
+        float ringShape = abs(saw * 2.0 - 1.0);  // converts saw->triangle (0 at ring center, 1 at ring edge)
         // Threshold the triangle to get a thin bright ring: 
         float ringWidth = 0.2; 
         float rings = 1.0 - smoothstep(ringWidth, ringWidth - 0.05, ringShape);
 
-        // 7) Add a little treble‐driven sparkle: high‐frequency noise on top of rings
+        // 7) Add a little treble-driven sparkle: high-frequency noise on top of rings
         float sparkleFreq = 30.0 + uAudioTreble * 100.0;
         float sparkle = fract(sin((cell.x + cell.y + t*3.0) * sparkleFreq) * 43758.5453);
         rings = mix(rings, sparkle, uAudioTreble * 0.3);
 
-        // 8) Per‐cell hue variation: hash the cell’s integer index
+        // 8) Per-cell hue variation: hash the cell's integer index
         vec2 cellIndex = floor(tiled);       // the i,j of this cell
         float seed = hash(cellIndex);
         float hue = fract(seed + t * 0.1 + uAudioMid * 0.2);
         float sat = 0.8;
         float val = clamp(rings, 0.0, 1.0);
 
-        // 9) Convert HSV→RGB 
+        // 9) Convert HSV->RGB 
         vec3 color = hsv2rgb(vec3(hue, sat, val));
 
-        // 10) No circular mask: we want full‐screen coverage. 
+        // 10) No circular mask: we want full-screen coverage. 
         //     If you want a very subtle corner fade, use a box fade:
         vec2 ab = abs(uv);
-        float bx = max(ab.x, ab.y);             // 0 at center, → larger at edges
+        float bx = max(ab.x, ab.y);             // 0 at center, -> larger at edges
         float boxFade = smoothstep(1.2, 1.0, bx);
         color *= boxFade;
 
@@ -4799,201 +4793,394 @@ function createKaleidoTunnelEffect() {
   }.bind(mesh);
 }
 
-function createFlowerBlockEffect() {
-  // 1) Fullscreen quad covering the entire view (Normalized Device Coordinates)
-  const geometry = new THREE.PlaneBufferGeometry(2, 2);
+// function createFlowerBlockEffect() {
+//   // 1) Fullscreen quad covering the entire view (Normalized Device Coordinates)
+//   const geometry = new THREE.PlaneBufferGeometry(2, 2);
 
-  // 2) ShaderMaterial: dense array of rotating fractal shapes, four-fold symmetry
-  const material = new THREE.ShaderMaterial({
-    transparent: false,
-    depthWrite: false,
-    uniforms: {
-      uTime:            { value: 0.0 },
-      uResolution:      { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-      uAudioBass:       { value: 0.0 },
-      uAudioMid:        { value: 0.0 },
-      uAudioTreble:     { value: 0.0 },
-      uEffectIntensity: { value: 1.0 }
-    },
-    vertexShader: `
-      varying vec2 vUv;
-      void main() {
-        vUv = uv;
-        gl_Position = vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      precision highp float;
-      #define PI 3.14159265359
+//   // 2) ShaderMaterial: dense array of rotating fractal shapes, four-fold symmetry
+//   const material = new THREE.ShaderMaterial({
+//     transparent: false,
+//     depthWrite: false,
+//     uniforms: {
+//       uTime:            { value: 0.0 },
+//       uResolution:      { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+//       uAudioBass:       { value: 0.0 },
+//       uAudioMid:        { value: 0.0 },
+//       uAudioTreble:     { value: 0.0 },
+//       uEffectIntensity: { value: 1.0 }
+//     },
+//     vertexShader: `
+//       varying vec2 vUv;
+//       void main() {
+//         vUv = uv;
+//         gl_Position = vec4(position, 1.0);
+//       }
+//     `,
+//     fragmentShader: `
+//       precision highp float;
+//       #define PI 3.14159265359
 
-      varying vec2 vUv;
-      uniform float uTime;
-      uniform vec2  uResolution;
-      uniform float uAudioBass;
-      uniform float uAudioMid;
-      uniform float uAudioTreble;
-      uniform float uEffectIntensity;
+//       varying vec2 vUv;
+//       uniform float uTime;
+//       uniform vec2  uResolution;
+//       uniform float uAudioBass;
+//       uniform float uAudioMid;
+//       uniform float uAudioTreble;
+//       uniform float uEffectIntensity;
 
-      // ---------- 2D Hash and FBM (5 octaves) ----------
-      float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123);
-      }
-      float noise(vec2 p) {
-        vec2 i = floor(p);
-        vec2 f = fract(p);
-        vec2 u = f*f*(3.0 - 2.0*f);
-        float a = hash(i + vec2(0.0, 0.0));
-        float b = hash(i + vec2(1.0, 0.0));
-        float c = hash(i + vec2(0.0, 1.0));
-        float d = hash(i + vec2(1.0, 1.0));
-        return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
-      }
-      float fbm(vec2 p) {
-        float v = 0.0;
-        float amp = 0.5;
-        for(int i = 0; i < 5; i++) {
-          v += amp * noise(p);
-          p *= 2.0;
-          amp *= 0.5;
-        }
-        return v;
-      }
+//       // ---------- 2D Hash and FBM (5 octaves) ----------
+//       float hash(vec2 p) {
+//         return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123);
+//       }
+//       float noise(vec2 p) {
+//         vec2 i = floor(p);
+//         vec2 f = fract(p);
+//         vec2 u = f*f*(3.0 - 2.0*f);
+//         float a = hash(i + vec2(0.0, 0.0));
+//         float b = hash(i + vec2(1.0, 0.0));
+//         float c = hash(i + vec2(0.0, 1.0));
+//         float d = hash(i + vec2(1.0, 1.0));
+//         return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+//       }
+//       float fbm(vec2 p) {
+//         float v = 0.0;
+//         float amp = 0.5;
+//         for(int i = 0; i < 5; i++) {
+//           v += amp * noise(p);
+//           p *= 2.0;
+//           amp *= 0.5;
+//         }
+//         return v;
+//       }
 
-      // ---------- HSV → RGB ----------
-      vec3 hsv2rgb(vec3 c) {
-        vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
-        vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-        return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-      }
+//       // ---------- HSV → RGB ----------
+//       vec3 hsv2rgb(vec3 c) {
+//         vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+//         vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+//         return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+//       }
 
-      // ---------- Four‐Fold Symmetry (mirror both X and Y) ----------
-      vec2 symUV(vec2 uv) {
-        // Map uv from [0,1] to [-1,1], then mirror, then back to [0,1]
-        vec2 p = uv * 2.0 - 1.0;
-        p = abs(mod(p + 1.0, 2.0) - 1.0);
-        return p * 0.5 + 0.5;
-      }
+//       // ---------- Four‐Fold Symmetry (mirror both X and Y) ----------
+//       vec2 symUV(vec2 uv) {
+//         // Map uv from [0,1] to [-1,1], then mirror, then back to [0,1]
+//         vec2 p = uv * 2.0 - 1.0;
+//         p = abs(mod(p + 1.0, 2.0) - 1.0);
+//         return p * 0.5 + 0.5;
+//       }
 
-      // ---------- Draw a “flower” shape inside each grid cell ----------
-      //   - ‘p’ is coordinates within [0..1] of one cell.
-      //   - ‘phase’ controls rotation.
-      //   - ‘twist’ is additional angular offset.
-      float shapePattern(vec2 p, float phase, float twist) {
-        // Remap cell‐local coords from [0,1]→[-1,1]
-        vec2 c = (p - 0.5) * 2.0;
-        float angle = atan(c.y, c.x) + twist;
-        float radius = length(c);
-        // Number of “petals” changes with mid frequencies
-        float petals = 6.0 + 2.0 * uAudioMid; // from 6→8 petals
-        // base radius for flower: modest sine oscillation
-        float r = 0.3 + 0.1 * sin(petals * angle + phase);
-        // Fill interior of flower: radius < r
-        return smoothstep(r, r - 0.02, radius);
-      }
+//       // ---------- Draw a "flower" shape inside each grid cell ----------
+//       //   - 'p' is coordinates within [0..1] of one cell.
+//       //   - 'phase' controls rotation.
+//       //   - 'twist' is additional angular offset.
+//       float shapePattern(vec2 p, float phase, float twist) {
+//         // Remap cell‐local coords from [0,1]→[-1,1]
+//         vec2 c = (p - 0.5) * 2.0;
+//         float angle = atan(c.y, c.x) + twist;
+//         float radius = length(c);
+//         // Number of "petals" changes with mid frequencies
+//         float petals = 6.0 + 2.0 * uAudioMid; // from 6→8 petals
+//         // base radius for flower: modest sine oscillation
+//         float r = 0.3 + 0.1 * sin(petals * angle + phase);
+//         // Fill interior of flower: radius < r
+//         return smoothstep(r, r - 0.02, radius);
+//       }
 
-      void main() {
-        // 1) Normalize UV to [0,1], correct aspect
-        vec2 uv = vUv;
-        vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
-        vec2 centered = (uv - 0.5) * aspect;
+//       void main() {
+//         // 1) Normalize UV to [0,1], correct aspect
+//         vec2 uv = vUv;
+//         vec2 aspect = vec2(uResolution.x / uResolution.y, 1.0);
+//         vec2 centered = (uv - 0.5) * aspect;
 
-        // 2) Four‐fold kaleidoscope symmetry
-        vec2 sym = symUV(uv);
+//         // 2) Four‐fold kaleidoscope symmetry
+//         vec2 sym = symUV(uv);
 
-        // 3) Time parameter scaled by mid frequency
-        float t = uTime * (0.3 + uAudioMid * 0.5);
+//         // 3) Time parameter scaled by mid frequency
+//         float t = uTime * (0.3 + uAudioMid * 0.5);
 
-        // 4) Zoom factor from bass (deeper zoom/pulse on bass hits)
-        float bassZoom = 1.0 + uAudioBass * 1.5;
+//         // 4) Zoom factor from bass (deeper zoom/pulse on bass hits)
+//         float bassZoom = 1.0 + uAudioBass * 1.5;
 
-        // 5) Distortion factor from treble (“sparkle” detail)
-        float trebleDist = uAudioTreble * 2.0;
+//         // 5) Distortion factor from treble ("sparkle" detail)
+//         float trebleDist = uAudioTreble * 2.0;
 
-        // 6) Tile the symmetric UV into an 8×8 grid
-        vec2 grid = sym * 8.0;          // each cell in [0..8)
-        vec2 cell = fract(grid);        // local coords inside each cell [0..1]
-        vec2 id = floor(grid);          // integer grid cell index
+//         // 6) Tile the symmetric UV into an 8×8 grid
+//         vec2 grid = sym * 8.0;          // each cell in [0..8)
+//         vec2 cell = fract(grid);        // local coords inside each cell [0..1]
+//         vec2 id = floor(grid);          // integer grid cell index
 
-        // 7) Generate a small seed per‐cell by hashing (id + time)
-        float cellSeed = hash(id + vec2(floor(t), floor(t * 0.5)));
-        //    Use that to offset shape’s rotation phase
-        float phase = t + cellSeed * PI * 2.0;
-        float twist = t * 0.5 + cellSeed * PI * 2.0 + uAudioBass;
+//         // 7) Generate a small seed per‐cell by hashing (id + time)
+//         float cellSeed = hash(id + vec2(floor(t), floor(t * 0.5)));
+//         //    Use that to offset shape's rotation phase
+//         float phase = t + cellSeed * PI * 2.0;
+//         float twist = t * 0.5 + cellSeed * PI * 2.0 + uAudioBass;
 
-        // 8) Build a fractal background across the entire screen
-        vec2 noiseCoord = centered * bassZoom + t * 0.2;
-        float lowFreq = fbm(noiseCoord * 1.2);
-        float highFreq = noise(noiseCoord * (4.0 + trebleDist) + t * 2.0);
-        float backgroundPattern = mix(lowFreq, highFreq, uAudioTreble * 0.5);
+//         // 8) Build a fractal background across the entire screen
+//         vec2 noiseCoord = centered * bassZoom + t * 0.2;
+//         float lowFreq = fbm(noiseCoord * 1.2);
+//         float highFreq = noise(noiseCoord * (4.0 + trebleDist) + t * 2.0);
+//         float backgroundPattern = mix(lowFreq, highFreq, uAudioTreble * 0.5);
 
-        // 9) Evaluate the shape pattern inside each cell
-        float flower = shapePattern(cell, phase, twist);
+//         // 9) Evaluate the shape pattern inside each cell
+//         float flower = shapePattern(cell, phase, twist);
 
-        // 10) Combine background and the flower shape (70% flower, 30% background)
-        float combined = mix(backgroundPattern, flower, 0.7);
+//         // 10) Combine background and the flower shape (70% flower, 30% background)
+//         float combined = mix(backgroundPattern, flower, 0.7);
 
-        // 11) Compute a dynamic HSV color for this pixel
-        float hue = fract(t * 0.05 + combined * 0.2 + cellSeed);
-        float sat = 0.5 + 0.5 * combined;
-        float val = 0.4 + 0.6 * combined;
-        vec3 color = hsv2rgb(vec3(hue, sat, val));
+//         // 11) Compute a dynamic HSV color for this pixel
+//         float hue = fract(t * 0.05 + combined * 0.2 + cellSeed);
+//         float sat = 0.5 + 0.5 * combined;
+//         float val = 0.4 + 0.6 * combined;
+//         vec3 color = hsv2rgb(vec3(hue, sat, val));
 
-        // 12) Add a small treble‐driven flicker/noise
-        float flick = noise(uv * (10.0 + trebleDist * 5.0) + t) * uAudioTreble * 0.3;
-        color += flick;
+//         // 12) Add a small treble‐driven flicker/noise
+//         float flick = noise(uv * (10.0 + trebleDist * 5.0) + t) * uAudioTreble * 0.3;
+//         color += flick;
 
-        // 13) Soft vignette (darken edges toward corners)
-        float dist = length(centered);
-        float vig = smoothstep(0.8, 0.4, dist);
-        color *= vig;
+//         // 13) Soft vignette (darken edges toward corners)
+//         float dist = length(centered);
+//         float vig = smoothstep(0.8, 0.4, dist);
+//         color *= vig;
 
-        // 14) Apply global effect intensity
-        color *= uEffectIntensity;
+//         // 14) Apply global effect intensity
+//         color *= uEffectIntensity;
 
-        gl_FragColor = vec4(color, 1.0);
-      }
-    `
-  });
+//         gl_FragColor = vec4(color, 1.0);
+//       }
+//     `
+//   });
 
-  // 3) Create mesh and add to scene
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.name = 'KaleidoTunnelEffect'; // Name can remain for consistency
-  mesh.userData.baseEffectIntensity = 1.0;
-  scene.add(mesh);
-  visualElements.push(mesh);
+//   // 3) Create mesh and add to scene
+//   const mesh = new THREE.Mesh(geometry, material);
+//   mesh.name = 'KaleidoTunnelEffect'; // Name can remain for consistency
+//   mesh.userData.baseEffectIntensity = 1.0;
+//   scene.add(mesh);
+//   visualElements.push(mesh);
 
-  // 4) Idle (no audio) animation:
-  mesh.userData.customAnimateInitial = function() {
-    const mat = this.material;
-    const currentTime = performance.now() * 0.001;
-    mat.uniforms.uTime.value = currentTime;
-    mat.uniforms.uAudioBass.value   = 0.0;
-    mat.uniforms.uAudioMid.value    = 0.0;
-    mat.uniforms.uAudioTreble.value = 0.0;
-    mat.uniforms.uEffectIntensity.value = this.userData.baseEffectIntensity || 1.0;
-    mat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
-  }.bind(mesh);
+//   // 4) Idle (no audio) animation:
+//   mesh.userData.customAnimateInitial = function() {
+//     const mat = this.material;
+//     const currentTime = performance.now() * 0.001;
+//     mat.uniforms.uTime.value = currentTime;
+//     mat.uniforms.uAudioBass.value   = 0.0;
+//     mat.uniforms.uAudioMid.value    = 0.0;
+//     mat.uniforms.uAudioTreble.value = 0.0;
+//     mat.uniforms.uEffectIntensity.value = this.userData.baseEffectIntensity || 1.0;
+//     mat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+//   }.bind(mesh);
 
-  // 5) Audio‐Reactive animation (smoothly lerp audio uniform values):
-  mesh.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
-    const mat = this.material;
-    const currentTime = performance.now() * 0.001;
-    mat.uniforms.uTime.value = currentTime;
-    mat.uniforms.uAudioBass.value   = THREE.MathUtils.lerp(mat.uniforms.uAudioBass.value,   bassAvg,   0.1);
-    mat.uniforms.uAudioMid.value    = THREE.MathUtils.lerp(mat.uniforms.uAudioMid.value,    midAvg,    0.1);
-    mat.uniforms.uAudioTreble.value = THREE.MathUtils.lerp(mat.uniforms.uAudioTreble.value, trebleAvg, 0.1);
-    mat.uniforms.uEffectIntensity.value = this.userData.baseEffectIntensity || 1.0;
-    mat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
-  }.bind(mesh);
+//   // 5) Audio‐Reactive animation (smoothly lerp audio uniform values):
+//   mesh.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
+//     const mat = this.material;
+//     const currentTime = performance.now() * 0.001;
+//     mat.uniforms.uTime.value = currentTime;
+//     mat.uniforms.uAudioBass.value   = THREE.MathUtils.lerp(mat.uniforms.uAudioBass.value,   bassAvg,   0.1);
+//     mat.uniforms.uAudioMid.value    = THREE.MathUtils.lerp(mat.uniforms.uAudioMid.value,    midAvg,    0.1);
+//     mat.uniforms.uAudioTreble.value = THREE.MathUtils.lerp(mat.uniforms.uAudioTreble.value, trebleAvg, 0.1);
+//     mat.uniforms.uEffectIntensity.value = this.userData.baseEffectIntensity || 1.0;
+//     mat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+//   }.bind(mesh);
 
-  // 6) Adjust overall effect intensity via number keys (1–9)
-  mesh.userData.customAdjustIntensity = function(level) {
-    this.userData.baseEffectIntensity = 0.5 + level * 0.2; // ~0.7 → 2.3
-    if (this.material) {
-      this.material.uniforms.uEffectIntensity.value = this.userData.baseEffectIntensity;
-    }
-  }.bind(mesh);
-}
+//   // 6) Adjust overall effect intensity via number keys (1–9)
+//   mesh.userData.customAdjustIntensity = function(level) {
+//     this.userData.baseEffectIntensity = 0.5 + level * 0.2; // ~0.7 → 2.3
+//     if (this.material) {
+//       this.material.uniforms.uEffectIntensity.value = this.userData.baseEffectIntensity;
+//     }
+//   }.bind(mesh);
+// }
+
+// function createApple1Effect() {
+//   // Create a fullscreen quad for the shader effect
+//   const geometry = new THREE.PlaneBufferGeometry(2, 2);
+  
+//   const material = new THREE.ShaderMaterial({
+//     uniforms: {
+//       time: { value: 0.0 },
+//       resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+//       audioIntensity: { value: 0.0 },
+//       bassIntensity: { value: 0.0 },
+//       midIntensity: { value: 0.0 },
+//       trebleIntensity: { value: 0.0 },
+//       effectIntensity: { value: 1.0 }
+//     },
+//     vertexShader: `
+//       varying vec2 vUv;
+//       void main() {
+//         vUv = uv;
+//         gl_Position = vec4(position, 1.0);
+//       }
+//     `,
+//     fragmentShader: `
+//       precision highp float;
+      
+//       uniform float time;
+//       uniform vec2 resolution;
+//       uniform float audioIntensity;
+//       uniform float bassIntensity;
+//       uniform float midIntensity;
+//       uniform float trebleIntensity;
+//       uniform float effectIntensity;
+      
+//       varying vec2 vUv;
+      
+//       #define PI 3.14159265359
+//       #define TWO_PI 6.28318530718
+      
+//       // Noise functions for organic movement
+//       float hash(vec2 p) {
+//         return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+//       }
+      
+//       float noise(vec2 p) {
+//         vec2 i = floor(p);
+//         vec2 f = fract(p);
+//         vec2 u = f * f * (3.0 - 2.0 * f);
+        
+//         float a = hash(i);
+//         float b = hash(i + vec2(1.0, 0.0));
+//         float c = hash(i + vec2(0.0, 1.0));
+//         float d = hash(i + vec2(1.0, 1.0));
+        
+//         return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+//       }
+      
+//       float fbm(vec2 p) {
+//         float value = 0.0;
+//         float amplitude = 0.5;
+//         for (int i = 0; i < 4; i++) {
+//           value += amplitude * noise(p);
+//           p *= 2.0;
+//           amplitude *= 0.5;
+//         }
+//         return value;
+//       }
+      
+//       // 4-way kaleidoscope
+//       vec2 kaleidoscope(vec2 uv) {
+//         float angle = atan(uv.y, uv.x);
+//         float radius = length(uv);
+        
+//         // 4-way symmetry
+//         angle = mod(angle, PI * 0.5);
+//         if (angle > PI * 0.25) {
+//           angle = PI * 0.5 - angle;
+//         }
+        
+//         return vec2(cos(angle), sin(angle)) * radius;
+//       }
+      
+//       // Organic tendril shape
+//       float tendril(vec2 p, float phase, float thickness) {
+//         // Create flowing curve
+//         float curve = sin(p.x * 3.0 + time * 2.0 + phase) * 0.3;
+//         curve += sin(p.x * 5.0 - time * 1.5 + phase * 2.0) * 0.15;
+//         curve += fbm(vec2(p.x * 2.0 + time, phase)) * 0.2 * midIntensity;
+        
+//         // Distance from curve
+//         float d = abs(p.y - curve);
+        
+//         // Smooth tendril with variable thickness
+//         float tendrilThickness = thickness * (1.0 + bassIntensity * 0.5);
+//         tendrilThickness *= (1.0 - smoothstep(0.0, 2.0, abs(p.x)));
+        
+//         return smoothstep(tendrilThickness, 0.0, d);
+//       }
+      
+//       // Particle dots along tendrils - renamed function to avoid conflict
+//       float particleDots(vec2 p, float phase) {
+//         float particleSpacing = 0.15 - midIntensity * 0.05;
+//         float particlePhase = floor(p.x / particleSpacing) * particleSpacing;
+        
+//         vec2 particlePos = vec2(particlePhase, 0.0);
+//         float curve = sin(particlePos.x * 3.0 + time * 2.0 + phase) * 0.3;
+//         curve += sin(particlePos.x * 5.0 - time * 1.5 + phase * 2.0) * 0.15;
+//         particlePos.y = curve;
+        
+//         float d = length(p - particlePos);
+//         float size = 0.02 + bassIntensity * 0.01;
+        
+//         return smoothstep(size, 0.0, d);
+//       }
+      
+//       void main() {
+//         vec2 uv = (vUv - 0.5) * 2.0;
+//         uv.x *= resolution.x / resolution.y;
+        
+//         // Apply rotation based on time and audio
+//         float rotation = time * 0.1 + audioIntensity * 0.5;
+//         mat2 rot = mat2(cos(rotation), -sin(rotation), sin(rotation), cos(rotation));
+//         uv = rot * uv;
+        
+//         // Apply kaleidoscope
+//         vec2 kUv = kaleidoscope(uv);
+        
+//         // Scale based on bass
+//         kUv *= 1.0 - bassIntensity * 0.2;
+        
+//         // Background color (red/orange)
+//         vec3 bgColor = vec3(0.8, 0.1, 0.0);
+//         bgColor = mix(bgColor, vec3(1.0, 0.3, 0.0), bassIntensity);
+//        
+//         // Tendril color (green)
+//         vec3 tendrilColor = vec3(0.0, 0.8, 0.2);
+//         tendrilColor = mix(tendrilColor, vec3(0.2, 1.0, 0.4), trebleIntensity);
+//        
+//         // Create multiple tendrils
+//         float tendrilsValue = 0.0;
+//         float particlesValue = 0.0;
+//         for (float i = 0.0; i < 8.0; i++) {
+//           float phase = i * 0.8;
+//           vec2 offset = vec2(0.0, i * 0.1 - 0.35);
+          
+//           // Add swirl distortion
+//           vec2 swirlUv = kUv + offset;
+//           float swirl = fbm(swirlUv * 2.0 + time * 0.3) * 0.1 * midIntensity;
+//           swirlUv += vec2(swirl, swirl * 0.5);
+          
+//           tendrilsValue += tendril(swirlUv, phase, 0.05 + i * 0.005);
+//           particlesValue += particleDots(swirlUv, phase);
+//         }
+        
+//         // Add glow
+//         float glow = tendrilsValue * 0.5;
+//         for (float i = 1.0; i < 4.0; i++) {
+//           vec2 glowUv = kUv * (1.0 + i * 0.05);
+//           for (float j = 0.0; j < 8.0; j++) {
+//             float phase = j * 0.8;
+//             vec2 offset = vec2(0.0, j * 0.1 - 0.35);
+//             glow += tendril(glowUv + offset, phase, 0.1 * i) * (0.3 / i);
+//           }
+//         }
+        
+//         // Combine everything
+//         vec3 color = bgColor;
+//         color = mix(color, tendrilColor, clamp(tendrilsValue + particlesValue, 0.0, 1.0));
+//         color += tendrilColor * glow * 0.5;
+        
+//         // Add center glow
+//         float centerDist = length(uv);
+//         float centerGlow = smoothstep(0.5, 0.0, centerDist) * audioIntensity;
+//         color += vec3(1.0, 1.0, 0.8) * centerGlow * 0.3;
+        
+//         // Apply effect intensity
+//         color = mix(bgColor, color, effectIntensity);
+        
+//         gl_FragColor = vec4(color, 1.0);
+//       }
+//     `,
+//     depthTest: false,
+//     depthWrite: false
+//   });
+  
+//   const mesh = new THREE.Mesh(geometry, material);
+//   mesh.name = 'Apple1Effect';
+//   mesh.renderOrder = 1;
+//   mesh.userData.baseEffectIntensity = 1.0;
+  
+//   scene.add(mesh);
+//   visualElements.push(mesh);
+// }
+
 
     function createVisualElements() {
   createParticles();
@@ -5008,15 +5195,18 @@ function createFlowerBlockEffect() {
   createKaleidoTunnelEffect();
   createStarfieldWarpEffect();
   createLiquidCrystalEffect();
+  //createApple1Effect();
+  //createApple2Effect();
+  //createApple3Effect();
   createAbstractFlowEffect();
-  createFlowerBlockEffect();
+  //createFlowerBlockEffect();
   createPopArtEffect();
   createGlitchEffect();
   createPixelSortEffect();
   createTrippyColors();
   createNeonGridEffect();
   createGeometricPulseEffect();
-
+  //createGeometricLinesEffect();
   createOrangeEffect();
   // Additional styles can be added here
   updateVisibility(); // Show only the selected style
@@ -5344,6 +5534,18 @@ if (geometryIdle && geometryIdle.userData && geometryIdle.userData.customAnimate
   } catch (err) {
     console.error("Error in GeometricPulseEffect customAnimateInitial:", err);
   }
+}
+// Apple1 Effect (Idle)
+const apple1Effect = visualElements.find(elem => elem.name === 'Apple1Effect');
+if (apple1Effect && apple1Effect.material.uniforms) {
+  const currentTime = performance.now() * 0.001;
+  apple1Effect.material.uniforms.time.value = currentTime;
+  apple1Effect.material.uniforms.audioIntensity.value = 0.3; // Gentle idle animation
+  apple1Effect.material.uniforms.bassIntensity.value = 0.1;
+  apple1Effect.material.uniforms.midIntensity.value = 0.2;
+  apple1Effect.material.uniforms.trebleIntensity.value = 0.1;
+  apple1Effect.material.uniforms.effectIntensity.value = apple1Effect.userData.baseEffectIntensity || 1.0;
+  apple1Effect.material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
 }
 
 
@@ -5698,6 +5900,39 @@ if (geometryReact && geometryReact.userData && geometryReact.userData.customAnim
     console.error("Error in GeometricPulseEffect customAnimateReactive:", err);
   }
 }
+// Apple1 Effect (Audio Reactive)
+const apple1Effect = visualElements.find(elem => elem.name === 'Apple1Effect');
+if (apple1Effect && apple1Effect.material.uniforms) {
+  const currentTime = performance.now() * 0.001;
+  
+  // Smooth the audio values for more organic movement
+  const smoothedBass = THREE.MathUtils.lerp(
+    apple1Effect.material.uniforms.bassIntensity.value,
+    bassAvg,
+    0.1
+  );
+  const smoothedMid = THREE.MathUtils.lerp(
+    apple1Effect.material.uniforms.midIntensity.value,
+    midAvg,
+    0.15
+  );
+  const smoothedTreble = THREE.MathUtils.lerp(
+    apple1Effect.material.uniforms.trebleIntensity.value,
+    trebleAvg,
+    0.2
+  );
+  
+  // Overall audio intensity
+  const overallIntensity = (smoothedBass * 0.4 + smoothedMid * 0.4 + smoothedTreble * 0.2);
+  
+  apple1Effect.material.uniforms.time.value = currentTime;
+  apple1Effect.material.uniforms.audioIntensity.value = overallIntensity;
+  apple1Effect.material.uniforms.bassIntensity.value = smoothedBass;
+  apple1Effect.material.uniforms.midIntensity.value = smoothedMid;
+  apple1Effect.material.uniforms.trebleIntensity.value = smoothedTreble;
+  apple1Effect.material.uniforms.effectIntensity.value = apple1Effect.userData.baseEffectIntensity || 1.0;
+  apple1Effect.material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+}
 
 
       renderer.render(scene, camera);
@@ -6030,10 +6265,7 @@ case 'ArrowUp': {
       } else if (currentState === 1) {
         activeMaterial.uniforms.visualMode.value = 2.0;
         showActionMessage("waves visual: style 2");
-      } else if (currentState === 2) {
-        activeMaterial.uniforms.visualMode.value = 3.0;
-        showActionMessage("waves visual: style 3");
-      } else { // currentState is 3
+      } else { // currentState is 2 (or 3), cycle back to off
         toggleCameraBackground();
         showActionMessage("waves visual: off");
       }
@@ -6050,13 +6282,8 @@ case 'ArrowUp': {
         activeMaterial.uniforms.visualMode.value = 2.0;
         showActionMessage("scribble visual: style 2");
         console.log("Scribble Visual Mode: Style 2");
-      } else if (currentState === 2) {
-        // Currently Style 2: Go to Style 3
-        activeMaterial.uniforms.visualMode.value = 3.0;
-        showActionMessage("scribble visual: style 3");
-        console.log("Scribble Visual Mode: Style 3");
-      } else { // currentState is 3 (or unexpected)
-        // Currently Style 3: Turn camera OFF, go to Off state
+      } else { // currentState is 2 (or unexpected)
+        // Currently Style 2: Turn camera OFF, go to Off state
         toggleCameraBackground(); // Turns OFF camera, resets defaults
         // visualMode is already set to 0 by toggleCameraBackground
         showActionMessage("scribble visual: off");
@@ -6263,7 +6490,14 @@ const orangeEffect = visualElements.find(e => e.name === 'Orange');
     orangeEffect.material.uniforms.effectIntensity.value = orangeEffect.userData.baseEffectIntensity;
     console.log('Updated Orange effectIntensity to', orangeEffect.material.uniforms.effectIntensity.value);
   }
-
+// Apple1 Effect intensity adjustment
+const apple1Effect = visualElements.find(elem => elem.name === 'Apple1Effect');
+if (apple1Effect && apple1Effect.material && apple1Effect.material.uniforms) {
+  // Map intensity level 1-9 to 0.5-1.5 range
+  apple1Effect.userData.baseEffectIntensity = 0.5 + intensityLevel * 0.11;
+  apple1Effect.material.uniforms.effectIntensity.value = apple1Effect.userData.baseEffectIntensity;
+  console.log('Updated Apple1Effect intensity to', apple1Effect.userData.baseEffectIntensity);
+}
 
   
 visualElements.forEach(effect => {
