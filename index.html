@@ -4745,14 +4745,16 @@ function createPixelSortEffect() {
 }
 
 function createWaterPoolEffect() {
-  // Calculate full-screen geometry dimensions with extra margin to eliminate borders
-  const distance = camera.position.z;
-  const fovInRadians = (camera.fov * Math.PI) / 180.0;
-  const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
-  const planeWidth = planeHeight * camera.aspect;
+  // Create 3D water surface with subdivisions for vertex animation
+  const waterSize = 10;
+  const waterSegments = 64; // PS1-style lower poly count but still detailed enough
+  const geometry = new THREE.PlaneBufferGeometry(waterSize, waterSize, waterSegments, waterSegments);
   
-  // Add extra margin to ensure no borders (similar to waves effect)
-  const geometry = new THREE.PlaneBufferGeometry(planeWidth * 1.2, planeHeight * 1.2);
+  // Rotate to be horizontal (looking down at water)
+  geometry.rotateX(-Math.PI / 2);
+  
+  // Position the water plane
+  geometry.translate(0, -2, 0);
   
   // Store reference to parent mesh for geometry updates
   geometry.parentMesh = null;
@@ -4760,336 +4762,157 @@ function createWaterPoolEffect() {
   const material = new THREE.ShaderMaterial({
     uniforms: {
       time: { value: 0.0 },
-      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
       audioBass: { value: 0.0 },
       audioMid: { value: 0.0 },
       audioTreble: { value: 0.0 },
       effectIntensity: { value: 1.0 },
-      waveAmplitude: { value: 0.1 },
+      waveAmplitude: { value: 0.3 },
       waveFrequency: { value: 2.0 },
       rippleSpeed: { value: 1.0 },
-      waterDepth: { value: 0.8 },
       // --- Visual Mode Uniforms ---
       cameraTexture: { value: null },
       visualMode: { value: 0.0 },
       cameraActive: { value: 0.0 }
     },
     vertexShader: `
+      uniform float time;
+      uniform float audioBass;
+      uniform float audioMid;
+      uniform float audioTreble;
+      uniform float waveAmplitude;
+      uniform float effectIntensity;
+      
       varying vec2 vUv;
+      varying vec3 vPosition;
+      varying float vWaveHeight;
+      
+      // Simple noise for PS1-style water
+      float noise(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+      }
+      
       void main() {
         vUv = uv;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        vPosition = position;
+        
+        // PS1-style 3D water vertex displacement
+        vec3 pos = position;
+        
+        // Bass-driven large waves
+        float bassWaves = sin(pos.x * 0.5 + time * 2.0) * cos(pos.z * 0.4 + time * 1.5) * audioBass * 0.8;
+        
+        // Mid-frequency ripples
+        float midRipples = sin(pos.x * 1.2 + time * 3.0) * sin(pos.z * 1.0 + time * 2.5) * audioMid * 0.4;
+        
+        // Treble surface detail
+        float trebleDetail = sin(pos.x * 3.0 + time * 5.0) * cos(pos.z * 2.8 + time * 4.5) * audioTreble * 0.2;
+        
+        // Natural water movement (always present)
+        float naturalWaves = sin(pos.x * 0.8 + time * 1.0) * cos(pos.z * 0.6 + time * 0.8) * 0.1;
+        naturalWaves += sin(pos.x * 1.5 + time * 1.3) * sin(pos.z * 1.2 + time * 1.1) * 0.05;
+        
+        // Audio-triggered drops (circular ripples)
+        float drops = 0.0;
+        vec2 dropPos1 = vec2(2.0, 1.5);
+        vec2 dropPos2 = vec2(-1.5, 2.5);
+        vec2 dropPos3 = vec2(-2.0, -1.0);
+        
+        if(audioBass > 0.3) {
+          float dist1 = distance(pos.xz, dropPos1);
+          float ripple1 = sin(dist1 * 4.0 - time * 8.0) * exp(-dist1 * 0.5) * audioBass * 0.3;
+          drops += ripple1;
+        }
+        
+        if(audioMid > 0.4) {
+          float dist2 = distance(pos.xz, dropPos2);
+          float ripple2 = sin(dist2 * 5.0 - time * 10.0) * exp(-dist2 * 0.6) * audioMid * 0.25;
+          drops += ripple2;
+        }
+        
+        // Combine all wave effects
+        float totalWaveHeight = (bassWaves + midRipples + trebleDetail + naturalWaves + drops) * waveAmplitude * effectIntensity;
+        
+        pos.y += totalWaveHeight;
+        vWaveHeight = totalWaveHeight;
+        
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       }
     `,
     fragmentShader: `
-      precision highp float;
-      
-      uniform vec2 resolution;
       uniform float time;
       uniform float audioBass;
       uniform float audioMid;
       uniform float audioTreble;
       uniform float effectIntensity;
-      uniform float waveAmplitude;
-      uniform float waveFrequency;
-      uniform float rippleSpeed;
-      uniform float waterDepth;
-      // Visual Mode Uniforms
+      
+      // Visual mode uniforms
+      uniform sampler2D cameraTexture;
       uniform float visualMode;
       uniform float cameraActive;
-      uniform sampler2D cameraTexture;
-
+      
       varying vec2 vUv;
-
-      // --- Enhanced Noise Functions ---
-      float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-      }
-      
-      float hash3(vec3 p) {
-        return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
-      }
-      
-      float noise(vec2 p) {
-        vec2 i = floor(p);
-        vec2 f = fract(p);
-        vec2 u = f * f * (3.0 - 2.0 * f);
-        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-                   mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-      }
-      
-      float noise3d(vec3 p) {
-        vec3 i = floor(p);
-        vec3 f = fract(p);
-        vec3 u = f * f * (3.0 - 2.0 * f);
-        return mix(mix(mix(hash3(i), hash3(i + vec3(1.0, 0.0, 0.0)), u.x),
-                       mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), u.x), u.y),
-                   mix(mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), u.x),
-                       mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), u.x), u.y), u.z);
-      }
-      
-      float fbm(vec2 p) {
-        float value = 0.0;
-        float amplitude = 0.5;
-        for(int i = 0; i < 6; i++) {
-          value += amplitude * noise(p);
-          p *= 2.0;
-          amplitude *= 0.5;
-        }
-        return value;
-      }
-      
-      float ridgedNoise(vec2 p) {
-        return 1.0 - abs(noise(p) * 2.0 - 1.0);
-      }
-      
-      float fbmRidged(vec2 p) {
-        float value = 0.0;
-        float amplitude = 0.5;
-        for(int i = 0; i < 5; i++) {
-          value += amplitude * ridgedNoise(p);
-          p *= 2.0;
-          amplitude *= 0.5;
-        }
-        return value;
-      }
-
-      // --- Audio-Synced Water Simulation ---
-      float waterHeight(vec2 pos, float time) {
-        float height = 0.0;
-        
-        // 1. BASS-DRIVEN WATER DROPS - drops happen on bass hits
-        vec2 dropSources[4];
-        dropSources[0] = vec2(0.2, 0.3);
-        dropSources[1] = vec2(0.8, 0.4);  
-        dropSources[2] = vec2(0.4, 0.8);
-        dropSources[3] = vec2(0.6, 0.2);
-        
-        for(int i = 0; i < 4; i++) {
-          float fi = float(i);
-          
-          // Drops triggered by bass peaks
-          float bassThreshold = 0.3 + fi * 0.1;
-          float dropTrigger = step(bassThreshold, audioBass);
-          
-          // Time since last bass hit
-          float dropTime = mod(time * (1.0 + audioBass * 2.0) + fi * 1.5, 3.0);
-          
-          // Create ripple when bass hits and for next 2.5 seconds
-          if(dropTrigger > 0.5 && dropTime < 2.5) {
-            vec2 source = dropSources[i];
-            float dist = distance(pos, source);
-            
-            // Ripple expands based on bass strength
-            float rippleRadius = dropTime * (1.0 + audioBass) * 1.2;
-            float rippleStrength = waveAmplitude * audioBass * (1.0 + audioMid * 0.5);
-            
-            // Multiple concentric ripples for realism
-            float ripple1 = sin((dist - rippleRadius) * 20.0) * exp(-dist * 1.5) * exp(-dropTime * 0.6);
-            float ripple2 = sin((dist - rippleRadius + 0.1) * 15.0) * exp(-dist * 2.0) * exp(-dropTime * 0.8) * 0.5;
-            
-            height += (ripple1 + ripple2) * rippleStrength;
-          }
-        }
-        
-        // 2. MID-FREQUENCY SURFACE WAVES - continuous waves that follow mid frequencies
-        float midWaveSpeed = 3.0 + audioMid * 4.0;
-        float midWaveAmp = audioMid * waveAmplitude * 0.6;
-        
-        // Multiple wave directions for complexity
-        float wave1 = sin(pos.x * 6.0 + time * midWaveSpeed) * midWaveAmp;
-        float wave2 = sin(pos.y * 8.0 + time * midWaveSpeed * 0.8) * midWaveAmp * 0.7;
-        float wave3 = sin((pos.x + pos.y) * 5.0 + time * midWaveSpeed * 1.2) * midWaveAmp * 0.5;
-        
-        height += wave1 + wave2 + wave3;
-        
-        // 3. TREBLE-DRIVEN SURFACE TENSION - high frequency ripples
-        float trebleFreq = 15.0 + audioTreble * 10.0;
-        float trebleAmp = audioTreble * waveAmplitude * 0.3;
-        
-        float surfaceTension = sin(pos.x * trebleFreq + time * 8.0) * 
-                              cos(pos.y * trebleFreq * 0.9 + time * 7.0) * trebleAmp;
-        height += surfaceTension;
-        
-        // 4. AUDIO-TRIGGERED BIG WAVES - when all frequencies are high
-        float totalAudio = audioBass + audioMid + audioTreble;
-        if(totalAudio > 1.8) {
-          // Big wave from center when audio is intense
-          vec2 center = vec2(0.5, 0.5);
-          float centerDist = distance(pos, center);
-          float bigWaveRadius = mod(time * 2.0, 4.0);
-          
-          if(abs(centerDist - bigWaveRadius) < 0.3 && bigWaveRadius > 0.5) {
-            float bigWaveAmp = waveAmplitude * totalAudio * 0.4;
-            height += sin((centerDist - bigWaveRadius) * 12.0) * 
-                     exp(-bigWaveRadius * 0.4) * bigWaveAmp;
-          }
-        }
-        
-        // 5. CONSTANT NATURAL WATER MOVEMENT (always visible)
-        // Large gentle swells across the water body
-        float swell1 = sin(pos.x * 1.5 + time * 0.4) * cos(pos.y * 1.2 + time * 0.3) * 0.03;
-        float swell2 = cos(pos.x * 2.0 + time * 0.5) * sin(pos.y * 1.8 + time * 0.4) * 0.025;
-        
-        // Medium frequency natural ripples
-        float naturalRipples = sin(pos.x * 4.0 + time * 0.8) * cos(pos.y * 3.5 + time * 0.7) * 0.015;
-        
-        // Small surface variations (always present)
-        float surfaceDetail = sin(pos.x * 8.0 + time * 1.2) * sin(pos.y * 7.0 + time * 1.0) * 0.008;
-        
-        // Diagonal wave patterns for more complex motion
-        float diagonalWave = sin((pos.x + pos.y) * 3.0 + time * 0.6) * 0.02;
-        
-        height += swell1 + swell2 + naturalRipples + surfaceDetail + diagonalWave;
-        
-        return height * effectIntensity;
-      }
-      
-      // Calculate water normal for realistic lighting
-      vec3 waterNormal(vec2 pos, float time) {
-        float eps = 0.01;
-        float hL = waterHeight(pos - vec2(eps, 0.0), time);
-        float hR = waterHeight(pos + vec2(eps, 0.0), time);
-        float hD = waterHeight(pos - vec2(0.0, eps), time);
-        float hU = waterHeight(pos + vec2(0.0, eps), time);
-        
-        vec3 normal = normalize(vec3(hL - hR, hD - hU, eps * 2.0));
-        return normal;
-      }
-      
-      // --- Realistic Water Lighting ---
-      float fresnel(vec3 normal, vec3 viewDir) {
-        float cosTheta = max(0.0, dot(normal, viewDir));
-        float f0 = 0.02; // Water's base reflectance
-        return f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
-      }
-      
-      vec3 calculateWaterColor(vec2 uv, vec3 normal, float depth, float waveHeight) {
-        // Top-down water body colors (like looking at a lake from above)
-        vec3 shallowColor = vec3(0.3, 0.7, 0.9);   // Light aqua blue
-        vec3 mediumColor = vec3(0.15, 0.5, 0.8);   // Medium blue
-        vec3 deepColor = vec3(0.05, 0.25, 0.5);    // Deep blue
-        vec3 foamColor = vec3(0.95, 0.98, 1.0);    // Bright white foam
-        
-        // Create more varied depth coloring
-        vec3 waterColor;
-        if(depth < 0.3) {
-          waterColor = mix(shallowColor, mediumColor, depth / 0.3);
-        } else {
-          waterColor = mix(mediumColor, deepColor, (depth - 0.3) / 0.7);
-        }
-        
-        // Top-down lighting (sun from above)
-        vec3 lightDir = normalize(vec3(0.2, 0.3, 1.0));
-        vec3 viewDir = vec3(0.0, 0.0, 1.0);
-        
-        // Strong diffuse lighting for clear water visibility
-        float NdotL = max(0.4, dot(normal, lightDir));
-        vec3 diffuse = waterColor * NdotL;
-        
-        // Sky reflection (stronger for top-down view)
-        float fresnelFactor = fresnel(normal, viewDir);
-        vec3 skyReflection = vec3(0.7, 0.85, 1.0);
-        vec3 reflection = skyReflection * fresnelFactor * 0.6;
-        
-        // More visible foam for wave crests
-        float foamAmount = smoothstep(0.02, 0.06, abs(waveHeight));
-        vec3 foam = foamColor * foamAmount * 0.6;
-        
-        // Enhanced subsurface for shallow water visibility
-        vec3 subsurface = vec3(0.4, 0.6, 0.8) * (1.0 - depth) * 0.4;
-        
-        // Clearer water transparency
-        float transparency = 0.2 + depth * 0.6;
-        
-        // Add slight color variation for natural look
-        vec2 colorVariation = uv * 3.0;
-        float variation = (noise(colorVariation) - 0.5) * 0.1;
-        waterColor += vec3(variation * 0.1, variation * 0.05, -variation * 0.05);
-        
-        return mix(diffuse + reflection + subsurface + foam, waterColor, transparency);
-      }
+      varying vec3 vPosition;
+      varying float vWaveHeight;
 
       void main() {
-        vec2 uv = vUv;
-        vec2 screenUV = gl_FragCoord.xy / resolution.xy;
-        vec4 cameraColor = texture2D(cameraTexture, screenUV);
+        // PS1-style chunky water colors based on vertex height
+        vec3 waterColor;
         
-        // Center coordinates for depth calculation
-        vec2 centeredUv = uv - 0.5;
-        float aspectRatio = resolution.x / resolution.y;
-        centeredUv.x *= aspectRatio;
+        // Color based on wave height for 3D depth effect
+        float heightFactor = vWaveHeight * 3.0 + 0.5;
         
-        // Calculate water height and normal
-        float height = waterHeight(uv, time);
-        vec3 normal = waterNormal(uv, time);
+        // PS1 water palette - chunky, blocky colors like old games
+        if(heightFactor > 0.8) {
+          waterColor = vec3(0.7, 0.95, 1.0); // Bright blue-white peaks
+        } else if(heightFactor > 0.4) {
+          waterColor = vec3(0.4, 0.8, 0.95); // Light blue
+        } else if(heightFactor > 0.0) {
+          waterColor = vec3(0.2, 0.6, 0.85); // Medium blue
+        } else if(heightFactor > -0.3) {
+          waterColor = vec3(0.15, 0.45, 0.7); // Darker blue
+        } else {
+          waterColor = vec3(0.1, 0.3, 0.55); // Deep blue valleys
+        }
         
-        // Water depth - deeper in center, shallower at edges
-        float depth = smoothstep(0.0, 0.6, length(centeredUv)) * waterDepth;
-        depth = clamp(depth, 0.1, 0.9);
+        // Simple PS1-style flat lighting (no complex calculations)
+        float lightIntensity = 0.7 + 0.5 * clamp(vWaveHeight, -0.3, 0.3);
+        waterColor *= lightIntensity;
         
-        // Calculate realistic water color with wave-based foam
-        vec3 waterColor = calculateWaterColor(uv, normal, depth, height);
-        
-        // Enhanced caustics and light patterns
-        vec2 causticsUv1 = uv * 6.0 + normal.xy * 0.2 + time * 0.15;
-        vec2 causticsUv2 = uv * 8.0 + normal.xy * 0.15 + time * 0.12;
-        
-        float caustics1 = (sin(causticsUv1.x * 5.0) * cos(causticsUv1.y * 5.0) + 1.0) * 0.5;
-        float caustics2 = (sin(causticsUv2.x * 7.0) * cos(causticsUv2.y * 7.0) + 1.0) * 0.5;
-        
-        float caustics = (pow(caustics1, 2.0) + pow(caustics2, 3.0)) * 0.15 * (1.0 - depth * 0.8);
-        vec3 causticsColor = vec3(0.85, 0.95, 1.0) * caustics;
-        
-        // Add surface shimmer for more water-like appearance
-        vec2 shimmerUv = uv * 12.0 + time * 0.3;
-        float shimmer = noise(shimmerUv) * 0.1 * (1.0 - depth * 0.5);
-        vec3 shimmerColor = vec3(0.9, 0.95, 1.0) * shimmer;
-        
-        vec3 finalColor = waterColor + causticsColor + shimmerColor;
-        
-        // Professional water transparency
-        float waterAlpha = 0.9;
-        
-        // --- Professional Camera Integration ---
-        if (cameraActive > 0.5) {
-          // Calculate refraction offset based on water normal
-          vec2 refractionOffset = normal.xy * 0.05;
-          
-          if (abs(visualMode - 1.0) < 0.1) {
-            // Style 1: Professional water reflection
-            vec2 reflectionUv = screenUV + refractionOffset;
-            reflectionUv.y = 1.0 - reflectionUv.y; // Flip for reflection
-            vec4 cameraReflection = texture2D(cameraTexture, reflectionUv);
-            
-            // Realistic reflection mixing based on Fresnel
-            float fresnelFactor = fresnel(normal, vec3(0.0, 0.0, 1.0));
-            finalColor = mix(finalColor, cameraReflection.rgb, fresnelFactor * 0.6);
-            
-          } else if (abs(visualMode - 2.0) < 0.1) {
-            // Style 2: Looking through water (refraction)
-            vec2 refractionUv = screenUV + refractionOffset * 2.0;
-            vec4 refractedCamera = texture2D(cameraTexture, refractionUv);
-            
-            // Apply water color tint based on depth
-            vec3 waterTint = mix(vec3(0.9, 0.95, 1.0), vec3(0.6, 0.8, 0.9), depth);
-            refractedCamera.rgb *= waterTint;
-            
-            finalColor = mix(refractedCamera.rgb, finalColor, 0.4 + depth * 0.4);
-            
-          } else if (abs(visualMode - 3.0) < 0.1) {
-            // Style 3: Water surface over background
-            finalColor = mix(cameraColor.rgb, finalColor, waterAlpha);
-            waterAlpha = 1.0;
+        // Add simple sparkles on high peaks (PS1 style)
+        if(vWaveHeight > 0.2) {
+          // Simple hash-based sparkles
+          float sparkleHash = fract(sin(dot(vPosition.xz, vec2(127.1, 311.7))) * 43758.5453);
+          if(sparkleHash > 0.92) {
+            waterColor += vec3(0.8, 0.9, 1.0) * 0.4;
           }
         }
         
-        // Apply water edge fade
-        float edgeFade = smoothstep(0.0, 0.1, min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y)));
-        finalColor *= edgeFade;
-        waterAlpha *= edgeFade;
+        // Audio-reactive color boosts (simple)
+        waterColor.r += audioBass * 0.15;
+        waterColor.g += audioMid * 0.1;
+        waterColor.b += audioTreble * 0.2;
         
-        gl_FragColor = vec4(finalColor, waterAlpha);
+        // Clamp to prevent over-brightness
+        waterColor = clamp(waterColor, 0.0, 1.0);
+        
+        // === VISUAL MODES (Camera Integration) ===
+        if(cameraActive > 0.5) {
+          vec4 cameraColor = texture2D(cameraTexture, vUv);
+          
+          if(visualMode < 0.5) {
+            // Mode 0: Water surface with camera reflection
+            vec3 reflection = cameraColor.rgb * 0.4;
+            waterColor = mix(waterColor, waterColor + reflection, 0.5);
+          } else if(visualMode < 1.5) {
+            // Mode 1: Underwater view with camera background
+            waterColor = mix(cameraColor.rgb * vec3(0.7, 0.9, 1.0), waterColor, 0.6);
+          } else {
+            // Mode 2: Water overlay on camera
+            waterColor = mix(cameraColor.rgb, waterColor, 0.5);
+          }
+        }
+        
+        gl_FragColor = vec4(waterColor, 1.0);
       }
     `,
     transparent: true,
@@ -5103,13 +4926,20 @@ function createWaterPoolEffect() {
   // Store reference and update function for resizing
   geometry.parentMesh = mesh;
   mesh.updateGeometry = function() {
-    const distance = camera.position.z;
-    const fovInRadians = (camera.fov * Math.PI) / 180.0;
-    const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
-    const planeWidth = planeHeight * camera.aspect;
+    // For 3D water, we don't need to resize based on camera distance
+    // The water plane is positioned at a fixed size and location
+    // Just update the camera position if needed
+    const waterSize = 10;
+    const waterSegments = 64;
     
-    // Create new geometry with extra margin to eliminate borders
-    const newGeometry = new THREE.PlaneBufferGeometry(planeWidth * 1.2, planeHeight * 1.2);
+    // Create new geometry with same 3D water setup
+    const newGeometry = new THREE.PlaneBufferGeometry(waterSize, waterSize, waterSegments, waterSegments);
+    
+    // Rotate to be horizontal (looking down at water)
+    newGeometry.rotateX(-Math.PI / 2);
+    
+    // Position the water plane
+    newGeometry.translate(0, -2, 0);
     
     // Replace old geometry
     this.geometry.dispose();
@@ -5120,11 +4950,13 @@ function createWaterPoolEffect() {
   // Store base values for intensity adjustments
   mesh.userData = {
     baseEffectIntensity: 1.0,
-    baseWaveAmplitude: 0.1,
-    baseWaveFrequency: 2.0,
-    baseRippleSpeed: 1.0,
-    baseWaterDepth: 0.8
+    baseWaveAmplitude: 0.3
   };
+  
+  // Position camera to look down at the 3D water
+  camera.position.set(0, 5, 0);
+  camera.lookAt(0, -2, 0);
+  camera.up.set(0, 0, -1); // Set up vector for top-down view
   
   scene.add(mesh);
   visualElements.push(mesh);
