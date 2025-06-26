@@ -1738,7 +1738,10 @@ function createWaves() {
         
 function create3DWaves() {
   // Use a highly subdivided plane for high-quality, experimental waves
-  const geometry = new THREE.PlaneBufferGeometry(1200, 1200, 300, 300);
+  const fovRad = camera.fov * Math.PI / 180;
+  const heightWorld = 2 * Math.tan(fovRad * 0.5) * camera.position.z;
+  const widthWorld = heightWorld * camera.aspect;
+  const geometry = new THREE.PlaneBufferGeometry(widthWorld, heightWorld, 300, 300);
   const material = new THREE.ShaderMaterial({
     uniforms: {
       time: { value: 0.0 },
@@ -2045,12 +2048,13 @@ function createTrippyColors() {
 
         
 function createPortal() {
-  // Compute full-screen geometry dimensions.
-  const aspect = window.innerWidth / window.innerHeight;
-  const baseHeight = 2000;  // Base height (can be adjusted)
-  const baseWidth = baseHeight * aspect; // ensures full width coverage
+  // Calculate the needed plane size to fill the view at z=0, with a safety margin.
+  const distance = camera.position.z;
+  const fovInRadians = (camera.fov * Math.PI) / 180.0;
+  const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+  const planeWidth = planeHeight * camera.aspect;
 
-  const geometry = new THREE.PlaneGeometry(baseWidth, baseHeight, 1, 1);
+  const geometry = new THREE.PlaneGeometry(planeWidth * 1.5, planeHeight * 1.5, 1, 1);
   
   const material = new THREE.ShaderMaterial({
     uniforms: {
@@ -2601,8 +2605,8 @@ function createOceanEffect() {
   // The plane width depends on the camera aspect ratio:
   const planeWidth = planeHeight * camera.aspect;
 
-  // 2) Create a plane geometry that exactly fills the camera view at that distance:
-  const geometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight, 1, 1);
+  // 2) Create a plane geometry that exactly fills the camera view at that distance, with a safety margin.
+  const geometry = new THREE.PlaneBufferGeometry(planeWidth * 1.5, planeHeight * 1.5, 1, 1);
 
   // 3) Build the same ShaderMaterial you already have:
   const material = new THREE.ShaderMaterial({
@@ -2744,8 +2748,8 @@ function createScribbleEffect() {
   const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
   const planeWidth = planeHeight * camera.aspect;
 
-  // Fullscreen plane
-  const geometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight);
+  // Fullscreen plane with a 1.5x safety margin to prevent clipping on resize
+  const geometry = new THREE.PlaneBufferGeometry(planeWidth * 1.5, planeHeight * 1.5);
   const material = new THREE.ShaderMaterial({
     transparent: true,
     blending: THREE.AdditiveBlending,
@@ -4790,59 +4794,6 @@ function createKaleidoTunnelEffect() {
   mesh.name = 'KaleidoTunnel';
   scene.add(mesh);
   visualElements.push(mesh);
-
-  // Custom update functions
-  mesh.userData.customAnimateInitial = function() {
-    const mat = this.material;
-    const time = performance.now() * 0.001;
-    mat.uniforms.time.value = time;
-    mat.uniforms.audioBass.value = 0.0;
-    mat.uniforms.audioMid.value = 0.0;
-    mat.uniforms.audioTreble.value = 0.0;
-    mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
-    mat.uniforms.visualMode.value = this.userData.visualMode;
-    if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
-        mat.uniforms.cameraTexture.value = window.userCameraTexture;
-    } else {
-        mat.uniforms.cameraTexture.value = null;
-    }
-  }.bind(mesh);
-
-  mesh.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
-    const mat = this.material;
-    const time = performance.now() * 0.001;
-    mat.uniforms.time.value = time;
-    mat.uniforms.audioBass.value = bassAvg;
-    mat.uniforms.audioMid.value = midAvg;
-    mat.uniforms.audioTreble.value = trebleAvg;
-    mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
-    mat.uniforms.visualMode.value = this.userData.visualMode;
-    if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
-        mat.uniforms.cameraTexture.value = window.userCameraTexture;
-    } else {
-        mat.uniforms.cameraTexture.value = null;
-    }
-  }.bind(mesh);
-
-  mesh.userData.customAdjustIntensity = function(intensityLevel) {
-    // No effectIntensity uniform for this effect
-  }.bind(mesh);
-
-  // Override visual mode toggling
-  mesh.userData.toggleVisualMode = function() {
-    this.userData.visualMode = 1.0 - this.userData.visualMode;
-    showActionMessage("Kaleido Tunnel Mode: " + (this.userData.visualMode > 0.5 ? "Camera Input" : "Procedural"));
-    if (this.material) {
-        this.material.uniforms.visualMode.value = this.userData.visualMode;
-        if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
-            this.material.uniforms.cameraTexture.value = window.userCameraTexture;
-            if (!window.isCameraMode) toggleCameraBackground();
-        } else {
-            this.material.uniforms.cameraTexture.value = null;
-            // if (window.isCameraMode && !isAnyEffectUsingCamera()) toggleCameraBackground();
-        }
-    }
-  }.bind(mesh);
 }
 
 // function createFlowerBlockEffect() {
@@ -5335,7 +5286,7 @@ function updateVisibility() {
         
     function animateInitialEffects() {
       const delta = clock.getDelta();
-    const time = performance.now() * 0.001;
+      const time = performance.now() * 0.001;
         
       // Trippy Colors
       const trippyGroup = visualElements.find(e => e.name === "TrippyColors");
@@ -5693,7 +5644,7 @@ if (wave3DEffect && wave3DEffect.material.uniforms) {
 const trippyGroup = visualElements.find(e => e.name === "TrippyColors");
 if (trippyGroup && trippyGroup.userData && trippyGroup.userData.material) {
   const mat = trippyGroup.userData.material;
-    const time = performance.now() * 0.001;
+  const time = performance.now() * 0.001;
   mat.uniforms.uTime.value = time;
 
   // Combine frequencies or weight them
@@ -6038,7 +5989,7 @@ if (apple1Effect && apple1Effect.material.uniforms) {
     });
     console.log('Camera feed applied to effects.');
 
-    } else {
+  } else {
     // Turn camera mode OFF
     isCameraMode = false;
     console.log('Disabling camera background...');
@@ -6106,21 +6057,10 @@ if (apple1Effect && apple1Effect.material.uniforms) {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 
-  // Update effect resolutions and geometry for specific effects
+  // Update effect resolutions
   visualElements.forEach(elem => {
     if (elem.material && elem.material.uniforms && 'resolution' in elem.material.uniforms) {
       elem.material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
-    }
-
-    // Check for effects that need their geometry scaled
-    if (elem.name === 'Scribble' || elem.name === 'Waves' || elem.name === 'AuroraEffect' || elem.name === 'Portal') {
-      if (elem.geometry && elem.geometry.parameters) {
-        // We assume the geometry was created with the initial window size.
-        // We can scale it to fit the new size.
-        const initialWidth = elem.geometry.parameters.width;
-        const initialHeight = elem.geometry.parameters.height;
-        elem.scale.set(window.innerWidth / initialWidth, window.innerHeight / initialHeight, 1);
-      }
     }
   });
 }
@@ -6142,7 +6082,7 @@ if (event.key.toLowerCase() === 'q') {
   const overlay = document.getElementById('passwordOverlay');
   if (overlay.classList.contains('show')) {
     hidePasswordOverlay();
-        } else {
+  } else {
     showPasswordOverlay();
   }
   return; // stop further key handling
