@@ -4926,8 +4926,21 @@ function createWaterPoolEffect() {
           }
         }
         
-        // 5. GENTLE BASE WATER MOVEMENT (always present but subtle)
-        height += sin(pos.x * 2.0 + time * 0.3) * cos(pos.y * 1.8 + time * 0.25) * 0.01;
+        // 5. CONSTANT NATURAL WATER MOVEMENT (always visible)
+        // Large gentle swells across the water body
+        float swell1 = sin(pos.x * 1.5 + time * 0.4) * cos(pos.y * 1.2 + time * 0.3) * 0.03;
+        float swell2 = cos(pos.x * 2.0 + time * 0.5) * sin(pos.y * 1.8 + time * 0.4) * 0.025;
+        
+        // Medium frequency natural ripples
+        float naturalRipples = sin(pos.x * 4.0 + time * 0.8) * cos(pos.y * 3.5 + time * 0.7) * 0.015;
+        
+        // Small surface variations (always present)
+        float surfaceDetail = sin(pos.x * 8.0 + time * 1.2) * sin(pos.y * 7.0 + time * 1.0) * 0.008;
+        
+        // Diagonal wave patterns for more complex motion
+        float diagonalWave = sin((pos.x + pos.y) * 3.0 + time * 0.6) * 0.02;
+        
+        height += swell1 + swell2 + naturalRipples + surfaceDetail + diagonalWave;
         
         return height * effectIntensity;
       }
@@ -4952,36 +4965,47 @@ function createWaterPoolEffect() {
       }
       
       vec3 calculateWaterColor(vec2 uv, vec3 normal, float depth, float waveHeight) {
-        // More realistic water colors
-        vec3 shallowColor = vec3(0.2, 0.6, 0.8);  // Light blue-green
-        vec3 deepColor = vec3(0.05, 0.2, 0.4);    // Dark blue
-        vec3 foamColor = vec3(0.9, 0.95, 1.0);    // White foam
+        // Top-down water body colors (like looking at a lake from above)
+        vec3 shallowColor = vec3(0.3, 0.7, 0.9);   // Light aqua blue
+        vec3 mediumColor = vec3(0.15, 0.5, 0.8);   // Medium blue
+        vec3 deepColor = vec3(0.05, 0.25, 0.5);    // Deep blue
+        vec3 foamColor = vec3(0.95, 0.98, 1.0);    // Bright white foam
         
-        // Base water color with depth
-        vec3 waterColor = mix(shallowColor, deepColor, depth * depth);
+        // Create more varied depth coloring
+        vec3 waterColor;
+        if(depth < 0.3) {
+          waterColor = mix(shallowColor, mediumColor, depth / 0.3);
+        } else {
+          waterColor = mix(mediumColor, deepColor, (depth - 0.3) / 0.7);
+        }
         
-        // Enhanced lighting
-        vec3 lightDir = normalize(vec3(0.3, 0.6, 1.0));
+        // Top-down lighting (sun from above)
+        vec3 lightDir = normalize(vec3(0.2, 0.3, 1.0));
         vec3 viewDir = vec3(0.0, 0.0, 1.0);
         
-        // Stronger diffuse lighting
-        float NdotL = max(0.2, dot(normal, lightDir));
+        // Strong diffuse lighting for clear water visibility
+        float NdotL = max(0.4, dot(normal, lightDir));
         vec3 diffuse = waterColor * NdotL;
         
-        // Enhanced Fresnel reflection
+        // Sky reflection (stronger for top-down view)
         float fresnelFactor = fresnel(normal, viewDir);
-        vec3 skyReflection = vec3(0.6, 0.8, 1.0);
-        vec3 reflection = skyReflection * fresnelFactor * 0.5;
+        vec3 skyReflection = vec3(0.7, 0.85, 1.0);
+        vec3 reflection = skyReflection * fresnelFactor * 0.6;
         
-        // Add foam where waves are high
-        float foamAmount = smoothstep(0.03, 0.08, abs(waveHeight));
-        vec3 foam = foamColor * foamAmount * 0.4;
+        // More visible foam for wave crests
+        float foamAmount = smoothstep(0.02, 0.06, abs(waveHeight));
+        vec3 foam = foamColor * foamAmount * 0.6;
         
-        // Subsurface scattering for shallow areas
-        vec3 subsurface = vec3(0.3, 0.5, 0.7) * (1.0 - depth) * 0.3;
+        // Enhanced subsurface for shallow water visibility
+        vec3 subsurface = vec3(0.4, 0.6, 0.8) * (1.0 - depth) * 0.4;
         
-        // Water transparency effect
-        float transparency = 0.1 + depth * 0.7;
+        // Clearer water transparency
+        float transparency = 0.2 + depth * 0.6;
+        
+        // Add slight color variation for natural look
+        vec2 colorVariation = uv * 3.0;
+        float variation = (noise(colorVariation) - 0.5) * 0.1;
+        waterColor += vec3(variation * 0.1, variation * 0.05, -variation * 0.05);
         
         return mix(diffuse + reflection + subsurface + foam, waterColor, transparency);
       }
@@ -5007,13 +5031,22 @@ function createWaterPoolEffect() {
         // Calculate realistic water color with wave-based foam
         vec3 waterColor = calculateWaterColor(uv, normal, depth, height);
         
-        // Add subtle caustics effect for underwater light patterns
-        vec2 causticsUv = uv * 8.0 + normal.xy * 0.1 + time * 0.1;
-        float caustics = (sin(causticsUv.x * 6.0) * cos(causticsUv.y * 6.0) + 1.0) * 0.5;
-        caustics = pow(caustics, 3.0) * 0.1 * (1.0 - depth);
-        vec3 causticsColor = vec3(0.8, 0.9, 1.0) * caustics;
+        // Enhanced caustics and light patterns
+        vec2 causticsUv1 = uv * 6.0 + normal.xy * 0.2 + time * 0.15;
+        vec2 causticsUv2 = uv * 8.0 + normal.xy * 0.15 + time * 0.12;
         
-        vec3 finalColor = waterColor + causticsColor;
+        float caustics1 = (sin(causticsUv1.x * 5.0) * cos(causticsUv1.y * 5.0) + 1.0) * 0.5;
+        float caustics2 = (sin(causticsUv2.x * 7.0) * cos(causticsUv2.y * 7.0) + 1.0) * 0.5;
+        
+        float caustics = (pow(caustics1, 2.0) + pow(caustics2, 3.0)) * 0.15 * (1.0 - depth * 0.8);
+        vec3 causticsColor = vec3(0.85, 0.95, 1.0) * caustics;
+        
+        // Add surface shimmer for more water-like appearance
+        vec2 shimmerUv = uv * 12.0 + time * 0.3;
+        float shimmer = noise(shimmerUv) * 0.1 * (1.0 - depth * 0.5);
+        vec3 shimmerColor = vec3(0.9, 0.95, 1.0) * shimmer;
+        
+        vec3 finalColor = waterColor + causticsColor + shimmerColor;
         
         // Professional water transparency
         float waterAlpha = 0.9;
@@ -5724,7 +5757,7 @@ if (scribbleIdle && scribbleIdle.material.uniforms) {
   mat.uniforms.effectIntensity.value = 1.0;
 }
 
-// --- WaterPool (Idle) ---
+// --- WaterPool (Idle) - Constant Natural Water Movement ---
 const waterPoolIdle = visualElements.find(e => e.name === 'WaterPool');
 if (waterPoolIdle && waterPoolIdle.material.uniforms) {
   const mat = waterPoolIdle.material;
@@ -5733,14 +5766,15 @@ if (waterPoolIdle && waterPoolIdle.material.uniforms) {
   // Set time for animation
   mat.uniforms.time.value = t;
   
-  // Set audio to zero for idle state
-  mat.uniforms.audioBass.value = 0.0;
-  mat.uniforms.audioMid.value = 0.0;
-  mat.uniforms.audioTreble.value = 0.0;
+  // Create gentle constant water movement even without audio
+  // Simulate natural water motion with very low frequency "audio" values
+  mat.uniforms.audioBass.value = 0.1 + Math.sin(t * 0.3) * 0.05;      // Gentle bass waves
+  mat.uniforms.audioMid.value = 0.08 + Math.cos(t * 0.5) * 0.03;      // Soft mid ripples  
+  mat.uniforms.audioTreble.value = 0.05 + Math.sin(t * 0.8) * 0.02;   // Light surface texture
   
-  // Use base values or defaults for water properties
+  // Use base values for natural water movement
   mat.uniforms.effectIntensity.value = waterPoolIdle.userData?.baseEffectIntensity ?? 1.0;
-  mat.uniforms.waveAmplitude.value = waterPoolIdle.userData?.baseWaveAmplitude ?? 0.1;
+  mat.uniforms.waveAmplitude.value = waterPoolIdle.userData?.baseWaveAmplitude ?? 0.15;
   mat.uniforms.waveFrequency.value = waterPoolIdle.userData?.baseWaveFrequency ?? 2.0;
   mat.uniforms.rippleSpeed.value = waterPoolIdle.userData?.baseRippleSpeed ?? 1.0;
   mat.uniforms.waterDepth.value = waterPoolIdle.userData?.baseWaterDepth ?? 0.8;
