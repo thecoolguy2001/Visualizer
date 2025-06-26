@@ -4745,20 +4745,17 @@ function createPixelSortEffect() {
 }
 
 function createWaterPoolEffect() {
-  // Create 3D water surface with subdivisions for vertex animation
-  const waterSize = 10;
-  const waterSegments = 64; // PS1-style lower poly count but still detailed enough
-  const geometry = new THREE.PlaneBufferGeometry(waterSize, waterSize, waterSegments, waterSegments);
+  // Calculate size to fill the camera view at z=0 and add buffer to eliminate black edges
+  const distance = camera.position.z; // Distance from camera (500)
+  const fovInRadians = (camera.fov * Math.PI) / 180.0;
+  const planeHeight = 2 * distance * Math.tan(fovInRadians / 2) * 1.2; // 20% larger to ensure full coverage
+  const planeWidth = planeHeight * camera.aspect * 1.2; // 20% larger to ensure full coverage
   
-  // Rotate to be horizontal (looking down at water)
-  geometry.rotateX(-Math.PI / 2);
+  // Create high-quality water geometry with more segments for smooth waves
+  const segments = 64; // Balanced resolution for PS1 aesthetic and performance
+  const geometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight, segments, segments);
   
-  // Position the water plane
-  geometry.translate(0, -2, 0);
-  
-  // Store reference to parent mesh for geometry updates
-  geometry.parentMesh = null;
-  
+  // High-quality water shader material
   const material = new THREE.ShaderMaterial({
     uniforms: {
       time: { value: 0.0 },
@@ -4766,13 +4763,18 @@ function createWaterPoolEffect() {
       audioMid: { value: 0.0 },
       audioTreble: { value: 0.0 },
       effectIntensity: { value: 1.0 },
-      waveAmplitude: { value: 0.3 },
+      waveAmplitude: { value: 8.0 },
       waveFrequency: { value: 2.0 },
-      rippleSpeed: { value: 1.0 },
-      // --- Visual Mode Uniforms ---
-      cameraTexture: { value: null },
+      rippleSpeed: { value: 4.0 },
+      flowSpeed: { value: 2.5 },
+      // Visual mode uniforms
       visualMode: { value: 0.0 },
-      cameraActive: { value: 0.0 }
+      cameraTexture: { value: null },
+      cameraActive: { value: 0.0 },
+      // Dark blue water colors - no white
+      baseColor: { value: new THREE.Vector3(0.0, 0.05, 0.15) },
+      tipColor: { value: new THREE.Vector3(0.0, 0.15, 0.35) },
+                                                           brightness: { value: 0.9 }
     },
     vertexShader: `
       uniform float time;
@@ -4780,183 +4782,523 @@ function createWaterPoolEffect() {
       uniform float audioMid;
       uniform float audioTreble;
       uniform float waveAmplitude;
-      uniform float effectIntensity;
+      uniform float waveFrequency;
+      uniform float rippleSpeed;
+      uniform float flowSpeed;
       
       varying vec2 vUv;
-      varying vec3 vPosition;
       varying float vWaveHeight;
-      
-      // Simple noise for PS1-style water
-      float noise(vec2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-      }
+      varying vec3 vPosition;
+      varying vec3 vNormal;
+      varying float vFresnel;
       
       void main() {
         vUv = uv;
-        vPosition = position;
-        
-        // PS1-style 3D water vertex displacement
         vec3 pos = position;
         
-        // Bass-driven large waves
-        float bassWaves = sin(pos.x * 0.5 + time * 2.0) * cos(pos.z * 0.4 + time * 1.5) * audioBass * 0.8;
+        // Calculate wave displacement with multiple octaves for realism
+        vec2 coord = pos.xy * 0.005;
+        float flow = time * flowSpeed;
         
-        // Mid-frequency ripples
-        float midRipples = sin(pos.x * 1.2 + time * 3.0) * sin(pos.z * 1.0 + time * 2.5) * audioMid * 0.4;
+        // Very gentle base waves - like calm water
+        float wave1 = sin(coord.x * waveFrequency * 0.3 + flow * 0.5) * cos(coord.y * waveFrequency * 0.2 + flow * 0.3) * 0.3;
         
-        // Treble surface detail
-        float trebleDetail = sin(pos.x * 3.0 + time * 5.0) * cos(pos.z * 2.8 + time * 4.5) * audioTreble * 0.2;
+        // Subtle secondary waves - barely visible
+        float wave2 = sin(coord.x * waveFrequency * 0.8 - coord.y * waveFrequency * 0.6 + flow * 0.8) * 0.15;
         
-        // Natural water movement (always present)
-        float naturalWaves = sin(pos.x * 0.8 + time * 1.0) * cos(pos.z * 0.6 + time * 0.8) * 0.1;
-        naturalWaves += sin(pos.x * 1.5 + time * 1.3) * sin(pos.z * 1.2 + time * 1.1) * 0.05;
+        // Minimal surface detail - very calm
+        float wave3 = sin(coord.x * waveFrequency * 1.2 + coord.y * waveFrequency * 0.9 - flow * 1.1) * 0.08;
         
-        // Audio-triggered drops (circular ripples)
-        float drops = 0.0;
-        vec2 dropPos1 = vec2(2.0, 1.5);
-        vec2 dropPos2 = vec2(-1.5, 2.5);
-        vec2 dropPos3 = vec2(-2.0, -1.0);
+        // Multiple ripple sources across the screen - audio reactive
+        float totalRipples = 0.0;
         
-        if(audioBass > 0.3) {
-          float dist1 = distance(pos.xz, dropPos1);
-          float ripple1 = sin(dist1 * 4.0 - time * 8.0) * exp(-dist1 * 0.5) * audioBass * 0.3;
-          drops += ripple1;
+        // Bass-driven ripples - much stronger audio response
+        float bassRipple1 = 0.0;
+        float bassRipple2 = 0.0;
+        if (audioBass > 0.05) { // More sensitive
+          vec2 bassPos1 = vec2(sin(flow * 0.8) * 250.0, cos(flow * 1.0) * 200.0);
+          vec2 bassPos2 = vec2(cos(flow * 1.2) * 220.0, sin(flow * 0.9) * 180.0);
+          float bassDist1 = length(pos.xy - bassPos1);
+          float bassDist2 = length(pos.xy - bassPos2);
+          bassRipple1 = sin(bassDist1 * 0.05 - flow * rippleSpeed * 2.5) * exp(-bassDist1 * 0.0015) * audioBass * 4.0;
+          bassRipple2 = sin(bassDist2 * 0.07 - flow * rippleSpeed * 2.2) * exp(-bassDist2 * 0.002) * audioBass * 3.5;
         }
         
-        if(audioMid > 0.4) {
-          float dist2 = distance(pos.xz, dropPos2);
-          float ripple2 = sin(dist2 * 5.0 - time * 10.0) * exp(-dist2 * 0.6) * audioMid * 0.25;
-          drops += ripple2;
+        // Center ripple - gently audio reactive
+        float dist = length(coord);
+        float centerRipple = sin(dist * 3.0 - flow * rippleSpeed * 1.5) * exp(-dist * 0.04) * (0.3 + audioMid * 2.0);
+        
+        // Corner ripples - only when audio is present
+        float cornerRipple1 = 0.0;
+        float cornerRipple2 = 0.0;
+        float cornerRipple3 = 0.0;
+        float cornerRipple4 = 0.0;
+        
+        if (audioMid > 0.05) { // More sensitive
+          vec2 corner1 = vec2(180.0, 120.0);
+          vec2 corner2 = vec2(-150.0, 160.0);
+          vec2 corner3 = vec2(160.0, -130.0);
+          vec2 corner4 = vec2(-170.0, -140.0);
+          
+          float cornerDist1 = length(pos.xy - corner1);
+          float cornerDist2 = length(pos.xy - corner2);
+          float cornerDist3 = length(pos.xy - corner3);
+          float cornerDist4 = length(pos.xy - corner4);
+          
+          cornerRipple1 = sin(cornerDist1 * 0.06 - flow * rippleSpeed * 2.0) * exp(-cornerDist1 * 0.002) * audioMid * 3.0;
+          cornerRipple2 = sin(cornerDist2 * 0.07 - flow * rippleSpeed * 2.1) * exp(-cornerDist2 * 0.0025) * audioMid * 2.8;
+          cornerRipple3 = sin(cornerDist3 * 0.08 - flow * rippleSpeed * 1.9) * exp(-cornerDist3 * 0.003) * audioMid * 3.2;
+          cornerRipple4 = sin(cornerDist4 * 0.05 - flow * rippleSpeed * 2.2) * exp(-cornerDist4 * 0.0015) * audioMid * 3.5;
         }
         
-        // Combine all wave effects
-        float totalWaveHeight = (bassWaves + midRipples + trebleDetail + naturalWaves + drops) * waveAmplitude * effectIntensity;
+        // Treble-driven high-frequency ripples - only when audio is present
+        float trebleRipple1 = 0.0;
+        float trebleRipple2 = 0.0;
+        float trebleRipple3 = 0.0;
         
-        pos.y += totalWaveHeight;
-        vWaveHeight = totalWaveHeight;
+        if (audioTreble > 0.05) { // More sensitive
+          vec2 treblePos1 = vec2(sin(flow * 2.5 + 1.0) * 130.0, cos(flow * 2.8 + 2.0) * 110.0);
+          vec2 treblePos2 = vec2(cos(flow * 3.2 + 3.0) * 120.0, sin(flow * 3.6 + 4.0) * 140.0);
+          vec2 treblePos3 = vec2(sin(flow * 4.0 + 5.0) * 150.0, cos(flow * 4.4 + 6.0) * 100.0);
+          
+          float trebleDist1 = length(pos.xy - treblePos1);
+          float trebleDist2 = length(pos.xy - treblePos2);
+          float trebleDist3 = length(pos.xy - treblePos3);
+          
+          trebleRipple1 = sin(trebleDist1 * 0.1 - flow * rippleSpeed * 5.0) * exp(-trebleDist1 * 0.003) * audioTreble * 2.5;
+          trebleRipple2 = sin(trebleDist2 * 0.12 - flow * rippleSpeed * 5.5) * exp(-trebleDist2 * 0.004) * audioTreble * 2.2;
+          trebleRipple3 = sin(trebleDist3 * 0.08 - flow * rippleSpeed * 4.5) * exp(-trebleDist3 * 0.002) * audioTreble * 2.8;
+        }
+        
+        // Combine all ripples with interference patterns
+        totalRipples = centerRipple + bassRipple1 + bassRipple2 + 
+                      cornerRipple1 + cornerRipple2 + cornerRipple3 + cornerRipple4 +
+                      trebleRipple1 + trebleRipple2 + trebleRipple3;
+        
+        // Audio reactive waves - gentle and realistic like the initial animation
+        float bassWave = audioBass > 0.05 ? sin(dist * 1.2 - flow * 3.0) * audioBass * 3.0 : 0.0;
+        float midWave = audioMid > 0.05 ? sin(coord.x * 3.5 + coord.y * 2.5 + flow * 6.0) * audioMid * 2.0 : 0.0;
+        float trebleWave = audioTreble > 0.05 ? sin(coord.x * 7.0 - coord.y * 5.0 + flow * 12.0) * audioTreble * 1.5 : 0.0;
+        
+        // Additional subtle audio-reactive wave layers
+        float bassWave2 = audioBass > 0.1 ? sin(coord.x * 2.0 - coord.y * 1.5 + flow * 4.0) * audioBass * 2.5 : 0.0;
+        float midWave2 = audioMid > 0.1 ? sin(dist * 2.5 - flow * 7.0) * audioMid * 1.8 : 0.0;
+        float trebleWave2 = audioTreble > 0.1 ? sin(coord.x * 10.0 + coord.y * 8.0 - flow * 15.0) * audioTreble * 1.2 : 0.0;
+        
+        // Combine all waves with proper scaling
+        float totalWave = (wave1 + wave2 + wave3 + totalRipples) * waveAmplitude;
+        totalWave += bassWave + midWave + trebleWave + bassWave2 + midWave2 + trebleWave2;
+        
+        // Droplet impacts - calm in idle, explosive with audio
+        for (int i = 0; i < 6; i++) {
+          float dropTime = flow + float(i) * 3.0; // Slower in idle
+          
+          // Audio-controlled droplet generation
+          float audioActivity = audioBass + audioMid + audioTreble;
+          float baseChance = sin(dropTime * 0.01 + float(i)) > 0.99 ? 1.0 : 0.0; // Super rare idle droplets
+          float dropletChance = audioActivity > 0.05 ? 1.0 : baseChance;
+          
+          if (dropletChance > 0.5) {
+            vec2 dropPos = vec2(
+              sin(dropTime * 0.5 + float(i) * 1.2) * 180.0,
+              cos(dropTime * 0.4 + float(i) * 1.0) * 160.0
+            );
+            
+            float baseIntensity = audioActivity > 0.05 ? 8.0 : 4.0; // Calm idle, gentle audio
+            float dropIntensity = baseIntensity * (1.0 + audioActivity * 3.0); // Gentle audio response
+            
+            float dropDist = length(pos.xy - dropPos);
+            float dropAge = mod(dropTime, 6.0); // Much longer lasting
+            
+            // Multiple long-lasting ripple rings
+            float dropRipple1 = sin(dropDist * 0.08 - dropAge * rippleSpeed * 1.8) * 
+                               exp(-dropDist * 0.003 - dropAge * 0.15) * dropIntensity * 0.8;
+            float dropRipple2 = sin(dropDist * 0.05 - dropAge * rippleSpeed * 1.0) * 
+                               exp(-dropDist * 0.002 - dropAge * 0.1) * dropIntensity * 0.6;
+            float dropRipple3 = sin(dropDist * 0.12 - dropAge * rippleSpeed * 2.5) * 
+                               exp(-dropDist * 0.004 - dropAge * 0.2) * dropIntensity * 0.4;
+            
+            totalWave += dropRipple1 + dropRipple2 + dropRipple3;
+          }
+        }
+        
+        // Almost no background ripples - perfectly still water
+        float bgRipple1 = sin(dist * 1.8 - flow * 1.2) * exp(-dist * 0.08) * 0.01;
+        float bgRipple2 = sin(dist * 2.8 - flow * 1.8) * exp(-dist * 0.06) * 0.005;
+        float bgRipple3 = sin(dist * 4.2 - flow * 2.5) * exp(-dist * 0.1) * 0.003;
+        totalRipples += bgRipple1 + bgRipple2 + bgRipple3;
+        
+        // Apply vertical displacement
+        pos.z = totalWave;
+        vWaveHeight = totalWave;
+        vPosition = pos;
+        
+        // Calculate smooth normals for lighting
+        vec2 e = vec2(0.01, 0.0);
+        vec3 normal = normalize(vec3(
+          totalWave - sin((coord.x - e.x) * waveFrequency + flow) * waveAmplitude,
+          totalWave - sin((coord.y - e.x) * waveFrequency * 0.8 + flow * 0.9) * waveAmplitude,
+          1.0
+        ));
+        vNormal = normalize(normalMatrix * normal);
+        
+        // Calculate fresnel for rim lighting
+        vec3 viewDir = normalize(cameraPosition - (modelMatrix * vec4(pos, 1.0)).xyz);
+        vFresnel = pow(1.0 - abs(dot(vNormal, viewDir)), 2.0);
         
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       }
     `,
     fragmentShader: `
-      uniform float time;
-      uniform float audioBass;
-      uniform float audioMid;
-      uniform float audioTreble;
-      uniform float effectIntensity;
+      precision highp float;
       
-      // Visual mode uniforms
-      uniform sampler2D cameraTexture;
+      uniform float time;
+      uniform float effectIntensity;
       uniform float visualMode;
+      uniform sampler2D cameraTexture;
       uniform float cameraActive;
+      uniform vec3 baseColor;
+      uniform vec3 tipColor;
+      uniform float brightness;
       
       varying vec2 vUv;
-      varying vec3 vPosition;
       varying float vWaveHeight;
-
+      varying vec3 vPosition;
+      varying vec3 vNormal;
+      varying float vFresnel;
+      
       void main() {
-        // PS1-style chunky water colors based on vertex height
-        vec3 waterColor;
+        // Calculate base water color with better contrast for visibility
+        float heightFactor = clamp(vWaveHeight / 8.0 + 0.5, 0.0, 1.0);
+        vec3 color = mix(baseColor, tipColor, heightFactor);
         
-        // Color based on wave height for 3D depth effect
-        float heightFactor = vWaveHeight * 3.0 + 0.5;
+        // Dark blue highlights - no white at all
+        float peakHighlight = smoothstep(0.6, 1.0, heightFactor);
+        color += vec3(0.0, 0.1, 0.25) * peakHighlight * 1.0;
         
-        // PS1 water palette - chunky, blocky colors like old games
-        if(heightFactor > 0.8) {
-          waterColor = vec3(0.7, 0.95, 1.0); // Bright blue-white peaks
-        } else if(heightFactor > 0.4) {
-          waterColor = vec3(0.4, 0.8, 0.95); // Light blue
-        } else if(heightFactor > 0.0) {
-          waterColor = vec3(0.2, 0.6, 0.85); // Medium blue
-        } else if(heightFactor > -0.3) {
-          waterColor = vec3(0.15, 0.45, 0.7); // Darker blue
-        } else {
-          waterColor = vec3(0.1, 0.3, 0.55); // Deep blue valleys
-        }
+        // Strong ripple definition with dark blue tones
+        float rippleIntensity = abs(sin(vWaveHeight * 0.15)) * 1.2;
+        float rippleHighlight = smoothstep(0.2, 0.8, rippleIntensity);
+        color += vec3(0.0, 0.08, 0.2) * rippleHighlight * 2.0;
         
-        // Simple PS1-style flat lighting (no complex calculations)
-        float lightIntensity = 0.7 + 0.5 * clamp(vWaveHeight, -0.3, 0.3);
-        waterColor *= lightIntensity;
+        // More pronounced wave interference patterns
+        float interference = sin(vWaveHeight * 0.4) * cos(vWaveHeight * 0.3) * 0.6;
+        color += vec3(0.0, 0.05, 0.15) * abs(interference);
         
-        // Add simple sparkles on high peaks (PS1 style)
-        if(vWaveHeight > 0.2) {
-          // Simple hash-based sparkles
-          float sparkleHash = fract(sin(dot(vPosition.xz, vec2(127.1, 311.7))) * 43758.5453);
-          if(sparkleHash > 0.92) {
-            waterColor += vec3(0.8, 0.9, 1.0) * 0.4;
-          }
-        }
+        // Strong edge detection for dramatic ripple definition
+        float edgeDetection = abs(sin(vWaveHeight * 0.8)) * 0.8;
+        color += vec3(0.0, 0.06, 0.18) * edgeDetection;
         
-        // Audio-reactive color boosts (simple)
-        waterColor.r += audioBass * 0.15;
-        waterColor.g += audioMid * 0.1;
-        waterColor.b += audioTreble * 0.2;
+        // Advanced lighting
+        vec3 lightDir = normalize(vec3(0.3, 1.0, 0.5));
+        vec3 viewDir = normalize(cameraPosition - vPosition);
+        vec3 halfDir = normalize(lightDir + viewDir);
         
-        // Clamp to prevent over-brightness
-        waterColor = clamp(waterColor, 0.0, 1.0);
+        // Diffuse lighting
+        float diffuse = max(dot(vNormal, lightDir), 0.0);
         
-        // === VISUAL MODES (Camera Integration) ===
-        if(cameraActive > 0.5) {
-          vec4 cameraColor = texture2D(cameraTexture, vUv);
+        // Dark blue specular highlights - no white
+        float specular = pow(max(dot(vNormal, halfDir), 0.0), 20.0);
+        color += vec3(0.0, 0.2, 0.4) * specular * 1.5;
+        
+        // Very subtle fresnel rim lighting
+        color += tipColor * vFresnel * 0.15;
+        
+        // Realistic subsurface scattering approximation
+        float subsurface = smoothstep(0.0, 1.0, dot(viewDir, -lightDir));
+        color += baseColor * subsurface * 0.15;
+        
+                // Apply brightness and effect intensity for water mode (ALWAYS do this first)
+        color *= brightness * effectIntensity;
+        
+        // Very gentle tone mapping for clarity (ALWAYS do this)
+        color = color / (color + vec3(0.1));
+        
+        // Standard gamma correction for natural colors (ALWAYS do this)
+        color = pow(color, vec3(1.0 / 2.2));
+        
+        // NOW handle visual mode blending - AFTER all original water processing is complete
+        if (cameraActive > 0.5) {
+          vec3 cameraColor = vec3(0.0);
+          bool hasCameraFeed = false;
           
-          if(visualMode < 0.5) {
-            // Mode 0: Water surface with camera reflection
-            vec3 reflection = cameraColor.rgb * 0.4;
-            waterColor = mix(waterColor, waterColor + reflection, 0.5);
-          } else if(visualMode < 1.5) {
-            // Mode 1: Underwater view with camera background
-            waterColor = mix(cameraColor.rgb * vec3(0.7, 0.9, 1.0), waterColor, 0.6);
-          } else {
-            // Mode 2: Water overlay on camera
-            waterColor = mix(cameraColor.rgb, waterColor, 0.5);
+          if (abs(visualMode - 1.0) < 0.1) {
+            // Mode 1: Wave Distortion - Camera feed with wave distortion
+            vec2 distortedUv = vUv;
+            vec2 waveDistortion = vNormal.xy * 0.15 * (1.0 + abs(vWaveHeight) * 0.08);
+            distortedUv += waveDistortion;
+            distortedUv = clamp(distortedUv, 0.0, 1.0);
+            cameraColor = texture2D(cameraTexture, distortedUv).rgb;
+            hasCameraFeed = true;
+            
+          } else if (abs(visualMode - 2.0) < 0.1) {
+            // Mode 2: Underwater Caustics - Camera feed with caustic lighting
+            vec2 causticUv = vUv;
+            float causticTime = time * 2.0;
+            
+            // Caustic distortion
+            causticUv.x += sin(vPosition.y * 0.04 + causticTime) * 0.08;
+            causticUv.y += cos(vPosition.x * 0.04 + causticTime * 0.7) * 0.08;
+            causticUv += vNormal.xy * 0.05;
+            causticUv = clamp(causticUv, 0.0, 1.0);
+            
+            cameraColor = texture2D(cameraTexture, causticUv).rgb;
+            
+            // Add caustic lighting to camera feed
+            float causticRipple1 = sin(vWaveHeight * 0.4 + causticTime) * 0.6 + 0.4;
+            float causticRipple2 = sin(vWaveHeight * 0.6 + causticTime * 1.3) * 0.5 + 0.5;
+            vec3 causticLight = vec3(0.15, 0.25, 0.4) * causticRipple1 * causticRipple2 * 0.5;
+            cameraColor += causticLight;
+            hasCameraFeed = true;
+            
+          } else if (abs(visualMode - 3.0) < 0.1) {
+            // Mode 3: Water Reflection - Camera as reflection
+            vec2 reflectUv = vec2(vUv.x, 1.0 - vUv.y);
+            
+            // Chromatic aberration for water refraction
+            float refractionStrength = 0.03 + abs(vWaveHeight) * 0.01;
+            vec2 refractR = reflectUv + vNormal.xy * refractionStrength * 0.8;
+            vec2 refractG = reflectUv + vNormal.xy * refractionStrength * 1.0;
+            vec2 refractB = reflectUv + vNormal.xy * refractionStrength * 1.2;
+            
+            refractR = clamp(refractR, 0.0, 1.0);
+            refractG = clamp(refractG, 0.0, 1.0);
+            refractB = clamp(refractB, 0.0, 1.0);
+            
+            cameraColor.r = texture2D(cameraTexture, refractR).r;
+            cameraColor.g = texture2D(cameraTexture, refractG).g;
+            cameraColor.b = texture2D(cameraTexture, refractB).b;
+            hasCameraFeed = true;
           }
+          
+          if (hasCameraFeed) {
+            // Blend the fully processed water color with camera feed
+            vec3 finalWaterColor = color; // This is the complete, original water effect
+            
+            // Simple blend - keep most of the camera but overlay water effects
+            color = mix(finalWaterColor, cameraColor, 0.75) + finalWaterColor * 0.3;
+            
+            // Output with full opacity
+            gl_FragColor = vec4(color, 1.0);
+          } else {
+            // Output original water effect with semi-transparency
+            gl_FragColor = vec4(color, 0.95);
+          }
+        } else {
+          // Output original water effect with semi-transparency
+          gl_FragColor = vec4(color, 0.95);
         }
-        
-        gl_FragColor = vec4(waterColor, 1.0);
       }
     `,
     transparent: true,
-    blending: THREE.NormalBlending,
-    depthWrite: false
+    side: THREE.DoubleSide,
+    depthWrite: true,
+    depthTest: true
   });
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'WaterPool';
+  mesh.position.set(0, 0, 0); // Position at same plane as other effects
+  mesh.rotation.x = 0; // Ensure it's facing the camera
   
-  // Store reference and update function for resizing
-  geometry.parentMesh = mesh;
+  // Debug logging
+  console.log('WaterPool created with size:', planeWidth, 'x', planeHeight);
+  console.log('WaterPool material:', material);
+  
+  // Store base values for intensity adjustments
+  mesh.userData = {
+    time: 0,
+    audioBass: 0,
+    audioMid: 0,
+    audioTreble: 0,
+    baseEffectIntensity: 1.0,
+    baseWaveAmplitude: 8.0,  // More visible waves
+    baseWaveFrequency: 2.0,
+    baseRippleSpeed: 4.0,
+    baseFlowSpeed: 2.5,
+    baseBrightness: 0.9,  // Clear brightness
+    droplets: [], // Store active droplets
+    visualMode: 0.0
+  };
+  
+  // Generate audio-reactive droplet effects across the entire surface
+  mesh.generateDroplets = function(time) {
+    const planeWidth = this.geometry.parameters.width;
+    const planeHeight = this.geometry.parameters.height;
+    
+    // Bass-triggered large droplets - gentle and realistic
+    if (this.userData.audioBass > 0.05 && Math.random() < 0.4) { // More reasonable threshold and frequency
+      this.userData.droplets.push({
+        x: (Math.random() - 0.5) * planeWidth * 1.0,
+        y: (Math.random() - 0.5) * planeHeight * 1.0,
+        startTime: time,
+        intensity: 15.0 + this.userData.audioBass * 25.0, // Gentle intensity like initial animation
+        speed: 0.8 + this.userData.audioBass * 1.5,
+        type: 'bass'
+      });
+    }
+    
+    // Mid-frequency medium droplets - gentle and realistic
+    if (this.userData.audioMid > 0.05 && Math.random() < 0.3) { // More reasonable
+      this.userData.droplets.push({
+        x: (Math.random() - 0.5) * planeWidth * 0.9,
+        y: (Math.random() - 0.5) * planeHeight * 0.9,
+        startTime: time,
+        intensity: 12.0 + this.userData.audioMid * 20.0, // Gentle intensity
+        speed: 1.0 + this.userData.audioMid * 1.8,
+        type: 'mid'
+      });
+    }
+    
+    // Treble-triggered small, frequent droplets - gentle and realistic
+    if (this.userData.audioTreble > 0.05 && Math.random() < 0.25) { // More reasonable
+      this.userData.droplets.push({
+        x: (Math.random() - 0.5) * planeWidth * 0.8,
+        y: (Math.random() - 0.5) * planeHeight * 0.8,
+        startTime: time,
+        intensity: 8.0 + this.userData.audioTreble * 15.0, // Gentle intensity
+        speed: 1.2 + this.userData.audioTreble * 2.0,
+        type: 'treble'
+      });
+    }
+    
+    // Super rare ambient droplets - almost perfectly still water
+    if (Math.random() < 0.0005) { // Only 0.05% chance per frame - super rare!
+      this.userData.droplets.push({
+        x: (Math.random() - 0.5) * planeWidth * 0.6,
+        y: (Math.random() - 0.5) * planeHeight * 0.6,
+        startTime: time,
+        intensity: 2.0 + Math.random() * 3.0, // Barely visible
+        speed: 0.1 + Math.random() * 0.2,
+        type: 'ambient'
+      });
+    }
+    
+    // Remove old droplets - longer lasting
+    this.userData.droplets = this.userData.droplets.filter(droplet => {
+      return (time - droplet.startTime) < 8.0; // Droplets last 8 seconds for longer ripples
+    });
+  };
+  
+  // High-quality water animation with shader uniforms
+  mesh.animateWater = function() {
+    const mat = this.material;
+    const time = this.userData.time;
+    
+    // Generate new droplets
+    this.generateDroplets(time);
+    
+    // Update uniforms for vertex shader animation
+    mat.uniforms.time.value = time;
+    mat.uniforms.audioBass.value = this.userData.audioBass;
+    mat.uniforms.audioMid.value = this.userData.audioMid;
+    mat.uniforms.audioTreble.value = this.userData.audioTreble;
+    mat.uniforms.waveAmplitude.value = this.userData.baseWaveAmplitude;
+    mat.uniforms.waveFrequency.value = this.userData.baseWaveFrequency;
+    mat.uniforms.rippleSpeed.value = this.userData.baseRippleSpeed;
+    mat.uniforms.flowSpeed.value = this.userData.baseFlowSpeed;
+    mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity;
+    mat.uniforms.brightness.value = this.userData.baseBrightness;
+    mat.uniforms.visualMode.value = this.userData.visualMode;
+    
+    // Update camera texture if available
+    if (window.userCameraTexture && window.userCameraTexture.image) {
+      mat.uniforms.cameraTexture.value = window.userCameraTexture;
+      mat.uniforms.cameraActive.value = 1.0;
+      // Debug log only occasionally to avoid spam
+      if (Math.random() < 0.001) {
+        console.log('WaterPool: Camera texture updated, visualMode:', mat.uniforms.visualMode.value, 'cameraActive:', mat.uniforms.cameraActive.value);
+      }
+    } else {
+      mat.uniforms.cameraActive.value = 0.0;
+      // Debug log only occasionally to avoid spam
+      if (Math.random() < 0.001) {
+        console.log('WaterPool: No camera texture available, cameraActive set to 0');
+      }
+    }
+    
+    // Update time
+    this.userData.time += 0.016; // ~60fps
+  };
+  
+  // Custom animate functions for integration with the visualizer system
+  mesh.userData.customAnimateInitial = function() {
+    // Reset audio values for idle animation
+    this.userData.audioBass = 0;
+    this.userData.audioMid = 0;
+    this.userData.audioTreble = 0;
+    this.animateWater();
+  }.bind(mesh);
+  
+  mesh.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
+    // Extremely responsive audio input with minimal smoothing
+    const smoothing = 0.6; // Much higher for near-instant response
+    this.userData.audioBass = THREE.MathUtils.lerp(this.userData.audioBass, bassAvg, smoothing);
+    this.userData.audioMid = THREE.MathUtils.lerp(this.userData.audioMid, midAvg, smoothing);
+    this.userData.audioTreble = THREE.MathUtils.lerp(this.userData.audioTreble, trebleAvg, smoothing);
+    this.animateWater();
+  }.bind(mesh);
+  
+  mesh.userData.customAdjustIntensity = function(level) {
+    // Adjust various parameters based on intensity level (1-9)
+    this.userData.baseEffectIntensity = 1.0 + level * 0.2; // Ensure it never goes too low
+    this.userData.baseWaveAmplitude = 5.0 + level * 2.5; // Start visible, build up more
+    this.userData.baseWaveFrequency = 1.5 + level * 0.5;
+    this.userData.baseRippleSpeed = 3.0 + level * 1.0;
+    this.userData.baseFlowSpeed = 2.0 + level * 0.5;
+    this.userData.baseBrightness = 0.8 + level * 0.1; // Clear range without over-brightness
+    
+    // Immediately update the material uniforms
+    if (this.material && this.material.uniforms) {
+      this.material.uniforms.effectIntensity.value = this.userData.baseEffectIntensity;
+      this.material.uniforms.waveAmplitude.value = this.userData.baseWaveAmplitude;
+      this.material.uniforms.waveFrequency.value = this.userData.baseWaveFrequency;
+      this.material.uniforms.rippleSpeed.value = this.userData.baseRippleSpeed;
+      this.material.uniforms.flowSpeed.value = this.userData.baseFlowSpeed;
+      this.material.uniforms.brightness.value = this.userData.baseBrightness;
+    }
+    
+    console.log('WaterPool intensity adjusted to level:', level);
+  }.bind(mesh);
+  
+  // Toggle visual mode
+  mesh.userData.toggleVisualMode = function() {
+    this.userData.visualMode = (this.userData.visualMode + 1.0) % 4.0;
+    this.material.uniforms.visualMode.value = this.userData.visualMode;
+    const modes = ["Off", "Wave Distortion", "Caustics", "Reflection"];
+    showActionMessage("Water Visual Mode: " + modes[Math.floor(this.userData.visualMode)]);
+  }.bind(mesh);
+  
+  // Resize function
   mesh.updateGeometry = function() {
-    // For 3D water, we don't need to resize based on camera distance
-    // The water plane is positioned at a fixed size and location
-    // Just update the camera position if needed
-    const waterSize = 10;
-    const waterSegments = 64;
+    // Recalculate size to fill the view
+    const distance = camera.position.z;
+    const fovInRadians = (camera.fov * Math.PI) / 180.0;
+    const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+    const planeWidth = planeHeight * camera.aspect;
     
-    // Create new geometry with same 3D water setup
-    const newGeometry = new THREE.PlaneBufferGeometry(waterSize, waterSize, waterSegments, waterSegments);
+    // Create new geometry with updated size and buffer for full coverage
+    const newGeometry = new THREE.PlaneBufferGeometry(planeWidth * 1.2, planeHeight * 1.2, 64, 64);
     
-    // Rotate to be horizontal (looking down at water)
-    newGeometry.rotateX(-Math.PI / 2);
-    
-    // Position the water plane
-    newGeometry.translate(0, -2, 0);
+    // Store original positions
+    const positions = newGeometry.attributes.position.array;
+    const originalPositions = new Float32Array(positions.length);
+    for (let i = 0; i < positions.length; i++) {
+      originalPositions[i] = positions[i];
+    }
+    newGeometry.userData.originalPositions = originalPositions;
     
     // Replace old geometry
     this.geometry.dispose();
     this.geometry = newGeometry;
-    newGeometry.parentMesh = this;
   };
   
-  // Store base values for intensity adjustments
-  mesh.userData = {
-    baseEffectIntensity: 1.0,
-    baseWaveAmplitude: 0.3
+  // Cleanup function for when effect is removed
+  mesh.cleanup = function() {
+    // Cleanup any resources if needed
+    if (this.geometry) this.geometry.dispose();
+    if (this.material) this.material.dispose();
   };
-  
-  // Position camera to look down at the 3D water
-  camera.position.set(0, 5, 0);
-  camera.lookAt(0, -2, 0);
-  camera.up.set(0, 0, -1); // Set up vector for top-down view
   
   scene.add(mesh);
   visualElements.push(mesh);
@@ -5589,27 +5931,10 @@ if (scribbleIdle && scribbleIdle.material.uniforms) {
   mat.uniforms.effectIntensity.value = 1.0;
 }
 
-// --- WaterPool (Idle) - Constant Natural Water Movement ---
+// --- WaterPool (Idle) - PS1-style Water Animation ---
 const waterPoolIdle = visualElements.find(e => e.name === 'WaterPool');
-if (waterPoolIdle && waterPoolIdle.material.uniforms) {
-  const mat = waterPoolIdle.material;
-  const t = performance.now() * 0.001;
-  
-  // Set time for animation
-  mat.uniforms.time.value = t;
-  
-  // Create gentle constant water movement even without audio
-  // Simulate natural water motion with very low frequency "audio" values
-  mat.uniforms.audioBass.value = 0.1 + Math.sin(t * 0.3) * 0.05;      // Gentle bass waves
-  mat.uniforms.audioMid.value = 0.08 + Math.cos(t * 0.5) * 0.03;      // Soft mid ripples  
-  mat.uniforms.audioTreble.value = 0.05 + Math.sin(t * 0.8) * 0.02;   // Light surface texture
-  
-  // Use base values for natural water movement
-  mat.uniforms.effectIntensity.value = waterPoolIdle.userData?.baseEffectIntensity ?? 1.0;
-  mat.uniforms.waveAmplitude.value = waterPoolIdle.userData?.baseWaveAmplitude ?? 0.15;
-  mat.uniforms.waveFrequency.value = waterPoolIdle.userData?.baseWaveFrequency ?? 2.0;
-  mat.uniforms.rippleSpeed.value = waterPoolIdle.userData?.baseRippleSpeed ?? 1.0;
-  mat.uniforms.waterDepth.value = waterPoolIdle.userData?.baseWaterDepth ?? 0.8;
+if (waterPoolIdle && waterPoolIdle.userData.customAnimateInitial) {
+  waterPoolIdle.userData.customAnimateInitial();
 }
 
 const t = performance.now() * 0.001;
@@ -6064,50 +6389,10 @@ if (pixelSortReact && pixelSortReact.material.uniforms) {
   pixelSortReact.material.uniforms.time.value = time;
   pixelSortReact.material.uniforms.audioBass.value = bassAvg;
 }
-// --- WaterPool Audio-Synced Response ---
+// --- WaterPool PS1-style Audio-Reactive Animation ---
 const waterPool = visualElements.find(e => e.name === 'WaterPool');
-if (waterPool && waterPool.material.uniforms) {
-  waterPool.material.uniforms.time.value = timeNow;
-  
-  // More responsive audio processing for better sync
-  if (!waterPool.userData.audioData) {
-    waterPool.userData.audioData = { bass: 0, mid: 0, treble: 0 };
-  }
-  
-  // Faster response for better audio sync, but still natural
-  const bassSmoothing = 0.3;  // Quick response for drops
-  const midSmoothing = 0.4;   // Medium response for waves  
-  const trebleSmoothing = 0.5; // Fast response for surface
-  
-  waterPool.userData.audioData.bass = THREE.MathUtils.lerp(
-    waterPool.userData.audioData.bass, bassAvg, bassSmoothing
-  );
-  waterPool.userData.audioData.mid = THREE.MathUtils.lerp(
-    waterPool.userData.audioData.mid, midAvg, midSmoothing
-  );
-  waterPool.userData.audioData.treble = THREE.MathUtils.lerp(
-    waterPool.userData.audioData.treble, trebleAvg, trebleSmoothing
-  );
-  
-  // Pass audio data to shader for real-time sync
-  waterPool.material.uniforms.audioBass.value = waterPool.userData.audioData.bass;
-  waterPool.material.uniforms.audioMid.value = waterPool.userData.audioData.mid;
-  waterPool.material.uniforms.audioTreble.value = waterPool.userData.audioData.treble;
-  
-  // Dynamic water parameters that respond to audio
-  const baseAmplitude = waterPool.userData?.baseWaveAmplitude ?? 0.15;
-  const baseFrequency = waterPool.userData?.baseWaveFrequency ?? 2.0;
-  const baseSpeed = waterPool.userData?.baseRippleSpeed ?? 1.0;
-  
-  // More responsive amplitude scaling
-  waterPool.material.uniforms.waveAmplitude.value = baseAmplitude * (1.0 + waterPool.userData.audioData.bass * 1.5);
-  waterPool.material.uniforms.waveFrequency.value = baseFrequency * (1.0 + waterPool.userData.audioData.mid * 0.3);
-  waterPool.material.uniforms.rippleSpeed.value = baseSpeed * (1.0 + waterPool.userData.audioData.treble * 0.5);
-  
-  // Dynamic effect intensity
-  const baseIntensity = waterPool.userData?.baseEffectIntensity ?? 1.0;
-  const audioIntensity = (waterPool.userData.audioData.bass + waterPool.userData.audioData.mid + waterPool.userData.audioData.treble) / 3.0;
-  waterPool.material.uniforms.effectIntensity.value = baseIntensity * (1.0 + audioIntensity * 0.3);
+if (waterPool && waterPool.userData.customAnimateReactive) {
+  waterPool.userData.customAnimateReactive(bassAvg, midAvg, trebleAvg);
 }
 // --- KaleidoTunnelEffect (iTunes Sim v4 - Reactive) ---
 const flowerBlockReact= visualElements.find(e => e.name === 'FlowerBlockEffect');
@@ -6196,6 +6481,10 @@ if (apple1Effect && apple1Effect.material.uniforms) {
     userCameraTexture = new THREE.VideoTexture(userCameraVideo);
     userCameraTexture.minFilter = THREE.LinearFilter;
     userCameraTexture.magFilter = THREE.LinearFilter;
+    
+    // Make sure it's accessible globally for waterpool effect
+    window.userCameraTexture = userCameraTexture;
+    console.log('Camera texture created and set globally:', window.userCameraTexture);
 
     // 5) "Enable" camera feed within the effects:
     isCameraFeedInEffects = true;
@@ -6246,7 +6535,8 @@ if (apple1Effect && apple1Effect.material.uniforms) {
     }
     userCameraVideo = null;
     userCameraTexture = null;
-    console.log('Camera feed removed from effects.');
+    window.userCameraTexture = null;
+    console.log('Camera feed removed from effects and global reference cleared.');
   }
 }
     function startShuffleInterval() {
@@ -6604,19 +6894,37 @@ case 'ArrowUp': {
       }
     } else if (isWaterPool) {
       // --- WaterPool Effect Logic ---
+      console.log('WaterPool visual mode toggle, currentState:', currentState);
       if (currentState === 0) {
+        // Turn camera on and set to style 1
+        console.log('WaterPool: Turning camera ON and setting to style 1');
         toggleCameraBackground();
-        activeMaterial.uniforms.visualMode.value = 1.0;
-        showActionMessage("water visual: style 1 (reflection)");
+        activeEffect.userData.visualMode = 1.0;
+        activeEffect.material.uniforms.visualMode.value = 1.0;
+        console.log('WaterPool: visualMode set to', activeEffect.material.uniforms.visualMode.value);
+        console.log('WaterPool: cameraActive set to', activeEffect.material.uniforms.cameraActive.value);
+        showActionMessage("water visual: style 1 (wave distortion)");
       } else if (currentState === 1) {
-        activeMaterial.uniforms.visualMode.value = 2.0;
-        showActionMessage("water visual: style 2 (underwater)");
+        // Style 2 - caustics  
+        console.log('WaterPool: Setting to style 2 (caustics)');
+        activeEffect.userData.visualMode = 2.0;
+        activeEffect.material.uniforms.visualMode.value = 2.0;
+        console.log('WaterPool: visualMode set to', activeEffect.material.uniforms.visualMode.value);
+        showActionMessage("water visual: style 2 (caustics)");
       } else if (currentState === 2) {
-        activeMaterial.uniforms.visualMode.value = 3.0;
-        showActionMessage("water visual: style 3 (surface)");
+        // Style 3 - reflection
+        console.log('WaterPool: Setting to style 3 (reflection)');
+        activeEffect.userData.visualMode = 3.0;
+        activeEffect.material.uniforms.visualMode.value = 3.0;
+        console.log('WaterPool: visualMode set to', activeEffect.material.uniforms.visualMode.value);
+        showActionMessage("water visual: style 3 (reflection)");
       } else { // currentState is 3
+        // Turn camera off and reset to off
+        console.log('WaterPool: Turning camera OFF and resetting to off');
         toggleCameraBackground();
-        activeMaterial.uniforms.visualMode.value = 0.0;
+        activeEffect.userData.visualMode = 0.0;
+        activeEffect.material.uniforms.visualMode.value = 0.0;
+        console.log('WaterPool: visualMode set to', activeEffect.material.uniforms.visualMode.value);
         showActionMessage("water visual: off");
       }
     } else if (isScribble) {
@@ -6826,20 +7134,8 @@ if (aurora && aurora.material && aurora.material.uniforms) {
 }
 // --- WaterPool Intensity Adjustment ---
 const waterPool = visualElements.find(e => e.name === 'WaterPool');
-if (waterPool && waterPool.material.uniforms) {
-  // Adjust water effect intensity and properties
-  waterPool.userData.baseEffectIntensity = 0.5 + intensityLevel * 0.15;
-  waterPool.userData.baseWaveAmplitude = 0.05 + intensityLevel * 0.02;
-  waterPool.userData.baseWaveFrequency = 1.0 + intensityLevel * 0.3;
-  waterPool.userData.baseRippleSpeed = 0.5 + intensityLevel * 0.2;
-  waterPool.userData.baseWaterDepth = 0.4 + intensityLevel * 0.1;
-  
-  // Apply the base values to uniforms
-  waterPool.material.uniforms.effectIntensity.value = waterPool.userData.baseEffectIntensity;
-  waterPool.material.uniforms.waveAmplitude.value = waterPool.userData.baseWaveAmplitude;
-  waterPool.material.uniforms.waveFrequency.value = waterPool.userData.baseWaveFrequency;
-  waterPool.material.uniforms.rippleSpeed.value = waterPool.userData.baseRippleSpeed;
-  waterPool.material.uniforms.waterDepth.value = waterPool.userData.baseWaterDepth;
+if (waterPool && waterPool.userData.customAdjustIntensity) {
+  waterPool.userData.customAdjustIntensity(intensityLevel);
 }
 
 // --- Scribble (Intensity Slider) ---
@@ -6867,15 +7163,8 @@ if (apple1Effect && apple1Effect.material && apple1Effect.material.uniforms) {
 }
 
   
-visualElements.forEach(effect => {
-    if (effect.userData.customAdjustIntensity) {
-      try {
-        effect.userData.customAdjustIntensity();
-      } catch (e) {
-        console.error("Error in custom adjustIntensity:", e);
-      }
-    }
-  });
+// Remove this forEach loop as it's calling customAdjustIntensity without parameters
+// which overrides the correct calls above that pass intensityLevel
 }
     function augmentEffect() {
   const currentEffect = visualElements[currentStyleIndex];
