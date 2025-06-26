@@ -1736,7 +1736,7 @@ function createWaves() {
   visualElements.push(waves);
 }
         
-    function create3DWaves() {
+function create3DWaves() {
   // Use a highly subdivided plane for high-quality, experimental waves
   const geometry = new THREE.PlaneBufferGeometry(1200, 1200, 300, 300);
   const material = new THREE.ShaderMaterial({
@@ -1744,28 +1744,53 @@ function createWaves() {
       time: { value: 0.0 },
       amplitude: { value: 20.0 },
       frequency: { value: 0.5 },
-      speed: { value: 1.0 }
+      speed: { value: 1.0 },
+      // Add new uniforms for visual mode
+      cameraTexture: { value: null },
+      resolution:    { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      visualMode:    { value: 0.0 }, // 0: off, 1: Cam drives shape, 2: Blend, 3: Cam background
+      cameraActive:  { value: 0.0 }
     },
     vertexShader: `
       uniform float time;
       uniform float amplitude;
       uniform float frequency;
       uniform float speed;
+      // Uniforms for Style 1
+      uniform float visualMode;
+      uniform float cameraActive;
+      uniform sampler2D cameraTexture;
+      
       varying vec3 vColor;
+      varying float vDisplacement; // Pass displacement to fragment shader
       
       void main() {
         vec3 pos = position;
-        // Compute three wave patterns with a twist effect for complexity
+
+        // --- Base Displacement Calculation ---
         float wave1 = sin(pos.x * frequency + time * speed);
         float wave2 = cos(pos.y * frequency * 1.2 + time * speed * 1.1);
         float wave3 = sin((pos.x + pos.y) * frequency * 0.8 + time * speed * 0.8);
-        // Apply a twist based on the y position and time to add a 3D dynamic\n
         float twist = sin(time + pos.y * 0.05) * 0.5;
         pos.x += twist;
-        // Combine the waves to get a complex displacement\n
         float displacement = (wave1 + wave2 + wave3) / 3.0 * amplitude;
+
+        // --- Visual Mode 1: Camera Luminance Drives Displacement ---
+        if (abs(visualMode - 1.0) < 0.1 && cameraActive > 0.5) {
+          // Correctly calculate screen UVs to prevent distortion
+          vec4 clipPos = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          vec2 screenUV = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
+
+          vec4 camColor = texture2D(cameraTexture, screenUV);
+          float luminance = dot(camColor.rgb, vec3(0.299, 0.587, 0.114));
+          // Use luminance to modify the wave height (more exaggerated)
+          displacement *= (0.1 + luminance * 3.0); 
+        }
+        
         pos.z += displacement;
-        // Generate a vibrant color based on the displacement\n
+        vDisplacement = displacement; // Pass the final displacement
+
+        // Generate a vibrant color based on the final displacement
         vColor = vec3(0.5 + 0.5 * sin(displacement * 0.1),
                       0.5 + 0.5 * cos(displacement * 0.1),
                       0.5 + 0.5 * sin(displacement * 0.2));
@@ -1773,18 +1798,48 @@ function createWaves() {
       }
     `,
     fragmentShader: `
+      uniform sampler2D cameraTexture;
+      uniform vec2 resolution;
+      uniform float visualMode;
+      uniform float cameraActive;
+      uniform float amplitude;
       varying vec3 vColor;
+      varying float vDisplacement;
+
       void main() {
-        gl_FragColor = vec4(vColor, 1.0);
+        vec3 finalColor = vColor;
+
+        if (cameraActive > 0.5) {
+            if (abs(visualMode - 2.0) < 0.1) {
+                // Style 2: Blend wave color with the camera feed.
+                vec2 screenUV = gl_FragCoord.xy / resolution.xy;
+                vec4 cameraColor = texture2D(cameraTexture, screenUV);
+                finalColor = vColor * cameraColor.rgb;
+
+            } else if (abs(visualMode - 3.0) < 0.1) {
+                // Style 3: Camera feed as background, waves on top.
+                // This logic now correctly mirrors the working 'Waves' effect.
+                vec2 screenUV = gl_FragCoord.xy / resolution.xy;
+                vec4 cameraColor = texture2D(cameraTexture, screenUV);
+                
+                // Create the 'waveAlpha' based on displacement, which is the missing piece.
+                float waveAlpha = smoothstep(0.0, 0.1, abs(vDisplacement / amplitude));
+                
+                // Use the exact 'mix' function from the working 'Waves' effect.
+                finalColor = mix(cameraColor.rgb, vColor, waveAlpha);
+            }
+        }
+        
+        gl_FragColor = vec4(finalColor, 1.0);
       }
     `,
     wireframe: false,
-    transparent: true,
+    transparent: true, // Needs to be true for the blending to work against the scene background
+    depthWrite: false
   });
   
   const mesh = new THREE.Mesh(geometry, material);
-  // Tilt the plane for a more engaging perspective (angled view instead of flat)
-  mesh.rotation.set(-0.5, 0.3, 0);
+  mesh.rotation.set(-0.5, 0.3, 0); // Tilt for perspective
   mesh.name = '3DWaves';
   scene.add(mesh);
   visualElements.push(mesh);
@@ -1989,7 +2044,7 @@ function createTrippyColors() {
 }
 
         
-    function createPortal() {
+function createPortal() {
   // Compute full-screen geometry dimensions.
   const aspect = window.innerWidth / window.innerHeight;
   const baseHeight = 2000;  // Base height (can be adjusted)
@@ -2009,7 +2064,11 @@ function createTrippyColors() {
       unpredictability: { value: 0.5 },   // scales extra fractal noise
       audioReactive: { value: 0.0 },      // audio reactivity influence
       phaseShift: { value: 0.0 },         // for abrupt color/hue jumps
-      kaleidoSegments: { value: 6.0 }     // number of mirrored segments (kaleidoscope effect)
+      kaleidoSegments: { value: 6.0 },    // number of mirrored segments (kaleidoscope effect)
+      // --- Visual Mode Uniforms ---
+      cameraTexture: { value: null },
+      visualMode:    { value: 0.0 },
+      cameraActive:  { value: 0.0 }
     },
     vertexShader: `
       varying vec2 vUv;
@@ -2031,6 +2090,10 @@ function createTrippyColors() {
       uniform float audioReactive;
       uniform float phaseShift;
       uniform float kaleidoSegments;
+      // Visual Mode Uniforms
+      uniform float visualMode;
+      uniform float cameraActive;
+      uniform sampler2D cameraTexture;
       
       varying vec2 vUv;
       
@@ -2062,25 +2125,26 @@ function createTrippyColors() {
       // --- Smooth angle wrap to avoid seams ---
       float smoothAngleWrap(float angle) {
         float modded = mod(angle, 6.28318);
-        float blendZone = 0.05;
-        if (modded < blendZone) {
-          float t = smoothstep(0.0, blendZone, modded);
-          modded = mix(6.28318, modded, t);
-        }
         return modded;
       }
       
       // --- Base swirl transform (main tunnel) ---
-      vec2 swirlTransform(vec2 uv) {
+      vec2 swirlTransform(vec2 uv, float processedLuminance) {
         vec2 centered = uv - 0.5;
         float r = length(centered);
         float theta = atan(centered.y, centered.x);
         float logR = log(r + 0.0001);
         float rMod = fract(-logR + travelOffset);
-        // Enforce single-direction spin
         float spinOffset = time * spinSpeed * (1.0 + audioReactive * 1.5);
-        // Basic fractal warp
-        float basicWarp = warpStrength * fbm(vec2(theta, time * 0.15)) * 0.5;
+        
+        // --- Visual Style 1 Logic ---
+        float finalWarpStrength = warpStrength;
+        if (abs(visualMode - 1.0) < 0.1) {
+            // Apply sharpened luminance with a much higher multiplier for a stronger effect
+            finalWarpStrength *= (1.0 + processedLuminance * 8.0);
+        }
+
+        float basicWarp = finalWarpStrength * fbm(vec2(theta, time * 0.15)) * 0.5;
         float rawTheta = theta + spinOffset + basicWarp;
         float wrappedTheta = smoothAngleWrap(rawTheta);
         float extraWarp = fbm(vec2(wrappedTheta * 1.2, rMod * unpredictability + time * 0.1));
@@ -2114,28 +2178,41 @@ function createTrippyColors() {
       }
       
       void main(){
+        vec2 screenUV = gl_FragCoord.xy / resolution.xy;
+        vec4 cameraColor = texture2D(cameraTexture, screenUV);
+        float cameraLuminance = dot(cameraColor.rgb, vec3(0.299, 0.587, 0.114));
+        // Sharpen the camera feed's contrast to create a better "edge detection" feel
+        float sharpenedLuminance = smoothstep(0.25, 0.75, cameraLuminance);
+
         // Apply main swirl transform.
-        vec2 polarCoords = swirlTransform(vUv);
+        vec2 polarCoords = swirlTransform(vUv, sharpenedLuminance);
         // Apply kaleidoscopic wrap.
         polarCoords = kaleidoWrap(polarCoords, kaleidoSegments);
         vec2 newUv = polarToUV(polarCoords);
         
-        // Create layered fractal colors.
         float phase = time * 0.3 + colorCycle + phaseShift;
         vec3 layer1 = fractalColor(newUv * 2.5, phase);
         vec3 layer2 = fractalColor(newUv * 3.5, phase + 15.0);
         float blendFactor = sin(6.28318 * newUv.y + phase * 0.4) * 0.5 + 0.5;
         vec3 combinedColor = mix(layer1, layer2, blendFactor);
         
-        // Additional flicker inversion for abrupt changes.
         float flicker = fbm(newUv * unpredictability * 6.0 + time * 0.3);
         combinedColor = mix(combinedColor, vec3(1.0) - combinedColor, flicker * 0.35);
         
-        // Apply radial vignette.
         float vignette = smoothstep(0.85, 0.3, length(vUv - 0.5));
-        combinedColor *= vignette;
         
-        gl_FragColor = vec4(combinedColor, 1.0);
+        // --- Visual Mode Logic ---
+        if (cameraActive > 0.5) {
+            if (abs(visualMode - 2.0) < 0.1) { // Style 2: Blend with camera
+                combinedColor = mix(combinedColor, cameraColor.rgb, 0.5);
+            }
+            // Style 3 is handled by alpha
+        }
+        
+        combinedColor *= vignette;
+        float finalAlpha = (abs(visualMode - 3.0) < 0.1 && cameraActive > 0.5) ? vignette : 1.0;
+        
+        gl_FragColor = vec4(combinedColor, finalAlpha);
       }
     `,
     transparent: true,
@@ -2164,33 +2241,37 @@ function createSpaceshipEffect() {
       effectIntensity: { value: 1.0 },
       maxRadius:       { value: planeSize * 0.45 },
       minRadius:       { value: planeSize * 0.1 },
-      // Add a uniform for the base color, set randomly on creation
-      // Generate a random hue, but force high saturation and moderate lightness
-      uBaseColor:      { value: new THREE.Color().setHSL(Math.random(), 0.8 + Math.random() * 0.2, 0.6 + Math.random() * 0.1) } 
+      uBaseColor:      { value: new THREE.Color().setHSL(Math.random(), 0.8 + Math.random() * 0.2, 0.6 + Math.random() * 0.1) },
+      // --- Visual Mode Uniforms ---
+      cameraTexture:   { value: null },
+      resolution:      { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      visualMode:      { value: 0.0 },
+      cameraActive:    { value: 0.0 }
     },
-    // Vertex Shader: Pass audio values through
     vertexShader: `
       precision mediump float;
 
       uniform float time;
-      uniform float audioBass; // Make uniforms accessible
+      uniform float audioBass;
       uniform float audioMid;
       uniform float audioTreble;
       uniform float effectIntensity;
       uniform float maxRadius;
       uniform float minRadius;
+      // Visual Mode Uniforms
+      uniform float visualMode;
+      uniform float cameraActive;
+      uniform sampler2D cameraTexture;
 
       varying float vAngle;
       varying float vRadiusNorm;
       varying float vAmplitude;
       varying float vRadialSpike;
-      // Varyings to pass audio levels to fragment shader
       varying float vAudioBass;
       varying float vAudioMid;
       varying float vAudioTreble;
 
 
-      // Noise functions...
       float rand(vec2 co){ return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453); }
       float fbm(vec2 p) {
           float total = 0.0; float amplitude = 0.5;
@@ -2199,15 +2280,13 @@ function createSpaceshipEffect() {
       }
 
       void main() {
-        float worldRadius = length(position.xy);
-        float angle = atan(position.y, position.x);
-        vAngle = angle;
-
-        // Pass audio levels to fragment shader
         vAudioBass = audioBass;
         vAudioMid = audioMid;
         vAudioTreble = audioTreble;
-
+        
+        float worldRadius = length(position.xy);
+        float angle = atan(position.y, position.x);
+        vAngle = angle;
 
         vec3 pos = position;
         float displacement = 0.0;
@@ -2219,31 +2298,34 @@ function createSpaceshipEffect() {
             vRadiusNorm = (worldRadius - minRadius) / (maxRadius - minRadius);
 
             float waveSpeed = time * (0.6 + audioMid * 1.5);
-            // Radial Spike
             float radialAmplitude = (30.0 + audioBass * 150.0) * effectIntensity;
             float angularFreq = 30.0 + audioTreble * 50.0;
             vRadialSpike = radialAmplitude * (0.4 + 0.6 * abs(sin(angle * angularFreq + time * 0.5)));
             displacement += vRadialSpike * smoothstep(0.0, 0.5, vRadiusNorm);
 
-            // Swirl/Wave
             float swirlAmplitude = 15.0 * effectIntensity * (1.0 + audioMid * 1.5);
             float swirlWave1 = sin(vRadiusNorm * 10.0 - waveSpeed * 1.2 + angle * 3.0);
             float swirlWave2 = cos(angle * 8.0 + waveSpeed * 0.7);
             float swirlNoise = fbm(vec2(angle * 2.0, vRadiusNorm * 3.0 + time * 0.1)) * 15.0 * effectIntensity * audioMid;
             displacement += (swirlWave1 * 0.5 + swirlWave2 * 0.3 + swirlNoise * 0.2) * swirlAmplitude;
 
-            // Splash
-            // Reduce strength multiplier significantly, tie to intensity more directly
-            float splashStrength = pow(audioBass, 3.0) * (60.0 + 20.0 * effectIntensity); // Lower base, add intensity scaling
-            // Slow down noise speed
+            float splashStrength = pow(audioBass, 3.0) * (60.0 + 20.0 * effectIntensity);
             float splashNoiseFreq = 8.0;
-            float splashNoiseSpeed = 1.5; // Slower speed
-            float splashNoise = fbm(vec2(angle * splashNoiseFreq + time * splashNoiseSpeed, time * 0.3)); // Slower time factor too
-            // Increase threshold for activation
-            float splashFactor = smoothstep(0.7, 0.8, splashNoise); // Higher threshold (0.7 to 0.8)
+            float splashNoiseSpeed = 1.5;
+            float splashNoise = fbm(vec2(angle * splashNoiseFreq + time * splashNoiseSpeed, time * 0.3));
+            float splashFactor = smoothstep(0.7, 0.8, splashNoise);
             float radiusFactor = sin(vRadiusNorm * 3.14159);
             float splashDisplacement = splashStrength * splashFactor * radiusFactor;
             displacement += splashDisplacement;
+
+            // --- Style 1: Camera drives displacement ---
+            if (abs(visualMode - 1.0) < 0.1 && cameraActive > 0.5) {
+                vec4 clipPos = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                vec2 screenUV = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
+                vec4 camColor = texture2D(cameraTexture, screenUV);
+                float luminance = dot(camColor.rgb, vec3(0.299, 0.587, 0.114));
+                displacement *= (0.5 + luminance * 2.5);
+            }
 
             vAmplitude = abs(displacement);
             pos.z += displacement;
@@ -2252,13 +2334,17 @@ function createSpaceshipEffect() {
         gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
       }
     `,
-    // Fragment Shader: Adjust initial color brightness
     fragmentShader: `
       precision mediump float;
 
       uniform float time;
       uniform float effectIntensity;
-      uniform vec3 uBaseColor; // Use the base color uniform
+      uniform vec3 uBaseColor;
+      // Visual Mode Uniforms
+      uniform float visualMode;
+      uniform float cameraActive;
+      uniform sampler2D cameraTexture;
+      uniform vec2 resolution;
 
       varying float vAngle;
       varying float vRadiusNorm;
@@ -2268,14 +2354,11 @@ function createSpaceshipEffect() {
       varying float vAudioMid;
       varying float vAudioTreble;
 
-
-      // HSV function...
       vec3 hsv2rgb(vec3 c){
            vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
            vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
            return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
        }
-      // Noise function...
       float rand(vec2 co){ return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453); }
       float fbm(vec2 p) {
           float total = 0.0; float amplitude = 0.5;
@@ -2284,53 +2367,50 @@ function createSpaceshipEffect() {
       }
 
       void main() {
-        // Clipping...
-         if (vRadiusNorm <= 0.001 || vRadiusNorm >= 0.999) {
-             if (vAmplitude < 0.1) { discard; }
-         }
-
-        // --- Dynamic/Random Audio-Reactive Coloring ---
-        // Use audio levels to drive HSV components dynamically
-        // Bass drives hue shift speed/range
-        float reactiveHue = mod(time * (0.1 + vAudioBass * 0.5) + vAngle * 0.1, 1.0); // Base rotation + bass speed + angle offset
-        // Add noise for randomness in hue
+        // --- Calculate procedural color and alpha first ---
+        float reactiveHue = mod(time * (0.1 + vAudioBass * 0.5) + vAngle * 0.1, 1.0);
         reactiveHue = mod(reactiveHue + fbm(vec2(time * 0.1, vAngle)) * 0.5, 1.0); 
-
-        // Mid drives saturation
         float reactiveSaturation = clamp(0.7 + vAudioMid * 0.5, 0.7, 1.0); 
-
-        // Treble influences brightness spikes within the reactive color itself
         float reactiveValue = clamp(0.6 + vAudioTreble * 0.6, 0.6, 1.0); 
-
-        // Convert the dynamic HSV to RGB for the reactive color
         vec3 reactiveColor = hsv2rgb(vec3(reactiveHue, reactiveSaturation, reactiveValue));
 
-
-        // Use the uBaseColor uniform passed from JavaScript
         vec3 baseColor = uBaseColor; 
-        // Normalize amplitude aggressively for mixFactor
-        float mixFactor = clamp(vAmplitude / (25.0 * effectIntensity), 0.0, 1.0); // React even faster
-        // Mix directly: when mixFactor is 0, color is baseColor
-        vec3 color = mix(baseColor, reactiveColor, mixFactor); 
+        float mixFactor = clamp(vAmplitude / (25.0 * effectIntensity), 0.0, 1.0);
+        vec3 proceduralColor = mix(baseColor, reactiveColor, mixFactor); 
 
-        // --- Brightness (Value) based on Amplitude/Spikes ---
         float valueBoost = smoothstep(0.0, 70.0 * effectIntensity, vAmplitude) * 0.3; 
         valueBoost += smoothstep(10.0, 40.0 * effectIntensity, vRadialSpike) * 0.2; 
-        float finalValue = clamp(0.8 + valueBoost, 0.7, 1.0); 
+        proceduralColor *= clamp(0.8 + valueBoost, 0.7, 1.0);
 
-        vec3 finalColor = color * finalValue; // Apply brightness
-
-        // --- Alpha Modulation ---
         float breakNoise = fbm(vec2(vAngle * 5.0, time * 0.5));
         float breakFrequency = 20.0 + vAudioTreble * 30.0 + breakNoise * 20.0;
         float alphaPattern = fract(vAngle * breakFrequency + time * 2.0 + vRadiusNorm * 3.0);
         float breakThreshold = 0.4 + breakNoise * 0.2;
-        float alpha = step(breakThreshold, alphaPattern);
+        float proceduralAlpha = step(breakThreshold, alphaPattern);
+        proceduralAlpha *= smoothstep(0.0, 0.05, vRadiusNorm);
+        proceduralAlpha *= 0.9;
 
-        alpha *= smoothstep(0.0, 0.05, vRadiusNorm);
+        // --- Visual Mode Logic ---
+        vec3 finalColor = proceduralColor;
+        float finalAlpha = proceduralAlpha;
 
-
-        gl_FragColor = vec4(finalColor, alpha * 0.9);
+        if (cameraActive > 0.5) {
+            if (abs(visualMode - 2.0) < 0.1) {
+                // Style 2: Blend colors
+                vec2 screenUV = gl_FragCoord.xy / resolution.xy;
+                vec4 cameraColor = texture2D(cameraTexture, screenUV);
+                finalColor = proceduralColor * cameraColor.rgb;
+            } else if (abs(visualMode - 3.0) < 0.1) {
+                // Style 3: Just show the effect on the camera background.
+                // To do this, we need a clean alpha mask.
+                // The proceduralAlpha is too noisy. Let's use vRadiusNorm.
+                finalAlpha = smoothstep(0.0, 0.05, vRadiusNorm) * smoothstep(1.0, 0.95, vRadiusNorm);
+                // If alpha is zero, discard the pixel to prevent depth buffer issues.
+                if (finalAlpha < 0.01) discard;
+            }
+        }
+        
+        gl_FragColor = vec4(finalColor, finalAlpha);
       }
     `,
     wireframe: true,
@@ -2341,12 +2421,7 @@ function createSpaceshipEffect() {
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'SpaceshipEffect';
-  // Adjust angle for a steeper perspective
-  mesh.rotation.x = -0.8; // Try a larger negative value
-  mesh.userData.baseEffectIntensity = 1.0;
-  // No rotation needed based on last request
-  // mesh.userData.rotationSpeedY = 0.002;
-
+  mesh.rotation.x = -0.8;
   scene.add(mesh);
   visualElements.push(mesh);
 }
@@ -2358,68 +2433,59 @@ function createOceanEffect() {
   const detail = 6;
   const geometry = new THREE.IcosahedronBufferGeometry(radius, detail);
 
-  // 2) ShaderMaterial with no displacement by default
+  // 2) ShaderMaterial with visual modes
   const material = new THREE.ShaderMaterial({
     uniforms: {
       time:            { value: 0.0 },
-      // Replace audioIntensity with specific frequency uniforms
-      // audioIntensity:  { value: 0.0 }, 
       uBass:           { value: 0.0 },
       uMid:            { value: 0.0 },
       uTreble:         { value: 0.0 },
-      flowSpeed:       { value: 0.3 },  // faster fluid flow
-      audioStrength:   { value: 200.0 },  // stronger audio response
-      effectIntensity: { value: 1.5 },    // increased base morph intensity
+      flowSpeed:       { value: 0.3 },
+      audioStrength:   { value: 200.0 },
+      effectIntensity: { value: 1.5 },
+      // --- Visual Mode Uniforms ---
+      cameraTexture:   { value: null },
+      resolution:      { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      visualMode:      { value: 0.0 },
+      cameraActive:    { value: 0.0 }
     },
     vertexShader: `
       uniform float time;
-      // uniform float audioIntensity; // Removed
       uniform float uBass;
       uniform float uMid;
       uniform float uTreble;
       uniform float flowSpeed;
       uniform float audioStrength;
       uniform float effectIntensity;
+      // Visual Mode Uniforms
+      uniform float visualMode;
+      uniform float cameraActive;
+      uniform sampler2D cameraTexture;
+
       varying vec3 vNormal;
-      varying float vDisplacement; // Pass displacement to fragment shader if needed for color
+      varying float vDisplacement;
 
       // --- Noise Functions (FBM) ---
-      // Simple 2D hash
-      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-      // 3D hash
       float hash3d(vec3 p) { 
           p = fract(p * 0.1031); 
           p += dot(p, p.yzx + 33.33); 
           return fract((p.x + p.y) * p.z); 
       }
-      // Value noise
       float noise(vec3 p) {
-          vec3 i = floor(p);
-          vec3 f = fract(p);
-          f = f * f * (3.0 - 2.0 * f); // Smoothstep interpolation
-          
-          float v000 = hash3d(i + vec3(0,0,0));
-          float v100 = hash3d(i + vec3(1,0,0));
-          float v010 = hash3d(i + vec3(0,1,0));
-          float v110 = hash3d(i + vec3(1,1,0));
-          float v001 = hash3d(i + vec3(0,0,1));
-          float v101 = hash3d(i + vec3(1,0,1));
-          float v011 = hash3d(i + vec3(0,1,1));
-          float v111 = hash3d(i + vec3(1,1,1));
-          
+          vec3 i = floor(p); vec3 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          float v000 = hash3d(i + vec3(0,0,0)); float v100 = hash3d(i + vec3(1,0,0));
+          float v010 = hash3d(i + vec3(0,1,0)); float v110 = hash3d(i + vec3(1,1,0));
+          float v001 = hash3d(i + vec3(0,0,1)); float v101 = hash3d(i + vec3(1,0,1));
+          float v011 = hash3d(i + vec3(0,1,1)); float v111 = hash3d(i + vec3(1,1,1));
           return mix(mix(mix(v000, v100, f.x), mix(v010, v110, f.x), f.y),
-                     mix(mix(v001, v101, f.x), mix(v011, v111, f.x), f.y), 
-                     f.z);
+                     mix(mix(v001, v101, f.x), mix(v011, v111, f.x), f.y), f.z);
       }
-      // Fractional Brownian Motion (FBM)
       float fbm(vec3 p, int octaves) {
-          float total = 0.0;
-          float amplitude = 0.5;
-          float frequency = 1.0;
+          float total = 0.0; float amplitude = 0.5; float frequency = 1.0;
           for (int i = 0; i < octaves; i++) {
               total += amplitude * noise(p * frequency);
-              frequency *= 2.0;
-              amplitude *= 0.5;
+              frequency *= 2.0; amplitude *= 0.5;
           }
           return total;
       }
@@ -2427,62 +2493,45 @@ function createOceanEffect() {
 
       void main() {
         vNormal = normal;
-        vec3 worldPos = position; // Use world position for noise calculation
+        vec3 worldPos = position;
 
-        // --- Base Morphing (always active) ---
         float baseMorphSpeed = time * flowSpeed * 0.5;
-        // Higher-frequency FBM for more fluid motion
         float baseNoise = fbm(worldPos * 0.05 + baseMorphSpeed, 8);
-        // Boosted base morph magnitude
         float baseDisplacement = baseNoise * 80.0 * effectIntensity;
 
-        // --- Audio Reactive Displacement ---
-        // Bass: Larger, slower bulges
-        float bassNoiseFreq = 0.005;
-        float bassNoiseSpeed = time * flowSpeed * 0.2;
-        float bassNoise = noise(worldPos * bassNoiseFreq + bassNoiseSpeed);
-        // More pronounced bass bulges
+        float bassNoise = noise(worldPos * 0.005 + time * flowSpeed * 0.2);
         float bassDisp = pow(uBass, 3.0) * bassNoise * audioStrength * 5.0;
-
-        // Mid: Twisting / higher frequency noise
-        float midNoiseFreq = 0.02;
-        float midNoiseSpeed = time * flowSpeed * 0.8;
-        float midNoise = fbm(worldPos * midNoiseFreq + midNoiseSpeed, 3); // 3 octaves
-        // Stronger mid-frequency twirls
+        float midNoise = fbm(worldPos * 0.02 + time * flowSpeed * 0.8, 3);
         float midDisp = pow(uMid, 1.3) * midNoise * audioStrength * 2.5;
-
-        // Treble: Sharp, fast spikes
-        float trebleNoiseFreq = 0.05;
-        float trebleNoiseSpeed = time * flowSpeed * 1.5;
-        // Use a simple noise for sharper look, maybe abs()
-        float trebleNoise = abs(noise(worldPos * trebleNoiseFreq + trebleNoiseSpeed)); 
-        // Sharper treble spikiness
+        float trebleNoise = abs(noise(worldPos * 0.05 + time * flowSpeed * 1.5)); 
         float trebleDisp = pow(uTreble, 2.0) * trebleNoise * audioStrength * 4.0;
-
-        // Combine displacements (base morph + audio, scaled by overall intensity)
         float totalDisplacement = baseDisplacement + (bassDisp + midDisp + trebleDisp) * effectIntensity;
 
-        // Add a time-driven sine component for jelly-like wobble
-        float sineNoise = sin(time * flowSpeed * 2.0 + fbm(worldPos * 0.015 + baseMorphSpeed * 0.5, 4) * 6.2831);
-        float sineDisp = sineNoise * 20.0 * effectIntensity;
-        totalDisplacement += sineDisp;
-
-        // Add swirling jitter for extra fluidity
-        float swirl = sin(worldPos.z * 5.0 + time * 3.0) * 10.0 * effectIntensity;
-        totalDisplacement += swirl;
+        // --- Style 1: Camera drives displacement ---
+        if (abs(visualMode - 1.0) < 0.1 && cameraActive > 0.5) {
+            vec4 clipPos = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            vec2 screenUV = (clipPos.xy / clipPos.w) * 0.5 + 0.5;
+            vec4 camColor = texture2D(cameraTexture, screenUV);
+            float luminance = dot(camColor.rgb, vec3(0.299, 0.587, 0.114));
+            totalDisplacement *= (0.5 + luminance * 3.0);
+        }
         
-        vDisplacement = totalDisplacement; // Pass total displacement
-
+        vDisplacement = totalDisplacement;
         vec3 displaced = position + normal * totalDisplacement;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(displaced, 1.0);
       }
     `,
     fragmentShader: `
+      uniform float time;
+      // Visual Mode Uniforms
+      uniform float visualMode;
+      uniform float cameraActive;
+      uniform sampler2D cameraTexture;
+      uniform vec2 resolution;
+      
       varying vec3 vNormal;
-      varying float vDisplacement; // Receive displacement
-      uniform float time; // Add time uniform for color effects
+      varying float vDisplacement;
 
-      // Simple HSV to RGB conversion
       vec3 hsv2rgb(vec3 c) {
         vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
         vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
@@ -2490,32 +2539,40 @@ function createOceanEffect() {
       }
 
       void main() {
-        // Rim lighting based on normal
-        float rim = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0,0.0,1.0))), 2.0); // View-dependent rim
-
-        // Base color (blueish)
-        vec3 baseColor = vec3(0.0, 0.2, 0.6);
-
-        // Color variation based on displacement magnitude
-        // Map displacement range (e.g., -50 to 100) to hue (0 to 0.3)
+        float rim = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0,0.0,1.0))), 2.0);
         float hueShift = smoothstep(-50.0, 100.0, vDisplacement) * 0.3; 
-        float hue = mod(0.6 + hueShift + time * 0.05, 1.0); // Base blue/cyan + shift + slow cycle
-        float saturation = 0.7 + rim * 0.3; // More saturated at edges
-        float value = 0.6 + rim * 0.4;      // Brighter at edges
+        float hue = mod(0.6 + hueShift + time * 0.05, 1.0);
+        float saturation = 0.7 + rim * 0.3;
+        float value = 0.6 + rim * 0.4;
+        vec3 proceduralColor = hsv2rgb(vec3(hue, saturation, value));
 
-        vec3 dynamicColor = hsv2rgb(vec3(hue, saturation, value));
+        // --- Visual Mode Logic ---
+        vec3 finalColor = proceduralColor;
+        float finalAlpha = 1.0;
 
-        // Mix base color and dynamic color based on rim
-        vec3 finalColor = mix(baseColor, dynamicColor, 0.5 + rim * 0.5);
+        if (cameraActive > 0.5) {
+            vec2 screenUV = gl_FragCoord.xy / resolution.xy;
+            vec4 cameraColor = texture2D(cameraTexture, screenUV);
 
-        gl_FragColor = vec4(finalColor, 1.0);
+            if (abs(visualMode - 2.0) < 0.1) {
+                // Style 2: Blend colors
+                finalColor = proceduralColor * cameraColor.rgb;
+            } else if (abs(visualMode - 3.0) < 0.1) {
+                // Style 3: Use displacement to create alpha for background
+                finalColor = proceduralColor;
+                finalAlpha = smoothstep(0.0, 50.0, abs(vDisplacement));
+                if (finalAlpha < 0.1) discard; // Cleanly remove calm areas
+            }
+        }
+        
+        gl_FragColor = vec4(finalColor, finalAlpha);
       }
     `,
     wireframe: true,
-    transparent: false
+    transparent: true, // MUST be true for Style 3
+    depthWrite: false   // Helps with transparency sorting
   });
 
-  // 3) Add to scene
   const oceanMesh = new THREE.Mesh(geometry, material);
   oceanMesh.name  = 'OceanEffect';
   scene.add(oceanMesh);
@@ -3118,72 +3175,52 @@ function createGlitchEffect() {
 }
 
 function createBlobEffect() {
-  // ─── Number of metaballs ───────────────────────────────────────────────
   const blobCount = 4;
-
-  // ─── Generate random phase seeds & radii ────────────────────────────────
   const seeds = [];
   const radii = [];
   for (let i = 0; i < blobCount; i++) {
-    seeds.push(new THREE.Vector2(
-      Math.random() * Math.PI * 2, // random horizontal phase
-      Math.random() * Math.PI * 2  // random vertical phase
-    ));
-    // Thicker blobs: radius between 0.12 and 0.18
+    seeds.push(new THREE.Vector2(Math.random() * Math.PI * 2, Math.random() * Math.PI * 2));
     radii.push(0.12 + Math.random() * 0.06);
   }
-  // Max radius for dome height (used in shading)
   const maxRadius = Math.max(...radii);
-
-  // Fullscreen quad geometry
   const geometry = new THREE.PlaneBufferGeometry(2, 2);
-
-  // ─── Vertex Shader ───────────────────────────────────────────────────────
   const vertexShader = `
     precision mediump float;
     varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = vec4(position, 1.0);
-    }
+    void main() { vUv = uv; gl_Position = vec4(position, 1.0); }
   `;
-
-  // ─── Fragment Shader ─────────────────────────────────────────────────────
   const fragmentShader = `
     precision highp float;
-
-    // Uniforms from JS
     uniform float time;
     uniform float uBass, uMid, uTreble;
-    uniform float effectIntensity; // drives "gooeyness"
-    uniform float uColorSpeed;     // drives hue-cycle speed
+    uniform float effectIntensity;
+    uniform float uColorSpeed;
     uniform vec2 seeds[${blobCount}];
     uniform float r0[${blobCount}];
     uniform float uMaxR;
+    // --- Visual Mode Uniforms ---
+    uniform float visualMode;
+    uniform float cameraActive;
+    uniform sampler2D cameraTexture;
 
     varying vec2 vUv;
 
-    // Convert HSV → RGB
     vec3 hsv2rgb(vec3 c) {
       vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
       vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
       return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
     }
-
-    // Smooth-min to blend metaballs "gooeyly"
     float smoothMin(float a, float b, float k) {
       float h = clamp(0.5 + 0.5*(b - a)/k, 0.0, 1.0);
       return mix(b, a, h) - k*h*(1.0 - h);
     }
 
-    // Evaluate combined SDF of all blobs at 2D point p
     float evalField(vec2 p) {
       float field = 1e5;
       float kParam = 0.1 * effectIntensity;
       float bassSmooth = smoothstep(0.0, 1.0, uBass);
 
       for (int i = 0; i < ${blobCount}; i++) {
-        // 1) Compute drifting center in 2D
         float driftX = 0.2 + uMid * 0.05;
         float driftY = 0.15 + uMid * 0.03;
         float range  = 0.3 * effectIntensity;
@@ -3191,19 +3228,22 @@ function createBlobEffect() {
         float dy = cos(time * driftY + seeds[i].y + 12.3) * range;
         vec2 center = vec2(0.5 + dx, 0.5 + dy);
 
-        // 2) Pulse radius based on (smoothed) bass
         float pulse = sin(time * 2.0 + float(i)*1.57);
         float r = r0[i] + pulse * 0.008 * (1.0 + bassSmooth) * effectIntensity;
 
-        // 3) Standard circle SDF
+        // --- Style 1: Camera drives shape ---
+        if (abs(visualMode - 1.0) < 0.1 && cameraActive > 0.5) {
+            vec4 camColor = texture2D(cameraTexture, p);
+            float luminance = dot(camColor.rgb, vec3(0.299, 0.587, 0.114));
+            r *= (0.2 + luminance * 1.5); // Use luminance to scale the radius
+        }
+
         float d = length(p - center) - r;
         field = (i == 0) ? d : smoothMin(field, d, kParam);
       }
-
       return field;
     }
 
-    // Approximate 2D normal of the SDF at point p
     vec2 estimateNormal2D(vec2 p) {
       float e = 0.002;
       float fx = evalField(p + vec2(e,0.0)) - evalField(p - vec2(e,0.0));
@@ -3214,41 +3254,35 @@ function createBlobEffect() {
     void main() {
       vec2 p = vUv;
       float field = evalField(p);
+      if (field > 0.0) { discard; }
 
-      // Discard if outside any blob → black background
-      if (field > 0.0) {
-        discard;
-      }
-
-      // Dome shading: build 3D normal from 2D SDF
       vec2 n2 = estimateNormal2D(p);
       float hf = clamp(-field / uMaxR, 0.0, 1.0);
       float heightFactor = sqrt(hf);
       vec3 N = normalize(vec3(n2.x, n2.y, heightFactor));
 
-      // Directional light from upper-left
       vec3 L = normalize(vec3(-0.5, 0.5, 1.0));
       float diff = clamp(dot(N, L), 0.0, 1.0);
       float rim = pow(1.0 - dot(N, vec3(0.0,0.0,1.0)), 3.0) * 0.4;
 
-      // HSV hue cycle (NOT multiplied by effectIntensity)
       float hue = mod(time * uColorSpeed + p.y * 0.02, 1.0);
-      vec3 waxColor = hsv2rgb(vec3(hue, 1.0, 0.8)); // full sat, bright=0.8
-
-      // Combine shading
+      vec3 waxColor = hsv2rgb(vec3(hue, 1.0, 0.8));
       vec3 lit = waxColor * (0.4 + 0.6*diff) + rim;
-
-      // Halo glow around edges
       float glowDist = 0.35 * effectIntensity;
       float glowAlpha = smoothstep(glowDist, 0.0, field);
       vec3 glowCol = hsv2rgb(vec3(hue, 0.8, 0.8));
-      lit += glowCol * glowAlpha;
+      vec3 proceduralColor = lit + glowCol * glowAlpha;
 
-      gl_FragColor = vec4(lit, 1.0);
+      // --- Visual Mode Logic ---
+      vec3 finalColor = proceduralColor;
+      if (abs(visualMode - 2.0) < 0.1 && cameraActive > 0.5) {
+          vec4 camColor = texture2D(cameraTexture, p);
+          finalColor = proceduralColor * camColor.rgb;
+      }
+      
+      gl_FragColor = vec4(finalColor, 1.0);
     }
   `;
-
-  // Build ShaderMaterial
   const material = new THREE.ShaderMaterial({
     uniforms: {
       time:            { value: 0.0 },
@@ -3259,20 +3293,20 @@ function createBlobEffect() {
       uColorSpeed:     { value: 0.02 },
       seeds:           { value: seeds },
       r0:              { value: radii },
-      uMaxR:           { value: maxRadius }
+      uMaxR:           { value: maxRadius },
+      // --- Visual Mode Uniforms ---
+      cameraTexture:   { value: null },
+      visualMode:      { value: 0.0 },
+      cameraActive:    { value: 0.0 }
     },
     vertexShader,
     fragmentShader,
     transparent: true,
     depthWrite: false
   });
-
-  // Create mesh & attach custom methods:
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = "BlobEffect";
   mesh.userData.baseEffectIntensity = 1.0;
-
-  // Called once at startup (no audio)
   mesh.userData.customAnimateInitial = function() {
     const t = performance.now() * 0.001;
     material.uniforms.time.value = t;
@@ -3281,8 +3315,6 @@ function createBlobEffect() {
     material.uniforms.uTreble.value = 0.0;
     material.uniforms.effectIntensity.value = this.userData.baseEffectIntensity;
   }.bind(mesh);
-
-  // Called every frame WITH (bass, mid, treble)
   mesh.userData.customAnimateReactive = function(bass, mid, treble) {
     material.uniforms.uBass.value   = THREE.MathUtils.lerp(material.uniforms.uBass.value,   bass,  0.1);
     material.uniforms.uMid.value    = THREE.MathUtils.lerp(material.uniforms.uMid.value,    mid,   0.1);
@@ -3291,17 +3323,12 @@ function createBlobEffect() {
     material.uniforms.time.value            = t;
     material.uniforms.effectIntensity.value = this.userData.baseEffectIntensity;
   }.bind(mesh);
-
-  // Called when user presses keys 1–9
   mesh.userData.customAdjustIntensity = function(level) {
-    // 1) Gooey drift/pulse: baseEffectIntensity = 0.5 + level*0.1 → [0.6..1.4]
     this.userData.baseEffectIntensity = 0.5 + level * 0.1;
     material.uniforms.effectIntensity.value = this.userData.baseEffectIntensity;
-    // 2) Hue cycle speed: 0.02 → ~1.0 at level=9
     const speedFactor = 0.02 + level * 0.11;
     material.uniforms.uColorSpeed.value = speedFactor;
   }.bind(mesh);
-
   scene.add(mesh);
   visualElements.push(mesh);
 }
@@ -4635,160 +4662,185 @@ function createPixelSortEffect() {
 }
 
 function createKaleidoTunnelEffect() {
-  // 1) Fullscreen quad (NDC space)
-  const geometry = new THREE.PlaneBufferGeometry(2, 2);
-
-  // 2) ShaderMaterial: full-screen kaleidoscopic ring pattern, audio-reactive
+  const geometry = new THREE.PlaneGeometry(window.innerWidth, window.innerHeight);
   const material = new THREE.ShaderMaterial({
-    transparent: false,
-    depthWrite: false,
     uniforms: {
-      uTime:            { value: 0.0 },
-      uResolution:      { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-      uAudioBass:       { value: 0.0 },
-      uAudioMid:        { value: 0.0 },
-      uAudioTreble:     { value: 0.0 },
-      uEffectIntensity: { value: 1.0 }
+      time: { value: 0.0 },
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      audioBass: { value: 0.0 },
+      audioMid: { value: 0.0 },
+      audioTreble: { value: 0.0 },
+      // --- Visual Mode Uniforms ---
+      cameraTexture: { value: null },
+      visualMode:    { value: 0.0 },
+      cameraActive:  { value: 0.0 }
     },
     vertexShader: `
       varying vec2 vUv;
       void main() {
         vUv = uv;
-        gl_Position = vec4(position, 1.0);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
     fragmentShader: `
       precision highp float;
-      #define PI 3.14159265359
+      
+      uniform vec2 resolution;
+      uniform float time;
+      uniform float audioBass;
+      uniform float audioMid;
+      uniform float audioTreble;
+      // Visual Mode Uniforms
+      uniform float visualMode;
+      uniform float cameraActive;
+      uniform sampler2D cameraTexture;
 
       varying vec2 vUv;
-      uniform float uTime;
-      uniform vec2  uResolution;
-      uniform float uAudioBass;
-      uniform float uAudioMid;
-      uniform float uAudioTreble;
-      uniform float uEffectIntensity;
 
-      // Simple hash to give per-cell hue variation
-      float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+      // --- Noise Functions ---
+      float random(vec2 p) {
+        return fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(random(i + vec2(0.0, 0.0)), random(i + vec2(1.0, 0.0)), u.x),
+                   mix(random(i + vec2(0.0, 1.0)), random(i + vec2(1.0, 1.0)), u.x), u.y);
+      }
+      float fbm(vec2 p) {
+        float value = 0.0;
+        float amp = 0.5;
+        for(int i = 0; i < 6; i++) {
+          value += amp * noise(p);
+          p *= 2.0;
+          amp *= 0.5;
+        }
+        return value;
       }
 
-      // HSV -> RGB
-      vec3 hsv2rgb(vec3 c) {
-        vec4 K = vec4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
-        vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-        return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-      }
-
-      // 6-way kaleidoscope fold: folds any (x,y) into a single wedge of angle = 2π/segments
-      vec2 kaleidoFold(vec2 uv, float segments) {
-        float angle = atan(uv.y, uv.x);
-        float radius = length(uv);
-        float sector = 2.0 * PI / segments;
-        float a = mod(angle, sector);
-        float mirrored = (a > sector * 0.5) ? (sector - a) : a;
-        float finalA = mirrored - sector * 0.5;
-        return vec2(cos(finalA) * radius, sin(finalA) * radius);
+      // --- Color Palette ---
+      vec3 palette(float t) {
+        vec3 a = vec3(0.5, 0.5, 0.5);
+        vec3 b = vec3(0.5, 0.5, 0.5);
+        vec3 c = vec3(1.0, 1.0, 1.0);
+        vec3 d = vec3(0.0, 0.33, 0.67);
+        return a + b * cos(6.28318 * (c * t + d));
       }
 
       void main() {
-        // 1) Normalize UV -> [-1,1], correct for aspect
-        vec2 uv = vUv * 2.0 - 1.0;
-        uv.x *= (uResolution.x / uResolution.y);
+        vec2 uv = (vUv - 0.5) * 2.0;
+        uv.x *= resolution.x / resolution.y;
 
-        // 2) Determine audio-driven parameters
-        float t = uTime * (0.2 + uAudioMid * 0.5);         // mids speed up time
-        float bassScale = 3.0 + uAudioBass * 5.0;          // bass controls overall grid scale
-        float trebleRings = 8.0 + uAudioTreble * 10.0;     // treble drives how many rings per cell
-        float segments = 6.0 + floor(uAudioMid * 2.0);     // mids can push 6->8 wedge symmetry
+        vec2 screenUV = gl_FragCoord.xy / resolution.xy;
+        vec4 cameraColor = texture2D(cameraTexture, screenUV);
+        float cameraLuminance = dot(cameraColor.rgb, vec3(0.299, 0.587, 0.114));
+        
+        float r = length(uv);
+        float theta = atan(uv.y, uv.x);
 
-        // 3) Apply kaleidoscope fold on the entire (centered) UV
-        vec2 folded = kaleidoFold(uv, segments);
+        // --- Main Visual Logic ---
+        float audioReactive = audioBass * 0.4 + audioMid * 0.4 + audioTreble * 0.2;
+        
+        // --- Style 1: Camera drives the chaos ---
+        float cameraInfluence = 0.0;
+        if (cameraActive > 0.5 && abs(visualMode - 1.0) < 0.1) {
+            cameraInfluence = smoothstep(0.1, 0.8, cameraLuminance) * 5.0;
+        }
 
-        // 4) Tile that folded coordinate into a grid of "cells"
-        vec2 tiled = folded * bassScale;
-        // Instead of fract( ), do fract then remap so each cell's range is [–0.5 .. +0.5]
-        vec2 cell = fract(tiled) - 0.5;
+        // Distort coordinates based on time and audio
+        float distortion = sin(r * 5.0 - time * 1.5 + audioReactive * 2.0) * 0.1;
+        theta += distortion;
+        
+        // Create the core pattern
+        vec2 patternUv = vec2(log(r) * 0.5, theta / 6.28318);
+        float pattern = fbm(patternUv * 4.0 + time * 0.1 + cameraInfluence);
+        
+        // Add high-frequency noise for grit, especially in the center
+        float grit = noise(uv * (20.0 + audioTreble * 50.0)) * 0.2;
+        pattern += grit * (1.0 - smoothstep(0.1, 0.6, r)); // Stronger in the center
+        
+        // Final color calculation
+        float colorT = fract(pattern + time * 0.1);
+        vec3 finalColor = palette(colorT) * pattern;
+        
+        // Apply vignette to create the circular shape
+        float vignette = 1.0 - smoothstep(0.0, 1.0, r);
+        finalColor *= vignette;
 
-        // 5) Compute distance from the center of this cell -> 0.0 at center, up to ≈0.707 at a corner
-        float d = length(cell);
+        // --- Visual Mode Logic ---
+        float finalAlpha = vignette;
+        if (cameraActive > 0.5) {
+            if (abs(visualMode - 2.0) < 0.1) { // Style 2: Blend
+                finalColor = mix(finalColor, cameraColor.rgb, 0.6);
+            }
+            // Style 3 is handled by using vignette as alpha
+        } else {
+            finalAlpha = 1.0; // If camera is off, it should be opaque
+        }
 
-        // 6) Build a "ring" pattern: a sawtooth wave in d-space, then threshold it
-        float phase = d * trebleRings - t;       // d * ringCount, animated by time
-        float saw = fract(phase);                // repeats every 1.0
-        float ringShape = abs(saw * 2.0 - 1.0);  // converts saw->triangle (0 at ring center, 1 at ring edge)
-        // Threshold the triangle to get a thin bright ring: 
-        float ringWidth = 0.2; 
-        float rings = 1.0 - smoothstep(ringWidth, ringWidth - 0.05, ringShape);
-
-        // 7) Add a little treble-driven sparkle: high-frequency noise on top of rings
-        float sparkleFreq = 30.0 + uAudioTreble * 100.0;
-        float sparkle = fract(sin((cell.x + cell.y + t*3.0) * sparkleFreq) * 43758.5453);
-        rings = mix(rings, sparkle, uAudioTreble * 0.3);
-
-        // 8) Per-cell hue variation: hash the cell's integer index
-        vec2 cellIndex = floor(tiled);       // the i,j of this cell
-        float seed = hash(cellIndex);
-        float hue = fract(seed + t * 0.1 + uAudioMid * 0.2);
-        float sat = 0.8;
-        float val = clamp(rings, 0.0, 1.0);
-
-        // 9) Convert HSV->RGB 
-        vec3 color = hsv2rgb(vec3(hue, sat, val));
-
-        // 10) No circular mask: we want full-screen coverage. 
-        //     If you want a very subtle corner fade, use a box fade:
-        vec2 ab = abs(uv);
-        float bx = max(ab.x, ab.y);             // 0 at center, -> larger at edges
-        float boxFade = smoothstep(1.2, 1.0, bx);
-        color *= boxFade;
-
-        // 11) Apply global intensity
-        color *= uEffectIntensity;
-
-        gl_FragColor = vec4(color, 1.0);
+        gl_FragColor = vec4(finalColor, finalAlpha);
       }
-    `
+    `,
+    transparent: true,
+    depthWrite: false,
   });
 
-  // 3) Create mesh, add to scene
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.name = 'KaleidoTunnelEffect';
-  mesh.userData.baseEffectIntensity = 1.0;
+  mesh.name = 'KaleidoTunnel';
   scene.add(mesh);
   visualElements.push(mesh);
 
-  // 4) Idle animation (no audio): just update time, zero out audio
+  // Custom update functions
   mesh.userData.customAnimateInitial = function() {
     const mat = this.material;
-    const ct = performance.now() * 0.001;
-    mat.uniforms.uTime.value        = ct;
-    mat.uniforms.uAudioBass.value   = 0.0;
-    mat.uniforms.uAudioMid.value    = 0.0;
-    mat.uniforms.uAudioTreble.value = 0.0;
-    mat.uniforms.uEffectIntensity.value  = this.userData.baseEffectIntensity || 1.0;
-    mat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    const time = performance.now() * 0.001;
+    mat.uniforms.time.value = time;
+    mat.uniforms.audioBass.value = 0.0;
+    mat.uniforms.audioMid.value = 0.0;
+    mat.uniforms.audioTreble.value = 0.0;
+    mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    mat.uniforms.visualMode.value = this.userData.visualMode;
+    if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
+        mat.uniforms.cameraTexture.value = window.userCameraTexture;
+    } else {
+        mat.uniforms.cameraTexture.value = null;
+    }
   }.bind(mesh);
 
-  // 5) Reactive animation: smoothly lerp audio uniforms each frame
   mesh.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
     const mat = this.material;
-    const ct = performance.now() * 0.001;
-    mat.uniforms.uTime.value        = ct;
-    mat.uniforms.uAudioBass.value   = THREE.MathUtils.lerp(mat.uniforms.uAudioBass.value,   bassAvg,   0.1);
-    mat.uniforms.uAudioMid.value    = THREE.MathUtils.lerp(mat.uniforms.uAudioMid.value,    midAvg,    0.1);
-    mat.uniforms.uAudioTreble.value = THREE.MathUtils.lerp(mat.uniforms.uAudioTreble.value, trebleAvg, 0.1);
-    mat.uniforms.uEffectIntensity.value  = this.userData.baseEffectIntensity || 1.0;
-    mat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
+    const time = performance.now() * 0.001;
+    mat.uniforms.time.value = time;
+    mat.uniforms.audioBass.value = bassAvg;
+    mat.uniforms.audioMid.value = midAvg;
+    mat.uniforms.audioTreble.value = trebleAvg;
+    mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    mat.uniforms.visualMode.value = this.userData.visualMode;
+    if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
+        mat.uniforms.cameraTexture.value = window.userCameraTexture;
+    } else {
+        mat.uniforms.cameraTexture.value = null;
+    }
   }.bind(mesh);
 
-  // 6) Adjust overall effect intensity via number keys (1–9)
-  mesh.userData.customAdjustIntensity = function(level) {
-    // Map level (1–9) → intensity 0.5–2.2
-    this.userData.baseEffectIntensity = 0.5 + level * 0.2;
+  mesh.userData.customAdjustIntensity = function(intensityLevel) {
+    // No effectIntensity uniform for this effect
+  }.bind(mesh);
+
+  // Override visual mode toggling
+  mesh.userData.toggleVisualMode = function() {
+    this.userData.visualMode = 1.0 - this.userData.visualMode;
+    showActionMessage("Kaleido Tunnel Mode: " + (this.userData.visualMode > 0.5 ? "Camera Input" : "Procedural"));
     if (this.material) {
-      this.material.uniforms.uEffectIntensity.value = this.userData.baseEffectIntensity;
+        this.material.uniforms.visualMode.value = this.userData.visualMode;
+        if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
+            this.material.uniforms.cameraTexture.value = window.userCameraTexture;
+            if (!window.isCameraMode) toggleCameraBackground();
+        } else {
+            this.material.uniforms.cameraTexture.value = null;
+            // if (window.isCameraMode && !isAnyEffectUsingCamera()) toggleCameraBackground();
+        }
     }
   }.bind(mesh);
 }
@@ -5283,7 +5335,7 @@ function updateVisibility() {
         
     function animateInitialEffects() {
       const delta = clock.getDelta();
-      const time = performance.now() * 0.001;
+    const time = performance.now() * 0.001;
         
       // Trippy Colors
       const trippyGroup = visualElements.find(e => e.name === "TrippyColors");
@@ -5508,15 +5560,15 @@ if (pixelSortIdle && pixelSortIdle.material.uniforms) {
   pixelSortIdle.material.uniforms.audioBass.value = 0.0;
   pixelSortIdle.material.uniforms.audioMid.value = 0.0;
 }
-// --- KaleidoTunnelEffect (iTunes Sim v4 - Idle) ---
-const kaleidoIdle = visualElements.find(e => e.name === 'KaleidoTunnelEffect');
-if (kaleidoIdle && kaleidoIdle.userData && kaleidoIdle.userData.customAnimateInitial) {
-  try {
-    kaleidoIdle.userData.customAnimateInitial();
-  } catch (err) {
-    console.error("Error in KaleidoTunnelEffect customAnimateInitial:", err);
-  }
-}
+ // --- KaleidoTunnel (Redesigned) Idle State ---
+ const kaleidoTunnel = visualElements.find(e => e.name === 'KaleidoTunnel');
+      if (kaleidoTunnel && kaleidoTunnel.material.uniforms) {
+        kaleidoTunnel.material.uniforms.time.value = time * 0.5; // Slow movement
+        // No audio, so zero out the audio uniforms
+        kaleidoTunnel.material.uniforms.audioBass.value = 0.0;
+        kaleidoTunnel.material.uniforms.audioMid.value = 0.0;
+        kaleidoTunnel.material.uniforms.audioTreble.value = 0.0;
+      }
 // --- KaleidoTunnelEffect (iTunes Sim v4 - Idle) ---
 const flowerBlockIdle= visualElements.find(e => e.name === 'FlowerBlockEffect');
 if (flowerBlockIdle && flowerBlockIdle.userData && flowerBlockIdle.userData.customAnimateInitial) {
@@ -5641,7 +5693,7 @@ if (wave3DEffect && wave3DEffect.material.uniforms) {
 const trippyGroup = visualElements.find(e => e.name === "TrippyColors");
 if (trippyGroup && trippyGroup.userData && trippyGroup.userData.material) {
   const mat = trippyGroup.userData.material;
-  const time = performance.now() * 0.001;
+    const time = performance.now() * 0.001;
   mat.uniforms.uTime.value = time;
 
   // Combine frequencies or weight them
@@ -5872,15 +5924,14 @@ if (pixelSortReact && pixelSortReact.material.uniforms) {
   pixelSortReact.material.uniforms.time.value = time;
   pixelSortReact.material.uniforms.audioBass.value = bassAvg;
 }
-// --- KaleidoTunnelEffect (iTunes Sim v4 - Reactive) ---
-const kaleidoReact = visualElements.find(e => e.name === 'KaleidoTunnelEffect');
-if (kaleidoReact && kaleidoReact.userData && kaleidoReact.userData.customAnimateReactive) {
-  try {
-    kaleidoReact.userData.customAnimateReactive(bassAvg, midAvg, trebleAvg);
-  } catch (err) {
-    console.error("Error in KaleidoTunnelEffect customAnimateReactive:", err);
-  }
-}
+// --- KaleidoTunnel (Redesigned) Audio Reactive State ---
+const kaleidoTunnel = visualElements.find(e => e.name === 'KaleidoTunnel');
+      if (kaleidoTunnel && kaleidoTunnel.material.uniforms) {
+        kaleidoTunnel.material.uniforms.time.value = time;
+        kaleidoTunnel.material.uniforms.audioBass.value = bass;
+        kaleidoTunnel.material.uniforms.audioMid.value = mid;
+        kaleidoTunnel.material.uniforms.audioTreble.value = treble;
+      }
 // --- KaleidoTunnelEffect (iTunes Sim v4 - Reactive) ---
 const flowerBlockReact= visualElements.find(e => e.name === 'FlowerBlockEffect');
 if (flowerBlockReact && flowerBlockReact.userData && flowerBlockReact.userData.customAnimateReactive) {
@@ -5987,7 +6038,7 @@ if (apple1Effect && apple1Effect.material.uniforms) {
     });
     console.log('Camera feed applied to effects.');
 
-  } else {
+    } else {
     // Turn camera mode OFF
     isCameraMode = false;
     console.log('Disabling camera background...');
@@ -6055,10 +6106,21 @@ if (apple1Effect && apple1Effect.material.uniforms) {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 
-  // Update effect resolutions
+  // Update effect resolutions and geometry for specific effects
   visualElements.forEach(elem => {
     if (elem.material && elem.material.uniforms && 'resolution' in elem.material.uniforms) {
       elem.material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    }
+
+    // Check for effects that need their geometry scaled
+    if (elem.name === 'Scribble' || elem.name === 'Waves' || elem.name === 'AuroraEffect' || elem.name === 'Portal') {
+      if (elem.geometry && elem.geometry.parameters) {
+        // We assume the geometry was created with the initial window size.
+        // We can scale it to fit the new size.
+        const initialWidth = elem.geometry.parameters.width;
+        const initialHeight = elem.geometry.parameters.height;
+        elem.scale.set(window.innerWidth / initialWidth, window.innerHeight / initialHeight, 1);
+      }
     }
   });
 }
@@ -6080,7 +6142,7 @@ if (event.key.toLowerCase() === 'q') {
   const overlay = document.getElementById('passwordOverlay');
   if (overlay.classList.contains('show')) {
     hidePasswordOverlay();
-  } else {
+        } else {
     showPasswordOverlay();
   }
   return; // stop further key handling
@@ -6218,12 +6280,18 @@ case 'ArrowUp': {
   const activeMaterial = activeEffect.material; // Convenience variable
 
   // Check if the effect supports multiple visual styles
-  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect");
+  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "KaleidoTunnel");
   const isOrange = (activeEffect.name === "Orange");
   const isParticles = (activeEffect.name === "CameraParticles");
   const isWaves = (activeEffect.name === "Waves");
+  const is3DWaves = (activeEffect.name === "3DWaves");
+  const isSpaceship = (activeEffect.name === "SpaceshipEffect");
+  const isOcean = (activeEffect.name === "OceanEffect");
+  const isBlob = (activeEffect.name === "BlobEffect");
   const isScribble = (activeEffect.name === "Scribble"); // Add flag for Scribble
   const isAurora = (activeEffect.name === "AuroraEffect");
+  const isPortal = (activeEffect.name === "Portal");
+  const isKaleido = (activeEffect.name === "KaleidoTunnel");
 
   if (supportsMultiVisual && activeMaterial.uniforms && "visualMode" in activeMaterial.uniforms) {
     let currentState = Math.round(activeMaterial.uniforms.visualMode.value); // Use Math.round for robustness
@@ -6268,6 +6336,108 @@ case 'ArrowUp': {
       } else { // currentState is 2 (or 3), cycle back to off
         toggleCameraBackground();
         showActionMessage("waves visual: off");
+      }
+    } else if (is3DWaves) {
+      // --- 3DWaves Effect Logic ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("3D waves visual: style 1");
+      } else if (currentState === 1) {
+        activeMaterial.uniforms.visualMode.value = 2.0;
+        showActionMessage("3D waves visual: style 2");
+      } else if (currentState === 2) {
+        activeMaterial.uniforms.visualMode.value = 3.0;
+        showActionMessage("3D waves visual: style 3");
+      } else { // currentState is 3
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("3D waves visual: off");
+      }
+    } else if (isSpaceship) {
+      // --- SpaceshipEffect Logic ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("spaceship visual: style 1");
+      } else if (currentState === 1) {
+        activeMaterial.uniforms.visualMode.value = 2.0;
+        showActionMessage("spaceship visual: style 2");
+      } else if (currentState === 2) {
+        activeMaterial.uniforms.visualMode.value = 3.0;
+        showActionMessage("spaceship visual: style 3");
+      } else { // currentState is 3
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("spaceship visual: off");
+      }
+    } else if (isOcean) {
+      // --- OceanEffect Logic ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("ocean visual: style 1");
+      } else if (currentState === 1) {
+        activeMaterial.uniforms.visualMode.value = 2.0;
+        showActionMessage("ocean visual: style 2");
+      } else if (currentState === 2) {
+        activeMaterial.uniforms.visualMode.value = 3.0;
+        showActionMessage("ocean visual: style 3");
+      } else { // currentState is 3
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("ocean visual: off");
+      }
+    } else if (isBlob) {
+      // --- BlobEffect Logic ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("blob visual: style 1");
+      } else if (currentState === 1) {
+        activeMaterial.uniforms.visualMode.value = 2.0;
+        showActionMessage("blob visual: style 2");
+      } else if (currentState === 2) {
+        activeMaterial.uniforms.visualMode.value = 3.0;
+        showActionMessage("blob visual: style 3");
+      } else { // currentState is 3
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("blob visual: off");
+      }
+    } else if (isPortal) {
+      // --- Portal Effect Logic ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("portal visual: style 1");
+      } else if (currentState === 1) {
+        activeMaterial.uniforms.visualMode.value = 2.0;
+        showActionMessage("portal visual: style 2");
+      } else if (currentState === 2) {
+        activeMaterial.uniforms.visualMode.value = 3.0;
+        showActionMessage("portal visual: style 3");
+      } else { // currentState is 3
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("portal visual: off");
+      }
+    } else if (isKaleido) {
+      // --- KaleidoTunnel Effect Logic ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("tunnel visual: style 1");
+      } else if (currentState === 1) {
+        activeMaterial.uniforms.visualMode.value = 2.0;
+        showActionMessage("tunnel visual: style 2");
+      } else if (currentState === 2) {
+        activeMaterial.uniforms.visualMode.value = 3.0;
+        showActionMessage("tunnel visual: style 3");
+      } else { // currentState is 3
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("tunnel visual: off");
       }
     } else if (isScribble) {
       // --- NEW: Scribble Effect Logic --- (Cycle 0, 1, 2, 3)
@@ -6474,6 +6644,12 @@ if (aurora && aurora.material && aurora.material.uniforms) {
   aurora.userData.baseEffectIntensity = 1.0 + intensityLevel * 0.5;
   aurora.material.uniforms.effectIntensity.value = aurora.userData.baseEffectIntensity;
 }
+// --- KaleidoTunnel (Redesigned) Intensity Adjustment ---
+const kaleidoTunnel = visualElements.find(e => e.name === 'KaleidoTunnel');
+      if (kaleidoTunnel && kaleidoTunnel.material.uniforms) {
+        // This effect's redesign does not use a global intensity uniform,
+        // but this block is here for future modifications.
+      }
 
 // --- Scribble (Intensity Slider) ---
 const scribbleInt = visualElements.find(e => e.name === 'Scribble');
