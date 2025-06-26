@@ -2082,6 +2082,36 @@ function createPortal() {
 
   const geometry = new THREE.PlaneGeometry(baseWidth, baseHeight, 1, 1);
   
+  // Store geometry update function for resize handling
+  geometry.updateForResize = function() {
+    const aspect = window.innerWidth / window.innerHeight;
+    const baseHeight = 2000;
+    const baseWidth = baseHeight * aspect;
+    
+    // Update the geometry parameters
+    this.parameters = {
+      width: baseWidth,
+      height: baseHeight,
+      widthSegments: 1,
+      heightSegments: 1
+    };
+    
+    // Rebuild the geometry with new dimensions
+    const newGeometry = new THREE.PlaneGeometry(baseWidth, baseHeight, 1, 1);
+    this.attributes.position.copy(newGeometry.attributes.position);
+    this.attributes.uv.copy(newGeometry.attributes.uv);
+    if (this.attributes.normal) {
+      this.attributes.normal.copy(newGeometry.attributes.normal);
+    }
+    this.attributes.position.needsUpdate = true;
+    this.attributes.uv.needsUpdate = true;
+    if (this.attributes.normal) {
+      this.attributes.normal.needsUpdate = true;
+    }
+    
+    newGeometry.dispose();
+  };
+  
   const material = new THREE.ShaderMaterial({
     uniforms: {
       time: { value: 0.0 },
@@ -2633,6 +2663,38 @@ function createOceanEffect() {
 
   // 2) Create a plane geometry that exactly fills the camera view at that distance:
   const geometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight, 1, 1);
+  
+  // Store geometry update function for resize handling
+  geometry.updateForResize = function() {
+    // Recalculate distance from camera to the aurora plane at z = -500
+    const distance = camera.position.z - (-500);
+    const fovInRadians = (camera.fov * Math.PI) / 180.0;
+    const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+    const planeWidth = planeHeight * camera.aspect;
+    
+    // Update the geometry parameters
+    this.parameters = {
+      width: planeWidth,
+      height: planeHeight,
+      widthSegments: 1,
+      heightSegments: 1
+    };
+    
+    // Rebuild the geometry with new dimensions
+    const newGeometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight, 1, 1);
+    this.attributes.position.copy(newGeometry.attributes.position);
+    this.attributes.uv.copy(newGeometry.attributes.uv);
+    if (this.attributes.normal) {
+      this.attributes.normal.copy(newGeometry.attributes.normal);
+    }
+    this.attributes.position.needsUpdate = true;
+    this.attributes.uv.needsUpdate = true;
+    if (this.attributes.normal) {
+      this.attributes.normal.needsUpdate = true;
+    }
+    
+    newGeometry.dispose();
+  };
 
   // 3) Build the same ShaderMaterial you already have:
   const material = new THREE.ShaderMaterial({
@@ -2776,6 +2838,37 @@ function createScribbleEffect() {
 
   // Fullscreen plane
   const geometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight);
+  
+  // Store geometry update function for resize handling
+  geometry.updateForResize = function() {
+    const distance = camera.position.z;
+    const fovInRadians = (camera.fov * Math.PI) / 180.0;
+    const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+    const planeWidth = planeHeight * camera.aspect;
+    
+    // Update the geometry parameters
+    this.parameters = {
+      width: planeWidth,
+      height: planeHeight,
+      widthSegments: 1,
+      heightSegments: 1
+    };
+    
+    // Rebuild the geometry with new dimensions
+    const newGeometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight);
+    this.attributes.position.copy(newGeometry.attributes.position);
+    this.attributes.uv.copy(newGeometry.attributes.uv);
+    if (this.attributes.normal) {
+      this.attributes.normal.copy(newGeometry.attributes.normal);
+    }
+    this.attributes.position.needsUpdate = true;
+    this.attributes.uv.needsUpdate = true;
+    if (this.attributes.normal) {
+      this.attributes.normal.needsUpdate = true;
+    }
+    
+    newGeometry.dispose();
+  };
   const material = new THREE.ShaderMaterial({
     transparent: true,
     blending: THREE.AdditiveBlending,
