@@ -4744,8 +4744,19 @@ function createPixelSortEffect() {
   }.bind(mesh);
 }
 
-function createKaleidoTunnelEffect() {
-  const geometry = new THREE.PlaneGeometry(window.innerWidth, window.innerHeight);
+function createWaterPoolEffect() {
+  // Calculate full-screen geometry dimensions with extra margin to eliminate borders
+  const distance = camera.position.z;
+  const fovInRadians = (camera.fov * Math.PI) / 180.0;
+  const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+  const planeWidth = planeHeight * camera.aspect;
+  
+  // Add extra margin to ensure no borders (similar to waves effect)
+  const geometry = new THREE.PlaneBufferGeometry(planeWidth * 1.2, planeHeight * 1.2);
+  
+  // Store reference to parent mesh for geometry updates
+  geometry.parentMesh = null;
+  
   const material = new THREE.ShaderMaterial({
     uniforms: {
       time: { value: 0.0 },
@@ -4753,10 +4764,15 @@ function createKaleidoTunnelEffect() {
       audioBass: { value: 0.0 },
       audioMid: { value: 0.0 },
       audioTreble: { value: 0.0 },
+      effectIntensity: { value: 1.0 },
+      waveAmplitude: { value: 0.1 },
+      waveFrequency: { value: 2.0 },
+      rippleSpeed: { value: 1.0 },
+      waterDepth: { value: 0.8 },
       // --- Visual Mode Uniforms ---
       cameraTexture: { value: null },
-      visualMode:    { value: 0.0 },
-      cameraActive:  { value: 0.0 }
+      visualMode: { value: 0.0 },
+      cameraActive: { value: 0.0 }
     },
     vertexShader: `
       varying vec2 vUv;
@@ -4773,6 +4789,11 @@ function createKaleidoTunnelEffect() {
       uniform float audioBass;
       uniform float audioMid;
       uniform float audioTreble;
+      uniform float effectIntensity;
+      uniform float waveAmplitude;
+      uniform float waveFrequency;
+      uniform float rippleSpeed;
+      uniform float waterDepth;
       // Visual Mode Uniforms
       uniform float visualMode;
       uniform float cameraActive;
@@ -4780,97 +4801,301 @@ function createKaleidoTunnelEffect() {
 
       varying vec2 vUv;
 
-      // --- Noise Functions ---
-      float random(vec2 p) {
-        return fract(sin(dot(p.xy, vec2(12.9898, 78.233))) * 43758.5453123);
+      // --- Enhanced Noise Functions ---
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
       }
+      
+      float hash3(vec3 p) {
+        return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
+      }
+      
       float noise(vec2 p) {
         vec2 i = floor(p);
         vec2 f = fract(p);
         vec2 u = f * f * (3.0 - 2.0 * f);
-        return mix(mix(random(i + vec2(0.0, 0.0)), random(i + vec2(1.0, 0.0)), u.x),
-                   mix(random(i + vec2(0.0, 1.0)), random(i + vec2(1.0, 1.0)), u.x), u.y);
+        return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+                   mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
       }
+      
+      float noise3d(vec3 p) {
+        vec3 i = floor(p);
+        vec3 f = fract(p);
+        vec3 u = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(hash3(i), hash3(i + vec3(1.0, 0.0, 0.0)), u.x),
+                       mix(hash3(i + vec3(0.0, 1.0, 0.0)), hash3(i + vec3(1.0, 1.0, 0.0)), u.x), u.y),
+                   mix(mix(hash3(i + vec3(0.0, 0.0, 1.0)), hash3(i + vec3(1.0, 0.0, 1.0)), u.x),
+                       mix(hash3(i + vec3(0.0, 1.0, 1.0)), hash3(i + vec3(1.0, 1.0, 1.0)), u.x), u.y), u.z);
+      }
+      
       float fbm(vec2 p) {
         float value = 0.0;
-        float amp = 0.5;
+        float amplitude = 0.5;
         for(int i = 0; i < 6; i++) {
-          value += amp * noise(p);
+          value += amplitude * noise(p);
           p *= 2.0;
-          amp *= 0.5;
+          amplitude *= 0.5;
+        }
+        return value;
+      }
+      
+      float ridgedNoise(vec2 p) {
+        return 1.0 - abs(noise(p) * 2.0 - 1.0);
+      }
+      
+      float fbmRidged(vec2 p) {
+        float value = 0.0;
+        float amplitude = 0.5;
+        for(int i = 0; i < 5; i++) {
+          value += amplitude * ridgedNoise(p);
+          p *= 2.0;
+          amplitude *= 0.5;
         }
         return value;
       }
 
-      // --- Color Palette ---
-      vec3 palette(float t) {
-        vec3 a = vec3(0.5, 0.5, 0.5);
-        vec3 b = vec3(0.5, 0.5, 0.5);
-        vec3 c = vec3(1.0, 1.0, 1.0);
-        vec3 d = vec3(0.0, 0.33, 0.67);
-        return a + b * cos(6.28318 * (c * t + d));
+      // --- Advanced Water Wave Functions ---
+      float waterWave(vec2 uv, float t) {
+        vec2 center = vec2(0.5, 0.5);
+        float dist = distance(uv, center);
+        
+        // Unpredictable audio-reactive parameters
+        float bassPhase = audioBass * 6.28 * 3.0; // Bass changes wave phase unpredictably
+        float midFreqMod = 1.0 + audioMid * 2.0; // Mid frequencies change wave frequency
+        float trebleWarp = audioTreble * 0.5; // Treble warps the wave pattern
+        
+        // Multiple complex ripple sources
+        float wave1 = sin(dist * waveFrequency * 10.0 * midFreqMod - t * rippleSpeed * 3.0 + bassPhase) * waveAmplitude;
+        float wave2 = sin(dist * waveFrequency * 15.0 - t * rippleSpeed * 2.5 + bassPhase * 0.7 + 1.5) * waveAmplitude * 0.7;
+        float wave3 = cos(dist * waveFrequency * 8.0 * (1.0 + trebleWarp) - t * rippleSpeed * 4.0 + bassPhase * 1.3 + 3.0) * waveAmplitude * 0.5;
+        
+        // Chaotic audio-reactive ripples with unpredictable timing
+        float chaoticTime = t + sin(t * 0.3) * audioBass * 2.0;
+        float audioRipple1 = sin(dist * 20.0 * (1.0 + audioMid * 0.8) - chaoticTime * 5.0) * audioBass * 0.4;
+        float audioRipple2 = cos(dist * 35.0 - t * 8.0 + sin(t * 0.7) * audioTreble * 3.14) * audioTreble * 0.3;
+        
+        // Interference patterns that change unpredictably
+        float interference = sin(dist * 12.0 + t * 2.0) * cos(dist * 18.0 - t * 3.0 + bassPhase) * 0.2;
+        float audioInterference = interference * (audioBass + audioMid + audioTreble) * 0.3;
+        
+        // Combine all waves with unpredictable mixing
+        float totalWave = wave1 + wave2 + wave3 + audioRipple1 + audioRipple2 + audioInterference;
+        
+        // Add fractal noise distortion that reacts to audio unpredictably
+        vec2 noiseCoord = uv * 4.0 + vec2(t * 0.1, t * 0.15);
+        float noiseDistortion = fbm(noiseCoord) * 0.1 * (1.0 + audioBass * 2.0);
+        totalWave += noiseDistortion;
+        
+        return totalWave * effectIntensity;
+      }
+      
+      // --- Advanced Caustics Pattern ---
+      float caustics(vec2 uv, float t) {
+        vec2 p = uv * 8.0;
+        float c = 0.0;
+        
+        // Audio-reactive caustics parameters
+        float bassScale = 1.0 + audioBass * 0.8;
+        float midSpeed = 1.0 + audioMid * 1.5;
+        float trebleDetail = 1.0 + audioTreble * 2.0;
+        
+        // Multiple layers of caustic patterns with unpredictable behavior
+        for(int i = 0; i < 5; i++) {
+          float fi = float(i);
+          
+          // Unpredictable movement patterns
+          vec2 offset1 = vec2(
+            sin(t * 0.3 * midSpeed + fi * 2.1) + cos(t * 0.17 + fi * 1.7) * 0.5,
+            cos(t * 0.4 * midSpeed + fi * 1.9) + sin(t * 0.23 + fi * 2.3) * 0.5
+          ) * 2.0 * bassScale;
+          
+          vec2 offset2 = vec2(
+            sin(t * 0.5 + fi * 3.14 + audioBass * 6.28),
+            cos(t * 0.7 + fi * 2.71 + audioMid * 4.0)
+          ) * 1.5;
+          
+          vec2 q = p * trebleDetail + offset1;
+          vec2 r = p * (trebleDetail * 0.7) + offset2;
+          
+          // Complex distance calculations for caustic shapes
+          float d1 = length(fract(q) - 0.5);
+          float d2 = length(fract(q * 1.3 + 0.5) - 0.5);
+          float d3 = length(fract(r * 0.8 + vec2(0.3, 0.7)) - 0.5);
+          
+          // Audio-reactive caustic intensity
+          float intensity = 0.5 + audioBass * 0.3 + sin(t * 3.0 + fi) * audioTreble * 0.2;
+          
+          // Multiple caustic shapes with different characteristics
+          float caustic1 = smoothstep(0.4, 0.1, d1) * smoothstep(0.3, 0.1, d2);
+          float caustic2 = smoothstep(0.35, 0.05, d3) * 0.7;
+          float caustic3 = pow(max(0.0, 1.0 - d1 * 3.0), 2.0) * 0.3;
+          
+          c += (caustic1 + caustic2 + caustic3) * intensity;
+        }
+        
+        // Add fractal detail to caustics
+        vec2 fractalCoord = uv * 12.0 + vec2(t * 0.2, t * 0.3);
+        float fractalDetail = fbmRidged(fractalCoord) * 0.4;
+        c += fractalDetail * audioTreble;
+        
+        // Unpredictable pulsing based on all audio frequencies
+        float pulse = sin(t * 4.0) * cos(t * 2.7) * (audioBass + audioMid + audioTreble) * 0.2;
+        c *= 1.0 + pulse;
+        
+        return clamp(c, 0.0, 2.0);
       }
 
       void main() {
-        vec2 uv = (vUv - 0.5) * 2.0;
-        uv.x *= resolution.x / resolution.y;
-
+        vec2 uv = vUv;
         vec2 screenUV = gl_FragCoord.xy / resolution.xy;
         vec4 cameraColor = texture2D(cameraTexture, screenUV);
         float cameraLuminance = dot(cameraColor.rgb, vec3(0.299, 0.587, 0.114));
         
-        float r = length(uv);
-        float theta = atan(uv.y, uv.x);
-
-        // --- Main Visual Logic ---
-        float audioReactive = audioBass * 0.4 + audioMid * 0.4 + audioTreble * 0.2;
+        // Center coordinates
+        vec2 centeredUv = uv - 0.5;
+        float aspectRatio = resolution.x / resolution.y;
+        centeredUv.x *= aspectRatio;
         
-        // --- Style 1: Camera drives the chaos ---
-        float cameraInfluence = 0.0;
-        if (cameraActive > 0.5 && abs(visualMode - 1.0) < 0.1) {
-            cameraInfluence = smoothstep(0.1, 0.8, cameraLuminance) * 5.0;
+        // Water surface distortion
+        float waveHeight = waterWave(uv, time);
+        
+        // Create water surface normal for refraction
+        vec2 gradient = vec2(
+          waterWave(uv + vec2(0.01, 0.0), time) - waterWave(uv - vec2(0.01, 0.0), time),
+          waterWave(uv + vec2(0.0, 0.01), time) - waterWave(uv - vec2(0.0, 0.01), time)
+        );
+        
+        // Distorted UV for refraction effect
+        vec2 distortedUv = uv + gradient * 0.1;
+        
+        // Base water color (deep blue-green)
+        vec3 deepWaterColor = vec3(0.0, 0.2, 0.4);
+        vec3 shallowWaterColor = vec3(0.0, 0.4, 0.6);
+        
+        // Water depth based on distance from center
+        float depth = length(centeredUv) * waterDepth;
+        vec3 waterColor = mix(shallowWaterColor, deepWaterColor, depth);
+        
+        // Add caustics lighting effect
+        float causticsPattern = caustics(distortedUv, time);
+        vec3 causticsColor = vec3(0.8, 1.0, 1.0) * causticsPattern * 0.5;
+        
+        // Surface foam and bubbles
+        float foam = fbm(uv * 15.0 + time * 0.5) * 0.3;
+        foam *= smoothstep(0.7, 1.0, waveHeight + 0.5);
+        vec3 foamColor = vec3(1.0, 1.0, 1.0) * foam;
+        
+        // Enhanced audio-reactive sparkles with unpredictable behavior
+        float sparkles = 0.0;
+        for(int i = 0; i < 12; i++) {
+          float fi = float(i);
+          
+          // Unpredictable sparkle movement
+          float chaosX = sin(time * 2.0 + fi * 0.8) + cos(time * 1.3 + fi * 2.1) * 0.6;
+          float chaosY = cos(time * 1.5 + fi * 1.2) + sin(time * 0.9 + fi * 1.7) * 0.7;
+          
+          // Audio-reactive position modulation
+          chaosX += sin(time * 5.0 + fi) * audioBass * 0.4;
+          chaosY += cos(time * 7.0 + fi) * audioMid * 0.3;
+          
+          vec2 sparklePos = vec2(chaosX, chaosY) * 0.35 + 0.5;
+          
+          // Variable sparkle size based on audio
+          float sparkleSize = 0.015 + audioTreble * 0.08 + sin(time * 8.0 + fi) * 0.01;
+          
+          // Pulsing intensity
+          float pulseIntensity = 0.5 + sin(time * 6.0 + fi * 1.5) * 0.3;
+          pulseIntensity *= (0.7 + audioMid * 0.8 + audioTreble * 0.5);
+          
+          float sparkleIntensity = smoothstep(sparkleSize, 0.0, distance(uv, sparklePos));
+          sparkles += sparkleIntensity * pulseIntensity;
         }
-
-        // Distort coordinates based on time and audio
-        float distortion = sin(r * 5.0 - time * 1.5 + audioReactive * 2.0) * 0.1;
-        theta += distortion;
         
-        // Create the core pattern
-        vec2 patternUv = vec2(log(r) * 0.5, theta / 6.28318);
-        float pattern = fbm(patternUv * 4.0 + time * 0.1 + cameraInfluence);
+        // Color variation for sparkles
+        vec3 sparkleColor = mix(
+          vec3(1.0, 1.0, 0.8), 
+          vec3(0.8, 1.0, 1.0), 
+          sin(time * 3.0) * 0.5 + 0.5
+        ) * sparkles * (0.6 + audioTreble * 0.4);
         
-        // Add high-frequency noise for grit, especially in the center
-        float grit = noise(uv * (20.0 + audioTreble * 50.0)) * 0.2;
-        pattern += grit * (1.0 - smoothstep(0.1, 0.6, r)); // Stronger in the center
+        // Combine all water effects
+        vec3 finalColor = waterColor + causticsColor + foamColor + sparkleColor;
         
-        // Final color calculation
-        float colorT = fract(pattern + time * 0.1);
-        vec3 finalColor = palette(colorT) * pattern;
+        // Add subtle water transparency effect
+        float waterAlpha = 0.85 + waveHeight * 0.15;
         
-        // Apply vignette to create the circular shape
-        float vignette = 1.0 - smoothstep(0.0, 1.0, r);
-        finalColor *= vignette;
-
         // --- Visual Mode Logic ---
-        float finalAlpha = vignette;
         if (cameraActive > 0.5) {
-            if (abs(visualMode - 2.0) < 0.1) { // Style 2: Blend
-                finalColor = mix(finalColor, cameraColor.rgb, 0.6);
-            }
-            // Style 3 is handled by using vignette as alpha
-        } else {
-            finalAlpha = 1.0; // If camera is off, it should be opaque
+          if (abs(visualMode - 1.0) < 0.1) {
+            // Style 1: Camera reflection in water with distortion
+            vec2 reflectionUv = screenUV + gradient * 0.2;
+            reflectionUv.y = 1.0 - reflectionUv.y; // Flip for reflection
+            vec4 reflectionColor = texture2D(cameraTexture, reflectionUv);
+            
+            // Mix reflection with water, stronger in calm areas
+            float reflectionStrength = 0.6 * (1.0 - abs(waveHeight) * 2.0);
+            finalColor = mix(finalColor, reflectionColor.rgb, reflectionStrength);
+            
+          } else if (abs(visualMode - 2.0) < 0.1) {
+            // Style 2: Camera feed visible through water (underwater view)
+            vec2 underwaterUv = screenUV + gradient * 0.15;
+            vec4 underwaterColor = texture2D(cameraTexture, underwaterUv);
+            
+            // Apply water tint and caustics to camera feed
+            underwaterColor.rgb *= vec3(0.7, 0.9, 1.0); // Blue tint
+            underwaterColor.rgb += causticsColor * 0.3;
+            
+            finalColor = mix(underwaterColor.rgb, finalColor, 0.4);
+            
+          } else if (abs(visualMode - 3.0) < 0.1) {
+            // Style 3: Water surface with camera background
+            finalColor = mix(cameraColor.rgb, finalColor, waterAlpha);
+            waterAlpha = 1.0; // Make fully opaque for background blend
+          }
         }
-
-        gl_FragColor = vec4(finalColor, finalAlpha);
+        
+        // Apply water edge fade
+        float edgeFade = smoothstep(0.0, 0.1, min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y)));
+        finalColor *= edgeFade;
+        waterAlpha *= edgeFade;
+        
+        gl_FragColor = vec4(finalColor, waterAlpha);
       }
     `,
     transparent: true,
-    depthWrite: false,
+    blending: THREE.NormalBlending,
+    depthWrite: false
   });
 
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.name = 'KaleidoTunnel';
+  mesh.name = 'WaterPool';
+  
+  // Store reference and update function for resizing
+  geometry.parentMesh = mesh;
+  mesh.updateGeometry = function() {
+    const distance = camera.position.z;
+    const fovInRadians = (camera.fov * Math.PI) / 180.0;
+    const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+    const planeWidth = planeHeight * camera.aspect;
+    
+    // Create new geometry with extra margin to eliminate borders
+    const newGeometry = new THREE.PlaneBufferGeometry(planeWidth * 1.2, planeHeight * 1.2);
+    
+    // Replace old geometry
+    this.geometry.dispose();
+    this.geometry = newGeometry;
+    newGeometry.parentMesh = this;
+  };
+  
+  // Store base values for intensity adjustments
+  mesh.userData = {
+    baseEffectIntensity: 1.0,
+    baseWaveAmplitude: 0.1,
+    baseWaveFrequency: 2.0,
+    baseRippleSpeed: 1.0,
+    baseWaterDepth: 0.8
+  };
+  
   scene.add(mesh);
   visualElements.push(mesh);
 }
@@ -5274,7 +5499,7 @@ function createKaleidoTunnelEffect() {
   createBlobEffect();
   createAuroraEffect();
   createPortal();
-  createKaleidoTunnelEffect();
+  createWaterPoolEffect();
   createStarfieldWarpEffect();
   createLiquidCrystalEffect();
   //createApple1Effect();
@@ -5500,6 +5725,28 @@ if (scribbleIdle && scribbleIdle.material.uniforms) {
   mat.uniforms.time.value         = t;
   mat.uniforms.audioLevel.value   = 0.0;
   mat.uniforms.effectIntensity.value = 1.0;
+}
+
+// --- WaterPool (Idle) ---
+const waterPoolIdle = visualElements.find(e => e.name === 'WaterPool');
+if (waterPoolIdle && waterPoolIdle.material.uniforms) {
+  const mat = waterPoolIdle.material;
+  const t = performance.now() * 0.001;
+  
+  // Set time for animation
+  mat.uniforms.time.value = t;
+  
+  // Set audio to zero for idle state
+  mat.uniforms.audioBass.value = 0.0;
+  mat.uniforms.audioMid.value = 0.0;
+  mat.uniforms.audioTreble.value = 0.0;
+  
+  // Use base values or defaults for water properties
+  mat.uniforms.effectIntensity.value = waterPoolIdle.userData?.baseEffectIntensity ?? 1.0;
+  mat.uniforms.waveAmplitude.value = waterPoolIdle.userData?.baseWaveAmplitude ?? 0.1;
+  mat.uniforms.waveFrequency.value = waterPoolIdle.userData?.baseWaveFrequency ?? 2.0;
+  mat.uniforms.rippleSpeed.value = waterPoolIdle.userData?.baseRippleSpeed ?? 1.0;
+  mat.uniforms.waterDepth.value = waterPoolIdle.userData?.baseWaterDepth ?? 0.8;
 }
 
 const t = performance.now() * 0.001;
@@ -5954,14 +6201,55 @@ if (pixelSortReact && pixelSortReact.material.uniforms) {
   pixelSortReact.material.uniforms.time.value = time;
   pixelSortReact.material.uniforms.audioBass.value = bassAvg;
 }
-// --- KaleidoTunnel (Redesigned) Audio Reactive State ---
-const kaleidoTunnel = visualElements.find(e => e.name === 'KaleidoTunnel');
-      if (kaleidoTunnel && kaleidoTunnel.material.uniforms) {
-        kaleidoTunnel.material.uniforms.time.value = timeNow;
-        kaleidoTunnel.material.uniforms.audioBass.value = bassAvg;
-        kaleidoTunnel.material.uniforms.audioMid.value = midAvg;
-        kaleidoTunnel.material.uniforms.audioTreble.value = trebleAvg;
-      }
+// --- WaterPool Audio Reactive State (Enhanced & Unpredictable) ---
+const waterPool = visualElements.find(e => e.name === 'WaterPool');
+if (waterPool && waterPool.material.uniforms) {
+  waterPool.material.uniforms.time.value = timeNow;
+  
+  // Store previous audio values for unpredictable transitions
+  if (!waterPool.userData.prevAudio) {
+    waterPool.userData.prevAudio = { bass: 0, mid: 0, treble: 0 };
+  }
+  
+  // Create unpredictable audio modulation with sudden changes
+  const audioJump = Math.random() < 0.05; // 5% chance of sudden change
+  const bassModulation = audioJump ? Math.random() * 2.0 : bassAvg;
+  const midModulation = audioJump ? Math.random() * 1.5 : midAvg;
+  const trebleModulation = audioJump ? Math.random() * 2.5 : trebleAvg;
+  
+  // Smooth some values, make others chaotic
+  const smoothedBass = THREE.MathUtils.lerp(waterPool.userData.prevAudio.bass, bassModulation, 0.3);
+  const chaoticMid = midModulation + Math.sin(timeNow * 7.0) * 0.2;
+  const pulseTreble = trebleModulation * (1.0 + Math.sin(timeNow * 12.0) * 0.5);
+  
+  waterPool.material.uniforms.audioBass.value = smoothedBass;
+  waterPool.material.uniforms.audioMid.value = chaoticMid;
+  waterPool.material.uniforms.audioTreble.value = pulseTreble;
+  
+  // Store for next frame
+  waterPool.userData.prevAudio.bass = smoothedBass;
+  waterPool.userData.prevAudio.mid = chaoticMid;
+  waterPool.userData.prevAudio.treble = pulseTreble;
+  
+  // Audio-reactive water parameters with unpredictable scaling
+  const baseAmplitude = waterPool.userData?.baseWaveAmplitude ?? 0.1;
+  const baseFrequency = waterPool.userData?.baseWaveFrequency ?? 2.0;
+  const baseSpeed = waterPool.userData?.baseRippleSpeed ?? 1.0;
+  
+  // Unpredictable parameter modulation
+  const amplitudeScale = 1.0 + smoothedBass * (2.0 + Math.sin(timeNow * 0.3) * 1.5);
+  const frequencyScale = 1.0 + chaoticMid * (1.5 + Math.cos(timeNow * 0.7) * 0.8);
+  const speedScale = 1.0 + pulseTreble * (2.0 + Math.sin(timeNow * 1.1) * 1.2);
+  
+  waterPool.material.uniforms.waveAmplitude.value = baseAmplitude * amplitudeScale;
+  waterPool.material.uniforms.waveFrequency.value = baseFrequency * frequencyScale;
+  waterPool.material.uniforms.rippleSpeed.value = baseSpeed * speedScale;
+  
+  // Dynamic effect intensity with unpredictable bursts
+  const baseIntensity = waterPool.userData?.baseEffectIntensity ?? 1.0;
+  const intensityBurst = Math.sin(timeNow * 5.0) * Math.cos(timeNow * 3.0) * (smoothedBass + chaoticMid + pulseTreble) * 0.3;
+  waterPool.material.uniforms.effectIntensity.value = baseIntensity * (1.0 + intensityBurst);
+}
 // --- KaleidoTunnelEffect (iTunes Sim v4 - Reactive) ---
 const flowerBlockReact= visualElements.find(e => e.name === 'FlowerBlockEffect');
 if (flowerBlockReact && flowerBlockReact.userData && flowerBlockReact.userData.customAnimateReactive) {
@@ -6313,7 +6601,7 @@ case 'ArrowUp': {
   const activeMaterial = activeEffect.material; // Convenience variable
 
   // Check if the effect supports multiple visual styles
-  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "KaleidoTunnel");
+  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "WaterPool");
   const isOrange = (activeEffect.name === "Orange");
   const isParticles = (activeEffect.name === "CameraParticles");
   const isWaves = (activeEffect.name === "Waves");
@@ -6324,7 +6612,7 @@ case 'ArrowUp': {
   const isScribble = (activeEffect.name === "Scribble"); // Add flag for Scribble
   const isAurora = (activeEffect.name === "AuroraEffect");
   const isPortal = (activeEffect.name === "Portal");
-  const isKaleido = (activeEffect.name === "KaleidoTunnel");
+  const isWaterPool = (activeEffect.name === "WaterPool");
 
   if (supportsMultiVisual && activeMaterial.uniforms && "visualMode" in activeMaterial.uniforms) {
     let currentState = Math.round(activeMaterial.uniforms.visualMode.value); // Use Math.round for robustness
@@ -6455,22 +6743,22 @@ case 'ArrowUp': {
         activeMaterial.uniforms.visualMode.value = 0.0;
         showActionMessage("portal visual: off");
       }
-    } else if (isKaleido) {
-      // --- KaleidoTunnel Effect Logic ---
+    } else if (isWaterPool) {
+      // --- WaterPool Effect Logic ---
       if (currentState === 0) {
         toggleCameraBackground();
         activeMaterial.uniforms.visualMode.value = 1.0;
-        showActionMessage("tunnel visual: style 1");
+        showActionMessage("water visual: style 1 (reflection)");
       } else if (currentState === 1) {
         activeMaterial.uniforms.visualMode.value = 2.0;
-        showActionMessage("tunnel visual: style 2");
+        showActionMessage("water visual: style 2 (underwater)");
       } else if (currentState === 2) {
         activeMaterial.uniforms.visualMode.value = 3.0;
-        showActionMessage("tunnel visual: style 3");
+        showActionMessage("water visual: style 3 (surface)");
       } else { // currentState is 3
         toggleCameraBackground();
         activeMaterial.uniforms.visualMode.value = 0.0;
-        showActionMessage("tunnel visual: off");
+        showActionMessage("water visual: off");
       }
     } else if (isScribble) {
       // --- NEW: Scribble Effect Logic --- (Cycle 0, 1, 2, 3)
@@ -6677,12 +6965,23 @@ if (aurora && aurora.material && aurora.material.uniforms) {
   aurora.userData.baseEffectIntensity = 1.0 + intensityLevel * 0.5;
   aurora.material.uniforms.effectIntensity.value = aurora.userData.baseEffectIntensity;
 }
-// --- KaleidoTunnel (Redesigned) Intensity Adjustment ---
-const kaleidoTunnel = visualElements.find(e => e.name === 'KaleidoTunnel');
-      if (kaleidoTunnel && kaleidoTunnel.material.uniforms) {
-        // This effect's redesign does not use a global intensity uniform,
-        // but this block is here for future modifications.
-      }
+// --- WaterPool Intensity Adjustment ---
+const waterPool = visualElements.find(e => e.name === 'WaterPool');
+if (waterPool && waterPool.material.uniforms) {
+  // Adjust water effect intensity and properties
+  waterPool.userData.baseEffectIntensity = 0.5 + intensityLevel * 0.15;
+  waterPool.userData.baseWaveAmplitude = 0.05 + intensityLevel * 0.02;
+  waterPool.userData.baseWaveFrequency = 1.0 + intensityLevel * 0.3;
+  waterPool.userData.baseRippleSpeed = 0.5 + intensityLevel * 0.2;
+  waterPool.userData.baseWaterDepth = 0.4 + intensityLevel * 0.1;
+  
+  // Apply the base values to uniforms
+  waterPool.material.uniforms.effectIntensity.value = waterPool.userData.baseEffectIntensity;
+  waterPool.material.uniforms.waveAmplitude.value = waterPool.userData.baseWaveAmplitude;
+  waterPool.material.uniforms.waveFrequency.value = waterPool.userData.baseWaveFrequency;
+  waterPool.material.uniforms.rippleSpeed.value = waterPool.userData.baseRippleSpeed;
+  waterPool.material.uniforms.waterDepth.value = waterPool.userData.baseWaterDepth;
+}
 
 // --- Scribble (Intensity Slider) ---
 const scribbleInt = visualElements.find(e => e.name === 'Scribble');
