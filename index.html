@@ -1489,35 +1489,8 @@ function createWaves() {
   // Recalculate geometry size with a larger safety margin for fullscreen
   const geometry = new THREE.PlaneBufferGeometry(widthWorld * 1.5, heightWorld * 1.5, 800, 400);
   
-  // Store geometry update function for resize handling
-  geometry.updateForResize = function() {
-    const fovRad = camera.fov * Math.PI / 180;
-    const heightWorld = 2 * Math.tan(fovRad * 0.5) * camera.position.z;
-    const widthWorld = heightWorld * camera.aspect;
-    
-    // Update the geometry parameters
-    this.parameters = {
-      width: widthWorld * 1.5,
-      height: heightWorld * 1.5,
-      widthSegments: 800,
-      heightSegments: 400
-    };
-    
-    // Rebuild the geometry with new dimensions
-    const newGeometry = new THREE.PlaneBufferGeometry(widthWorld * 1.5, heightWorld * 1.5, 800, 400);
-    this.attributes.position.copy(newGeometry.attributes.position);
-    this.attributes.uv.copy(newGeometry.attributes.uv);
-    if (this.attributes.normal) {
-      this.attributes.normal.copy(newGeometry.attributes.normal);
-    }
-    this.attributes.position.needsUpdate = true;
-    this.attributes.uv.needsUpdate = true;
-    if (this.attributes.normal) {
-      this.attributes.normal.needsUpdate = true;
-    }
-    
-    newGeometry.dispose();
-  };
+  // Store reference to parent mesh for geometry updates
+  geometry.parentMesh = null;
 
   const material = new THREE.ShaderMaterial({
     uniforms: {
@@ -1762,6 +1735,23 @@ function createWaves() {
   // Center the plane vertically, keep tilt for depth
   waves.position.set(0, 0, 0);
   waves.rotation.x = -0.3;
+  
+  // Store reference and update function
+  geometry.parentMesh = waves;
+  waves.updateGeometry = function() {
+    const fovRad = camera.fov * Math.PI / 180;
+    const heightWorld = 2 * Math.tan(fovRad * 0.5) * camera.position.z;
+    const widthWorld = heightWorld * camera.aspect;
+    
+    // Create new geometry
+    const newGeometry = new THREE.PlaneBufferGeometry(widthWorld * 1.5, heightWorld * 1.5, 800, 400);
+    
+    // Replace old geometry
+    this.geometry.dispose();
+    this.geometry = newGeometry;
+    newGeometry.parentMesh = this;
+  };
+  
   scene.add(waves);
   visualElements.push(waves);
 }
@@ -2082,35 +2072,8 @@ function createPortal() {
 
   const geometry = new THREE.PlaneGeometry(baseWidth, baseHeight, 1, 1);
   
-  // Store geometry update function for resize handling
-  geometry.updateForResize = function() {
-    const aspect = window.innerWidth / window.innerHeight;
-    const baseHeight = 2000;
-    const baseWidth = baseHeight * aspect;
-    
-    // Update the geometry parameters
-    this.parameters = {
-      width: baseWidth,
-      height: baseHeight,
-      widthSegments: 1,
-      heightSegments: 1
-    };
-    
-    // Rebuild the geometry with new dimensions
-    const newGeometry = new THREE.PlaneGeometry(baseWidth, baseHeight, 1, 1);
-    this.attributes.position.copy(newGeometry.attributes.position);
-    this.attributes.uv.copy(newGeometry.attributes.uv);
-    if (this.attributes.normal) {
-      this.attributes.normal.copy(newGeometry.attributes.normal);
-    }
-    this.attributes.position.needsUpdate = true;
-    this.attributes.uv.needsUpdate = true;
-    if (this.attributes.normal) {
-      this.attributes.normal.needsUpdate = true;
-    }
-    
-    newGeometry.dispose();
-  };
+  // Store reference to parent mesh for geometry updates
+  geometry.parentMesh = null;
   
   const material = new THREE.ShaderMaterial({
     uniforms: {
@@ -2281,6 +2244,23 @@ function createPortal() {
   
   const portal = new THREE.Mesh(geometry, material);
   portal.name = 'Portal';
+  
+  // Store reference and update function
+  geometry.parentMesh = portal;
+  portal.updateGeometry = function() {
+    const aspect = window.innerWidth / window.innerHeight;
+    const baseHeight = 2000;
+    const baseWidth = baseHeight * aspect;
+    
+    // Create new geometry
+    const newGeometry = new THREE.PlaneGeometry(baseWidth, baseHeight, 1, 1);
+    
+    // Replace old geometry
+    this.geometry.dispose();
+    this.geometry = newGeometry;
+    newGeometry.parentMesh = this;
+  };
+  
   scene.add(portal);
   visualElements.push(portal);
 }
@@ -2664,37 +2644,8 @@ function createOceanEffect() {
   // 2) Create a plane geometry that exactly fills the camera view at that distance:
   const geometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight, 1, 1);
   
-  // Store geometry update function for resize handling
-  geometry.updateForResize = function() {
-    // Recalculate distance from camera to the aurora plane at z = -500
-    const distance = camera.position.z - (-500);
-    const fovInRadians = (camera.fov * Math.PI) / 180.0;
-    const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
-    const planeWidth = planeHeight * camera.aspect;
-    
-    // Update the geometry parameters
-    this.parameters = {
-      width: planeWidth,
-      height: planeHeight,
-      widthSegments: 1,
-      heightSegments: 1
-    };
-    
-    // Rebuild the geometry with new dimensions
-    const newGeometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight, 1, 1);
-    this.attributes.position.copy(newGeometry.attributes.position);
-    this.attributes.uv.copy(newGeometry.attributes.uv);
-    if (this.attributes.normal) {
-      this.attributes.normal.copy(newGeometry.attributes.normal);
-    }
-    this.attributes.position.needsUpdate = true;
-    this.attributes.uv.needsUpdate = true;
-    if (this.attributes.normal) {
-      this.attributes.normal.needsUpdate = true;
-    }
-    
-    newGeometry.dispose();
-  };
+  // Store reference to parent mesh for geometry updates
+  geometry.parentMesh = null;
 
   // 3) Build the same ShaderMaterial you already have:
   const material = new THREE.ShaderMaterial({
@@ -2825,6 +2776,25 @@ function createOceanEffect() {
   const auroraSmoke = new THREE.Mesh(geometry, material);
   auroraSmoke.name = "AuroraEffect";
   auroraSmoke.position.z = -500; 
+  
+  // Store reference and update function
+  geometry.parentMesh = auroraSmoke;
+  auroraSmoke.updateGeometry = function() {
+    // Recalculate distance from camera to the aurora plane at z = -500
+    const distance = camera.position.z - (-500);
+    const fovInRadians = (camera.fov * Math.PI) / 180.0;
+    const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+    const planeWidth = planeHeight * camera.aspect;
+    
+    // Create new geometry
+    const newGeometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight, 1, 1);
+    
+    // Replace old geometry
+    this.geometry.dispose();
+    this.geometry = newGeometry;
+    newGeometry.parentMesh = this;
+  };
+  
   scene.add(auroraSmoke);
   visualElements.push(auroraSmoke);
 }
@@ -2839,36 +2809,8 @@ function createScribbleEffect() {
   // Fullscreen plane
   const geometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight);
   
-  // Store geometry update function for resize handling
-  geometry.updateForResize = function() {
-    const distance = camera.position.z;
-    const fovInRadians = (camera.fov * Math.PI) / 180.0;
-    const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
-    const planeWidth = planeHeight * camera.aspect;
-    
-    // Update the geometry parameters
-    this.parameters = {
-      width: planeWidth,
-      height: planeHeight,
-      widthSegments: 1,
-      heightSegments: 1
-    };
-    
-    // Rebuild the geometry with new dimensions
-    const newGeometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight);
-    this.attributes.position.copy(newGeometry.attributes.position);
-    this.attributes.uv.copy(newGeometry.attributes.uv);
-    if (this.attributes.normal) {
-      this.attributes.normal.copy(newGeometry.attributes.normal);
-    }
-    this.attributes.position.needsUpdate = true;
-    this.attributes.uv.needsUpdate = true;
-    if (this.attributes.normal) {
-      this.attributes.normal.needsUpdate = true;
-    }
-    
-    newGeometry.dispose();
-  };
+  // Store reference to parent mesh for geometry updates
+  geometry.parentMesh = null;
   const material = new THREE.ShaderMaterial({
     transparent: true,
     blending: THREE.AdditiveBlending,
@@ -3001,6 +2943,24 @@ function createScribbleEffect() {
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'Scribble';
+  
+  // Store reference and update function
+  geometry.parentMesh = mesh;
+  mesh.updateGeometry = function() {
+    const distance = camera.position.z;
+    const fovInRadians = (camera.fov * Math.PI) / 180.0;
+    const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+    const planeWidth = planeHeight * camera.aspect;
+    
+    // Create new geometry
+    const newGeometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight);
+    
+    // Replace old geometry
+    this.geometry.dispose();
+    this.geometry = newGeometry;
+    newGeometry.parentMesh = this;
+  };
+  
   scene.add(mesh);
   visualElements.push(mesh);
 }
@@ -5997,10 +5957,10 @@ if (pixelSortReact && pixelSortReact.material.uniforms) {
 // --- KaleidoTunnel (Redesigned) Audio Reactive State ---
 const kaleidoTunnel = visualElements.find(e => e.name === 'KaleidoTunnel');
       if (kaleidoTunnel && kaleidoTunnel.material.uniforms) {
-        kaleidoTunnel.material.uniforms.time.value = time;
-        kaleidoTunnel.material.uniforms.audioBass.value = bass;
-        kaleidoTunnel.material.uniforms.audioMid.value = mid;
-        kaleidoTunnel.material.uniforms.audioTreble.value = treble;
+        kaleidoTunnel.material.uniforms.time.value = timeNow;
+        kaleidoTunnel.material.uniforms.audioBass.value = bassAvg;
+        kaleidoTunnel.material.uniforms.audioMid.value = midAvg;
+        kaleidoTunnel.material.uniforms.audioTreble.value = trebleAvg;
       }
 // --- KaleidoTunnelEffect (iTunes Sim v4 - Reactive) ---
 const flowerBlockReact= visualElements.find(e => e.name === 'FlowerBlockEffect');
@@ -6188,8 +6148,12 @@ if (apple1Effect && apple1Effect.material.uniforms) {
     }
     
     // Update geometry for effects that need dynamic resizing
-    if (elem.geometry && elem.geometry.updateForResize) {
-      elem.geometry.updateForResize();
+    if (elem.updateGeometry) {
+      try {
+        elem.updateGeometry();
+      } catch (error) {
+        console.warn('Error updating geometry for', elem.name, ':', error);
+      }
     }
   });
 }
