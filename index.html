@@ -4854,52 +4854,68 @@ function createWaterPoolEffect() {
         return value;
       }
 
-      // --- Professional Water Wave Simulation ---
+      // --- Realistic Lake Water with Audio Vibration ---
       float waterHeight(vec2 pos, float time) {
         float height = 0.0;
         
-        // Primary wave sources with realistic physics
-        vec2 sources[4];
-        sources[0] = vec2(0.25, 0.25);
-        sources[1] = vec2(0.75, 0.25);  
-        sources[2] = vec2(0.25, 0.75);
-        sources[3] = vec2(0.75, 0.75);
+        // 1. WATER SURFACE VIBRATION from audio (like speaker near lake)
+        // Bass creates large, slow vibrations across entire surface
+        float bassVibration = sin(time * 3.0) * cos(time * 2.0) * audioBass * 0.08;
         
-        // Audio-reactive wave generation
-        float waveSpeed = 2.0 + audioBass * 1.0;
-        float waveStrength = waveAmplitude * (0.3 + (audioBass + audioMid) * 0.4);
+        // Mid frequencies create medium ripples
+        float midVibration = sin(pos.x * 8.0 + time * 4.0) * cos(pos.y * 6.0 + time * 3.0) * audioMid * 0.04;
         
-        for(int i = 0; i < 4; i++) {
+        // Treble creates small surface tension waves
+        float trebleVibration = sin(pos.x * 20.0 + time * 8.0) * sin(pos.y * 18.0 + time * 7.0) * audioTreble * 0.02;
+        
+        height += bassVibration + midVibration + trebleVibration;
+        
+        // 2. OCCASIONAL WATER DROPS (independent of audio intensity)
+        vec2 dropSources[3];
+        dropSources[0] = vec2(0.3, 0.4);
+        dropSources[1] = vec2(0.7, 0.3);  
+        dropSources[2] = vec2(0.5, 0.8);
+        
+        for(int i = 0; i < 3; i++) {
           float fi = float(i);
           
-          // Each source generates waves at different intervals
-          float sourceTime = time + fi * 1.5;
-          float waveInterval = 2.0 + sin(fi * 2.0) * 0.5;
-          float wavePhase = mod(sourceTime, waveInterval);
+          // Each drop happens at natural intervals (not crazy frequent)
+          float dropInterval = 4.0 + fi * 1.5; // 4-7 seconds between drops
+          float dropTime = mod(time + fi * 2.0, dropInterval);
           
-          // Audio makes waves more frequent
-          if(audioBass > 0.3 || audioMid > 0.3) {
-            wavePhase = mod(sourceTime * (1.0 + audioBass), waveInterval * 0.7);
-          }
-          
-          vec2 source = sources[i];
-          float dist = distance(pos, source);
-          
-          // Realistic wave propagation with proper falloff
-          float waveRadius = wavePhase * waveSpeed;
-          float waveFront = abs(dist - waveRadius);
-          
-          // Create sharp wave front that fades
-          if(waveFront < 0.1 && waveRadius > 0.1) {
-            float amplitude = waveStrength * exp(-waveRadius * 0.8) * (1.0 - waveFront * 10.0);
-            height += amplitude * sin((dist - waveRadius) * 50.0);
+          // Only create ripple in first 2 seconds after drop
+          if(dropTime < 2.0) {
+            vec2 source = dropSources[i];
+            float dist = distance(pos, source);
+            float rippleRadius = dropTime * 1.5; // Slower, more realistic expansion
+            
+            // Natural ripple with proper falloff
+            if(dist < rippleRadius + 0.3 && rippleRadius > 0.1) {
+              float rippleStrength = waveAmplitude * 0.5 * exp(-dropTime * 0.8);
+              float ripple = sin((dist - rippleRadius) * 25.0) * exp(-dist * 2.0);
+              height += ripple * rippleStrength;
+            }
           }
         }
         
-        // Continuous gentle water movement
-        height += sin(pos.x * 6.0 + time * 0.3) * cos(pos.y * 4.0 + time * 0.2) * 0.01;
+        // 3. UNPREDICTABLE BIG WAVES (rare, audio-triggered)
+        // Sometimes audio creates a big disturbance
+        float bigWaveChance = step(0.95, hash(vec2(floor(time * 0.5), 0.0)));
+        if(bigWaveChance > 0.5 && (audioBass > 0.6 || audioMid > 0.7)) {
+          vec2 waveCenter = vec2(0.5 + sin(time * 0.3) * 0.3, 0.5 + cos(time * 0.4) * 0.3);
+          float waveDist = distance(pos, waveCenter);
+          float waveRadius = mod(time * 0.5, 3.0) * 2.0;
+          
+          if(abs(waveDist - waveRadius) < 0.2 && waveRadius > 0.5) {
+            float bigWaveAmp = waveAmplitude * 2.0 * (audioBass + audioMid) * 0.5;
+            height += sin((waveDist - waveRadius) * 15.0) * exp(-waveRadius * 0.3) * bigWaveAmp;
+          }
+        }
         
-        return height;
+        // 4. NATURAL LAKE MOVEMENT (always present, very subtle)
+        height += sin(pos.x * 3.0 + time * 0.2) * cos(pos.y * 2.5 + time * 0.15) * 0.005;
+        
+        return height * effectIntensity;
       }
       
       // Calculate water normal for realistic lighting
@@ -6156,54 +6172,46 @@ if (pixelSortReact && pixelSortReact.material.uniforms) {
   pixelSortReact.material.uniforms.time.value = time;
   pixelSortReact.material.uniforms.audioBass.value = bassAvg;
 }
-// --- WaterPool Audio Reactive State (Enhanced & Unpredictable) ---
+// --- WaterPool Realistic Audio Response (Like Lake Near Speaker) ---
 const waterPool = visualElements.find(e => e.name === 'WaterPool');
 if (waterPool && waterPool.material.uniforms) {
   waterPool.material.uniforms.time.value = timeNow;
   
-  // Store previous audio values for unpredictable transitions
-  if (!waterPool.userData.prevAudio) {
-    waterPool.userData.prevAudio = { bass: 0, mid: 0, treble: 0 };
+  // Smooth audio values for realistic water response
+  if (!waterPool.userData.smoothAudio) {
+    waterPool.userData.smoothAudio = { bass: 0, mid: 0, treble: 0 };
   }
   
-  // Create unpredictable audio modulation with sudden changes
-  const audioJump = Math.random() < 0.05; // 5% chance of sudden change
-  const bassModulation = audioJump ? Math.random() * 2.0 : bassAvg;
-  const midModulation = audioJump ? Math.random() * 1.5 : midAvg;
-  const trebleModulation = audioJump ? Math.random() * 2.5 : trebleAvg;
+  // Water responds gradually to audio changes (like real physics)
+  const smoothingRate = 0.1; // Slow, natural response
+  waterPool.userData.smoothAudio.bass = THREE.MathUtils.lerp(
+    waterPool.userData.smoothAudio.bass, bassAvg, smoothingRate
+  );
+  waterPool.userData.smoothAudio.mid = THREE.MathUtils.lerp(
+    waterPool.userData.smoothAudio.mid, midAvg, smoothingRate * 1.5
+  );
+  waterPool.userData.smoothAudio.treble = THREE.MathUtils.lerp(
+    waterPool.userData.smoothAudio.treble, trebleAvg, smoothingRate * 2.0
+  );
   
-  // Smooth some values, make others chaotic
-  const smoothedBass = THREE.MathUtils.lerp(waterPool.userData.prevAudio.bass, bassModulation, 0.3);
-  const chaoticMid = midModulation + Math.sin(timeNow * 7.0) * 0.2;
-  const pulseTreble = trebleModulation * (1.0 + Math.sin(timeNow * 12.0) * 0.5);
+  // Pass smoothed audio to shader
+  waterPool.material.uniforms.audioBass.value = waterPool.userData.smoothAudio.bass;
+  waterPool.material.uniforms.audioMid.value = waterPool.userData.smoothAudio.mid;
+  waterPool.material.uniforms.audioTreble.value = waterPool.userData.smoothAudio.treble;
   
-  waterPool.material.uniforms.audioBass.value = smoothedBass;
-  waterPool.material.uniforms.audioMid.value = chaoticMid;
-  waterPool.material.uniforms.audioTreble.value = pulseTreble;
-  
-  // Store for next frame
-  waterPool.userData.prevAudio.bass = smoothedBass;
-  waterPool.userData.prevAudio.mid = chaoticMid;
-  waterPool.userData.prevAudio.treble = pulseTreble;
-  
-  // Audio-reactive water parameters with unpredictable scaling
+  // Realistic water parameters (subtle changes only)
   const baseAmplitude = waterPool.userData?.baseWaveAmplitude ?? 0.1;
   const baseFrequency = waterPool.userData?.baseWaveFrequency ?? 2.0;
   const baseSpeed = waterPool.userData?.baseRippleSpeed ?? 1.0;
   
-  // Unpredictable parameter modulation
-  const amplitudeScale = 1.0 + smoothedBass * (2.0 + Math.sin(timeNow * 0.3) * 1.5);
-  const frequencyScale = 1.0 + chaoticMid * (1.5 + Math.cos(timeNow * 0.7) * 0.8);
-  const speedScale = 1.0 + pulseTreble * (2.0 + Math.sin(timeNow * 1.1) * 1.2);
+  // Subtle parameter adjustments (not crazy scaling)
+  waterPool.material.uniforms.waveAmplitude.value = baseAmplitude * (1.0 + waterPool.userData.smoothAudio.bass * 0.5);
+  waterPool.material.uniforms.waveFrequency.value = baseFrequency; // Keep frequency stable
+  waterPool.material.uniforms.rippleSpeed.value = baseSpeed; // Keep speed stable
   
-  waterPool.material.uniforms.waveAmplitude.value = baseAmplitude * amplitudeScale;
-  waterPool.material.uniforms.waveFrequency.value = baseFrequency * frequencyScale;
-  waterPool.material.uniforms.rippleSpeed.value = baseSpeed * speedScale;
-  
-  // Dynamic effect intensity with unpredictable bursts
+  // Stable effect intensity
   const baseIntensity = waterPool.userData?.baseEffectIntensity ?? 1.0;
-  const intensityBurst = Math.sin(timeNow * 5.0) * Math.cos(timeNow * 3.0) * (smoothedBass + chaoticMid + pulseTreble) * 0.3;
-  waterPool.material.uniforms.effectIntensity.value = baseIntensity * (1.0 + intensityBurst);
+  waterPool.material.uniforms.effectIntensity.value = baseIntensity;
 }
 // --- KaleidoTunnelEffect (iTunes Sim v4 - Reactive) ---
 const flowerBlockReact= visualElements.find(e => e.name === 'FlowerBlockEffect');
