@@ -4854,95 +4854,91 @@ function createWaterPoolEffect() {
         return value;
       }
 
-      // --- Advanced Water Wave Functions ---
+      // --- Realistic Water Drop Ripples ---
+      float waterDropRipple(vec2 uv, vec2 dropPos, float dropTime, float intensity) {
+        float dist = distance(uv, dropPos);
+        float rippleRadius = dropTime * 0.3; // Ripple expands outward
+        
+        // Create concentric ripples that fade over time and distance
+        float ripple = sin((dist - rippleRadius) * 15.0) * exp(-dist * 3.0) * exp(-dropTime * 1.5);
+        return ripple * intensity;
+      }
+      
       float waterWave(vec2 uv, float t) {
-        vec2 center = vec2(0.5, 0.5);
-        float dist = distance(uv, center);
+        float totalWave = 0.0;
         
-        // Unpredictable audio-reactive parameters
-        float bassPhase = audioBass * 6.28 * 3.0; // Bass changes wave phase unpredictably
-        float midFreqMod = 1.0 + audioMid * 2.0; // Mid frequencies change wave frequency
-        float trebleWarp = audioTreble * 0.5; // Treble warps the wave pattern
+        // Multiple water drop sources with audio-reactive timing
+        vec2 drops[8];
+        float dropTimes[8];
+        float dropIntensities[8];
         
-        // Multiple complex ripple sources
-        float wave1 = sin(dist * waveFrequency * 10.0 * midFreqMod - t * rippleSpeed * 3.0 + bassPhase) * waveAmplitude;
-        float wave2 = sin(dist * waveFrequency * 15.0 - t * rippleSpeed * 2.5 + bassPhase * 0.7 + 1.5) * waveAmplitude * 0.7;
-        float wave3 = cos(dist * waveFrequency * 8.0 * (1.0 + trebleWarp) - t * rippleSpeed * 4.0 + bassPhase * 1.3 + 3.0) * waveAmplitude * 0.5;
+        // Generate drop positions and timing
+        drops[0] = vec2(0.3, 0.4);
+        drops[1] = vec2(0.7, 0.6);
+        drops[2] = vec2(0.2, 0.8);
+        drops[3] = vec2(0.8, 0.2);
+        drops[4] = vec2(0.5, 0.3);
+        drops[5] = vec2(0.6, 0.9);
+        drops[6] = vec2(0.1, 0.5);
+        drops[7] = vec2(0.9, 0.7);
         
-        // Chaotic audio-reactive ripples with unpredictable timing
-        float chaoticTime = t + sin(t * 0.3) * audioBass * 2.0;
-        float audioRipple1 = sin(dist * 20.0 * (1.0 + audioMid * 0.8) - chaoticTime * 5.0) * audioBass * 0.4;
-        float audioRipple2 = cos(dist * 35.0 - t * 8.0 + sin(t * 0.7) * audioTreble * 3.14) * audioTreble * 0.3;
+        // Audio-reactive drop timing and intensity
+        for(int i = 0; i < 8; i++) {
+          float fi = float(i);
+          
+          // Each drop has its own timing cycle influenced by audio
+          float dropCycle = 3.0 + fi * 0.5; // Different cycle times
+          float audioInfluence = audioBass * 2.0 + audioMid * 1.5 + audioTreble * 1.0;
+          float modifiedTime = t * (1.0 + audioInfluence * 0.3);
+          
+          dropTimes[i] = mod(modifiedTime + fi * 0.8, dropCycle);
+          dropIntensities[i] = waveAmplitude * (0.5 + audioInfluence * 0.5);
+          
+          // Add some randomness to drop positions based on audio
+          vec2 audioOffset = vec2(
+            sin(t * 2.0 + fi) * audioBass * 0.1,
+            cos(t * 1.5 + fi) * audioMid * 0.1
+          );
+          vec2 finalDropPos = drops[i] + audioOffset;
+          
+          totalWave += waterDropRipple(uv, finalDropPos, dropTimes[i], dropIntensities[i]);
+        }
         
-        // Interference patterns that change unpredictably
-        float interference = sin(dist * 12.0 + t * 2.0) * cos(dist * 18.0 - t * 3.0 + bassPhase) * 0.2;
-        float audioInterference = interference * (audioBass + audioMid + audioTreble) * 0.3;
-        
-        // Combine all waves with unpredictable mixing
-        float totalWave = wave1 + wave2 + wave3 + audioRipple1 + audioRipple2 + audioInterference;
-        
-        // Add fractal noise distortion that reacts to audio unpredictably
-        vec2 noiseCoord = uv * 4.0 + vec2(t * 0.1, t * 0.15);
-        float noiseDistortion = fbm(noiseCoord) * 0.1 * (1.0 + audioBass * 2.0);
-        totalWave += noiseDistortion;
+        // Add some gentle background water movement
+        float backgroundWave = sin(uv.x * 8.0 + t * 0.5) * cos(uv.y * 6.0 + t * 0.3) * 0.02;
+        totalWave += backgroundWave;
         
         return totalWave * effectIntensity;
       }
       
-      // --- Advanced Caustics Pattern ---
-      float caustics(vec2 uv, float t) {
-        vec2 p = uv * 8.0;
-        float c = 0.0;
+      // --- Water Surface Light Reflections ---
+      float waterReflections(vec2 uv, float t) {
+        // Simple light reflections that dance on water surface
+        vec2 p = uv * 6.0;
+        float reflections = 0.0;
         
-        // Audio-reactive caustics parameters
-        float bassScale = 1.0 + audioBass * 0.8;
-        float midSpeed = 1.0 + audioMid * 1.5;
-        float trebleDetail = 1.0 + audioTreble * 2.0;
-        
-        // Multiple layers of caustic patterns with unpredictable behavior
-        for(int i = 0; i < 5; i++) {
+        // Moving light patterns from above
+        for(int i = 0; i < 3; i++) {
           float fi = float(i);
+          vec2 lightPos = vec2(
+            sin(t * 0.5 + fi * 2.0) * 0.3,
+            cos(t * 0.3 + fi * 1.5) * 0.3
+          ) + 0.5;
           
-          // Unpredictable movement patterns
-          vec2 offset1 = vec2(
-            sin(t * 0.3 * midSpeed + fi * 2.1) + cos(t * 0.17 + fi * 1.7) * 0.5,
-            cos(t * 0.4 * midSpeed + fi * 1.9) + sin(t * 0.23 + fi * 2.3) * 0.5
-          ) * 2.0 * bassScale;
+          float dist = distance(uv, lightPos);
+          float lightIntensity = 1.0 / (1.0 + dist * 8.0);
           
-          vec2 offset2 = vec2(
-            sin(t * 0.5 + fi * 3.14 + audioBass * 6.28),
-            cos(t * 0.7 + fi * 2.71 + audioMid * 4.0)
-          ) * 1.5;
+          // Add some audio reactivity to light movement
+          lightIntensity *= (1.0 + audioBass * 0.5 + audioMid * 0.3);
           
-          vec2 q = p * trebleDetail + offset1;
-          vec2 r = p * (trebleDetail * 0.7) + offset2;
-          
-          // Complex distance calculations for caustic shapes
-          float d1 = length(fract(q) - 0.5);
-          float d2 = length(fract(q * 1.3 + 0.5) - 0.5);
-          float d3 = length(fract(r * 0.8 + vec2(0.3, 0.7)) - 0.5);
-          
-          // Audio-reactive caustic intensity
-          float intensity = 0.5 + audioBass * 0.3 + sin(t * 3.0 + fi) * audioTreble * 0.2;
-          
-          // Multiple caustic shapes with different characteristics
-          float caustic1 = smoothstep(0.4, 0.1, d1) * smoothstep(0.3, 0.1, d2);
-          float caustic2 = smoothstep(0.35, 0.05, d3) * 0.7;
-          float caustic3 = pow(max(0.0, 1.0 - d1 * 3.0), 2.0) * 0.3;
-          
-          c += (caustic1 + caustic2 + caustic3) * intensity;
+          reflections += lightIntensity;
         }
         
-        // Add fractal detail to caustics
-        vec2 fractalCoord = uv * 12.0 + vec2(t * 0.2, t * 0.3);
-        float fractalDetail = fbmRidged(fractalCoord) * 0.4;
-        c += fractalDetail * audioTreble;
+        // Add subtle noise for realistic water surface shimmer
+        vec2 shimmerCoord = uv * 15.0 + vec2(t * 0.1, t * 0.15);
+        float shimmer = noise(shimmerCoord) * 0.3;
         
-        // Unpredictable pulsing based on all audio frequencies
-        float pulse = sin(t * 4.0) * cos(t * 2.7) * (audioBass + audioMid + audioTreble) * 0.2;
-        c *= 1.0 + pulse;
-        
-        return clamp(c, 0.0, 2.0);
+        return (reflections + shimmer) * 0.4;
       }
 
       void main() {
@@ -4968,58 +4964,50 @@ function createWaterPoolEffect() {
         // Distorted UV for refraction effect
         vec2 distortedUv = uv + gradient * 0.1;
         
-        // Base water color (deep blue-green)
-        vec3 deepWaterColor = vec3(0.0, 0.2, 0.4);
-        vec3 shallowWaterColor = vec3(0.0, 0.4, 0.6);
+        // Realistic water pool colors
+        vec3 deepWaterColor = vec3(0.1, 0.3, 0.5);
+        vec3 shallowWaterColor = vec3(0.3, 0.6, 0.8);
+        vec3 surfaceColor = vec3(0.6, 0.8, 1.0);
         
-        // Water depth based on distance from center
-        float depth = length(centeredUv) * waterDepth;
+        // Water depth based on distance from center (pool gets deeper toward center)
+        float depth = smoothstep(0.0, 0.8, length(centeredUv)) * waterDepth;
         vec3 waterColor = mix(shallowWaterColor, deepWaterColor, depth);
         
-        // Add caustics lighting effect
-        float causticsPattern = caustics(distortedUv, time);
-        vec3 causticsColor = vec3(0.8, 1.0, 1.0) * causticsPattern * 0.5;
+        // Add water surface reflections
+        float reflectionPattern = waterReflections(distortedUv, time);
+        vec3 reflectionColor = surfaceColor * reflectionPattern;
         
-        // Surface foam and bubbles
-        float foam = fbm(uv * 15.0 + time * 0.5) * 0.3;
-        foam *= smoothstep(0.7, 1.0, waveHeight + 0.5);
-        vec3 foamColor = vec3(1.0, 1.0, 1.0) * foam;
+        // Add surface highlights where waves peak
+        float surfaceHighlight = smoothstep(0.02, 0.05, abs(waveHeight));
+        vec3 highlightColor = vec3(1.0, 1.0, 1.0) * surfaceHighlight * 0.3;
         
-        // Enhanced audio-reactive sparkles with unpredictable behavior
-        float sparkles = 0.0;
-        for(int i = 0; i < 12; i++) {
+        // Water droplets/splashes that react to audio
+        float droplets = 0.0;
+        for(int i = 0; i < 6; i++) {
           float fi = float(i);
           
-          // Unpredictable sparkle movement
-          float chaosX = sin(time * 2.0 + fi * 0.8) + cos(time * 1.3 + fi * 2.1) * 0.6;
-          float chaosY = cos(time * 1.5 + fi * 1.2) + sin(time * 0.9 + fi * 1.7) * 0.7;
+          // Droplet positions that move gently
+          vec2 dropletPos = vec2(
+            0.2 + fi * 0.15 + sin(time * 0.8 + fi) * 0.1,
+            0.3 + sin(fi * 2.0) * 0.4 + cos(time * 0.6 + fi) * 0.1
+          );
           
-          // Audio-reactive position modulation
-          chaosX += sin(time * 5.0 + fi) * audioBass * 0.4;
-          chaosY += cos(time * 7.0 + fi) * audioMid * 0.3;
+          // Audio makes droplets appear more frequently and larger
+          float dropletSize = 0.02 + audioTreble * 0.03;
+          float dropletIntensity = 0.3 + (audioBass + audioMid) * 0.4;
           
-          vec2 sparklePos = vec2(chaosX, chaosY) * 0.35 + 0.5;
+          // Fade droplets in/out over time
+          float dropletLife = mod(time * 0.5 + fi * 0.8, 2.0);
+          dropletIntensity *= smoothstep(0.0, 0.3, dropletLife) * smoothstep(2.0, 1.5, dropletLife);
           
-          // Variable sparkle size based on audio
-          float sparkleSize = 0.015 + audioTreble * 0.08 + sin(time * 8.0 + fi) * 0.01;
-          
-          // Pulsing intensity
-          float pulseIntensity = 0.5 + sin(time * 6.0 + fi * 1.5) * 0.3;
-          pulseIntensity *= (0.7 + audioMid * 0.8 + audioTreble * 0.5);
-          
-          float sparkleIntensity = smoothstep(sparkleSize, 0.0, distance(uv, sparklePos));
-          sparkles += sparkleIntensity * pulseIntensity;
+          float dropletDist = distance(uv, dropletPos);
+          droplets += smoothstep(dropletSize, 0.0, dropletDist) * dropletIntensity;
         }
         
-        // Color variation for sparkles
-        vec3 sparkleColor = mix(
-          vec3(1.0, 1.0, 0.8), 
-          vec3(0.8, 1.0, 1.0), 
-          sin(time * 3.0) * 0.5 + 0.5
-        ) * sparkles * (0.6 + audioTreble * 0.4);
+        vec3 dropletColor = vec3(0.9, 0.95, 1.0) * droplets;
         
         // Combine all water effects
-        vec3 finalColor = waterColor + causticsColor + foamColor + sparkleColor;
+        vec3 finalColor = waterColor + reflectionColor + highlightColor + dropletColor;
         
         // Add subtle water transparency effect
         float waterAlpha = 0.85 + waveHeight * 0.15;
@@ -5027,29 +5015,28 @@ function createWaterPoolEffect() {
         // --- Visual Mode Logic ---
         if (cameraActive > 0.5) {
           if (abs(visualMode - 1.0) < 0.1) {
-            // Style 1: Camera reflection in water with distortion
-            vec2 reflectionUv = screenUV + gradient * 0.2;
+            // Style 1: Camera reflection in water pool with ripple distortion
+            vec2 reflectionUv = screenUV + gradient * 0.3;
             reflectionUv.y = 1.0 - reflectionUv.y; // Flip for reflection
-            vec4 reflectionColor = texture2D(cameraTexture, reflectionUv);
+            vec4 cameraReflection = texture2D(cameraTexture, reflectionUv);
             
             // Mix reflection with water, stronger in calm areas
-            float reflectionStrength = 0.6 * (1.0 - abs(waveHeight) * 2.0);
-            finalColor = mix(finalColor, reflectionColor.rgb, reflectionStrength);
+            float reflectionStrength = 0.7 * (1.0 - abs(waveHeight) * 3.0);
+            finalColor = mix(finalColor, cameraReflection.rgb, reflectionStrength);
             
           } else if (abs(visualMode - 2.0) < 0.1) {
-            // Style 2: Camera feed visible through water (underwater view)
-            vec2 underwaterUv = screenUV + gradient * 0.15;
-            vec4 underwaterColor = texture2D(cameraTexture, underwaterUv);
+            // Style 2: Looking down into water pool (camera visible through water)
+            vec2 poolUv = screenUV + gradient * 0.2;
+            vec4 poolBottom = texture2D(cameraTexture, poolUv);
             
-            // Apply water tint and caustics to camera feed
-            underwaterColor.rgb *= vec3(0.7, 0.9, 1.0); // Blue tint
-            underwaterColor.rgb += causticsColor * 0.3;
+            // Apply water depth tint
+            poolBottom.rgb *= mix(vec3(0.8, 0.9, 1.0), vec3(0.5, 0.7, 0.9), depth);
             
-            finalColor = mix(underwaterColor.rgb, finalColor, 0.4);
+            finalColor = mix(poolBottom.rgb, finalColor, 0.5 + depth * 0.3);
             
           } else if (abs(visualMode - 3.0) < 0.1) {
-            // Style 3: Water surface with camera background
-            finalColor = mix(cameraColor.rgb, finalColor, waterAlpha);
+            // Style 3: Water pool surface over camera background
+            finalColor = mix(cameraColor.rgb, finalColor, waterAlpha * 0.8);
             waterAlpha = 1.0; // Make fully opaque for background blend
           }
         }
