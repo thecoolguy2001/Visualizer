@@ -3730,37 +3730,24 @@ function createNeonGridEffect() {
   }.bind(mesh);
 }
 
-function createStarfieldWarpEffect() {
-  // Fullscreen Quad Geometry
+function createQuantumArchitectEffect() {
+  // Use standard fullscreen quad - the shader handles the rest
   const geometry = new THREE.PlaneBufferGeometry(2, 2);
 
-  // Shader Material
+  // Oscilloscope Waveform Effect
   const material = new THREE.ShaderMaterial({
       uniforms: {
-          uTime: { value: 0.0 },
-          uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-          uAudioBass: { value: 0.0 },
-          uAudioMid: { value: 0.0 },
-          uAudioTreble: { value: 0.0 },
-          uEffectIntensity: { value: 1.0 },
-          uSeed: { value: Math.random() * 100.0 },
-          // Visual Controls - Tuned for Molten Flow/Glitch Core
-          uColorCore1: { value: new THREE.Color(0x2020ff) },    // Blue core
-          uColorCore2: { value: new THREE.Color(0xff2020) },    // Red core
-          uColorCoreMix: { value: 0.6 },                       // Mix factor for core colors
-          uColorFlow1: { value: new THREE.Color(0x005020) },   // Dark Green flow base
-          uColorFlow2: { value: new THREE.Color(0x00ff80) },   // Bright Green flow highlight
-          uColorFlow3: { value: new THREE.Color(0xff4040) },   // Red flow highlight
-          uColorFlow4: { value: new THREE.Color(0x00d0ff) },   // Cyan flow highlight
-          uFlowSpeed: { value: 0.2 },         // Base speed of outer flow
-          uFlowNoiseScale: { value: 1.5 },     // Scale of outer flow noise pattern
-          uCoreWidth: { value: 0.15 },        // Width of the central glitchy band (relative to screen width)
-          uCoreNoiseScaleX: { value: 5.0 },    // Horizontal noise scale in core
-          uCoreNoiseScaleY: { value: 45.0 },   // Vertical noise scale in core (creates streaks)
-          uCoreJaggedness: { value: 0.8 },     // Controls the sharpness/contrast of core noise
-          uGlowIntensity: { value: 1.5 },       // Overall glow/brightness factor
-          // CORRECTED: Added uNoiseAmount here
-          uNoiseAmount: { value: 0.03 }         // Final static/noise overlay intensity 
+          time: { value: 0.0 },
+          resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+          audioBass: { value: 0.0 },
+          audioMid: { value: 0.0 },
+          audioTreble: { value: 0.0 },
+          effectIntensity: { value: 1.0 },
+          
+          // Visual Mode Uniforms
+          visualMode: { value: 0.0 },
+          cameraTexture: { value: null },
+          cameraActive: { value: 0.0 },
       },
       vertexShader: `
           varying vec2 vUv;
@@ -3771,132 +3758,228 @@ function createStarfieldWarpEffect() {
       `,
       fragmentShader: `
           precision highp float;
-          uniform float uTime;
-          uniform vec2 uResolution;
-          uniform float uAudioBass;
-          uniform float uAudioMid;
-          uniform float uAudioTreble;
-          uniform float uEffectIntensity;
-          uniform float uSeed;
-          // Visual Uniforms
-          uniform vec3 uColorCore1;
-          uniform vec3 uColorCore2;
-          uniform float uColorCoreMix;
-          uniform vec3 uColorFlow1;
-          uniform vec3 uColorFlow2;
-          uniform vec3 uColorFlow3;
-          uniform vec3 uColorFlow4;
-          uniform float uFlowSpeed;
-          uniform float uFlowNoiseScale;
-          uniform float uCoreWidth;
-          uniform float uCoreNoiseScaleX;
-          uniform float uCoreNoiseScaleY;
-          uniform float uCoreJaggedness;
-          uniform float uGlowIntensity;
-          // CORRECTED: Added uNoiseAmount declaration
-          uniform float uNoiseAmount;
-
+          
+          uniform float time;
+          uniform vec2 resolution;
+          uniform float audioBass;
+          uniform float audioMid;
+          uniform float audioTreble;
+          uniform float effectIntensity;
+          
+          // Visual Mode
+          uniform float visualMode;
+          uniform sampler2D cameraTexture;
+          uniform float cameraActive;
+          
           varying vec2 vUv;
-
-          // --- Noise Functions (hash, noise, fbm) ---
-           float hash(vec2 p) { return fract(sin(dot(p + uSeed, vec2(127.1, 311.7))) * 43758.5453123); }
-           float noise(vec2 p) {
-               vec2 i = floor(p); vec2 f = fract(p); f = f*f*(3.0-2.0*f);
-               return mix(mix(hash(i + vec2(0.,0.)), hash(i + vec2(1.,0.)),f.x),
-                          mix(hash(i + vec2(0.,1.)), hash(i + vec2(1.,1.)),f.x),f.y);
-           }
-           float fbm(vec2 p, int octaves) {
-               float v = 0.0; float a = 0.5;
-               mat2 m = mat2(cos(0.5), -sin(0.5), sin(0.5), cos(0.5));
-               for (int i = 0; i < octaves; ++i) { v += a * noise(p); p = m * p * 2.0; a *= 0.5; }
-               return v;
-           }
-          // --- End Noise ---
-
-           // HSV to RGB (useful for color cycling if needed later)
-           vec3 hsv2rgb(vec3 c) {
-               vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-               vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-               return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-           }
-
-
-          void main() {
-              vec2 uv = vUv;
-              float aspect = uResolution.x / uResolution.y;
-              vec2 centeredUv = (uv - 0.5) * vec2(aspect, 1.0); // Centered, aspect-corrected
-
-              // --- Dynamic Parameters ---
-              float timeScaled = uTime * (1.0 + uAudioMid * 0.3);
-              float coreNoiseSpeed = 1.5 + uAudioMid * 2.0;
-              float flowSpeed = uFlowSpeed * (1.0 + uAudioMid * 1.0) * uEffectIntensity;
-              float flowNoiseScale = uFlowNoiseScale * (1.0 + uAudioMid * 0.4) * uEffectIntensity;
-              float coreJaggedness = uCoreJaggedness * (1.0 + uAudioTreble * 1.5); // Treble makes core sharper
-              float overallGlow = uGlowIntensity * (1.0 + uAudioBass * 1.5); // Bass boosts overall glow
-
-              // --- Central Core Mask ---
-              // Smooth mask based on horizontal distance from center
-              float coreMask = 1.0 - smoothstep(uCoreWidth * 0.45, uCoreWidth * 0.55, abs(uv.x - 0.5));
-
-              // --- Generate Core Pattern ---
-              vec3 coreColor = vec3(0.0);
-              if (coreMask > 0.01) {
-                  // High-frequency, vertically biased noise
-                  float coreNoiseX = uv.x * uCoreNoiseScaleX + timeScaled * 0.1;
-                  float coreNoiseY = uv.y * uCoreNoiseScaleY + timeScaled * coreNoiseSpeed;
-                  float coreNoiseVal = fbm(vec2(coreNoiseX, coreNoiseY), 6); // Detailed noise
-
-                  // Sharpen the noise based on jaggedness factor
-                  coreNoiseVal = pow(coreNoiseVal * 1.2, coreJaggedness);
-
-                  // Mix core colors based on noise and audio
-                  float coreMix = uColorCoreMix + (noise(vec2(coreNoiseX * 0.5, coreNoiseY * 0.1)) - 0.5) * 0.4;
-                  coreMix = mix(coreMix, hash(uv + uTime * 5.0), uAudioTreble * 0.3); // Treble adds color noise
-                  vec3 baseCoreColor = mix(uColorCore1, uColorCore2, clamp(coreMix, 0.0, 1.0));
-
-                  // Intensity based on noise value, boosted by bass
-                  float coreIntensity = smoothstep(0.1, 0.6, coreNoiseVal) * (1.0 + uAudioBass * 1.5);
-                  coreColor = baseCoreColor * coreIntensity;
+          
+                    // Classic oscilloscope beam drawing functions
+          
+          // Lissajous patterns - classic oscilloscope display mode
+          vec2 lissajous(float t, float bass, float mid, float treble, vec2 cameraXY) {
+            float freqX = 1.0 + bass * 3.0;      // X frequency controlled by bass
+            float freqY = 1.5 + mid * 2.0;       // Y frequency controlled by mid  
+            float phaseShift = treble * 6.28;    // Phase shift controlled by treble
+            
+            // Camera influence on frequencies and phase
+            freqX += cameraXY.x * 2.0;           // Camera red channel affects X frequency
+            freqY += cameraXY.y * 2.0;           // Camera green channel affects Y frequency
+            phaseShift += length(cameraXY) * 3.14; // Camera brightness affects phase
+            
+            float x = sin(t * freqX) * 0.8;      // Larger amplitude for fullscreen
+            float y = sin(t * freqY + phaseShift) * 0.8;
+            return vec2(x, y);
+          }
+          
+          // XY mode - audio controls both axes directly
+          vec2 xyMode(float t, float bass, float mid, float treble, vec2 cameraXY) {
+            float x = (bass - 0.5) * 1.6;        // Bass controls X position - wider range
+            float y = (mid - 0.5) * 1.6;         // Mid controls Y position - wider range
+            
+            // Add treble as high-frequency modulation
+            x += sin(t * 50.0) * treble * 0.15;
+            y += cos(t * 60.0) * treble * 0.15;
+            
+            // Camera directly influences XY position
+            x += cameraXY.x * 1.2;               // Camera red channel shifts X
+            y += cameraXY.y * 1.2;               // Camera green channel shifts Y
+            
+            return vec2(x, y);
+          }
+          
+          // Waveform mode - traditional time-domain display with zig-zag pattern
+          vec2 waveformMode(float x, float t, float bass, float mid, float treble, float cameraInfluence, vec2 cameraXY) {
+            // Create zig-zag test pattern for idle state
+            float zigzag = 0.0;
+            if (bass < 0.2 && mid < 0.15 && treble < 0.1) {
+              // Idle zig-zag pattern like oscilloscope calibration
+              zigzag = mod(x * 8.0, 1.0) < 0.5 ? 0.3 : -0.3;
+              zigzag += mod(x * 16.0, 1.0) < 0.5 ? 0.15 : -0.15;
+            }
+            
+            // Composite audio signal
+            float signal = bass * sin(x * 8.0 + t * 4.0) * 0.8;
+            signal += mid * sin(x * 25.0 + t * 15.0) * 0.6;
+            signal += treble * sin(x * 80.0 + t * 50.0) * 0.4;
+            signal += zigzag;
+            
+            // Camera influence: amplitude modulation and frequency shifting
+            signal *= (1.0 + cameraInfluence * 0.8);  // Amplitude modulation
+            signal += sin(x * 12.0 + t * 6.0 + cameraXY.x * 10.0) * abs(cameraInfluence) * 0.3;  // Frequency modulation
+            
+            // Y position influenced by camera green channel
+            signal += cameraXY.y * 0.6;
+            
+            return vec2(x, signal);
+          }
+          
+          // Circular sweep mode - like radar display
+          vec2 circularSweep(float t, float bass, float mid, float treble, vec2 cameraXY) {
+            float angle = t * 2.0;
+            float radius = 0.4 + bass * 0.5;     // Bass controls radius - larger for fullscreen
+            
+            // Camera influences rotation speed and radius
+            angle += length(cameraXY) * t * 3.0;  // Camera brightness affects rotation speed
+            radius += length(cameraXY) * 0.4;     // Camera brightness affects radius
+            
+            float x = cos(angle) * radius;
+            float y = sin(angle) * radius;
+            
+            // Mid and treble add modulation
+            x += sin(angle * 3.0) * mid * 0.3;
+            y += cos(angle * 4.0) * treble * 0.25;
+            
+            // Camera XY shifts the center point
+            x += cameraXY.x * 0.5;
+            y += cameraXY.y * 0.5;
+            
+            return vec2(x, y);
+          }
+          
+          // Beam intensity function - thick, bright beam like real 1970s oscilloscopes
+          float beamIntensity(vec2 beamPos, vec2 pixelPos, float intensity) {
+            float dist = length(beamPos - pixelPos);
+            float beamWidth = 0.030;  // Thick beam like real oscilloscopes
+            
+            // Hard cutoff for solid, crisp beam - no soft edges
+            float beam = step(dist, beamWidth);
+            
+            // Add bright core for visibility
+            float coreWidth = beamWidth * 0.7;
+            float core = step(dist, coreWidth);
+            beam += core * 1.0;  // Brighter core
+            
+            return beam * intensity * 0.8;  // Boost overall brightness
+          }
+            
+            void main() {
+            vec2 uv = vUv;
+            vec2 p = uv * 2.0 - 1.0;
+            // Remove aspect ratio correction to fill entire screen
+            // p.x *= resolution.x / resolution.y;
+            
+            // Authentic CRT phosphor background - very dark with slight green tint
+            vec3 bgColor = vec3(0.0, 0.02, 0.0);
+            vec3 finalColor = bgColor;
+            
+            float t = time;
+            vec2 screenPos = p; // Current pixel position on screen
+            
+            // Determine oscilloscope mode based on audio characteristics
+            float totalAudio = audioBass + audioMid + audioTreble;
+            float mode = 0.0;
+            
+            // Mode selection based on audio content
+            if (audioBass > 0.3 && audioMid < 0.2) {
+              mode = 1.0; // Lissajous mode for bass-heavy content
+            } else if (audioMid > 0.4) {
+              mode = 2.0; // XY mode for mid-heavy content  
+            } else if (audioBass > 0.2 && audioMid > 0.2) {
+              mode = 3.0; // Circular sweep for balanced content
+            } else {
+              mode = 0.0; // Waveform mode (default)
+            }
+            
+            // Sample camera feed for influence - enabled for all visual modes
+            float cameraInfluence = 0.0;
+            vec2 cameraXY = vec2(0.0);
+            
+            if (cameraActive > 0.5) {
+              // Sample camera texture at center for overall influence
+              vec3 cameraSample = texture2D(cameraTexture, vec2(0.5, 0.5)).rgb;
+              cameraInfluence = (cameraSample.r + cameraSample.g + cameraSample.b) / 3.0 - 0.5;
+              cameraXY = vec2(cameraSample.r - 0.5, cameraSample.g - 0.5);
+              
+              // Scale influence for subtle but noticeable effect
+              cameraInfluence *= 0.8;
+              cameraXY *= 0.6;
+            }
+            
+            // Draw oscilloscope trace based on current mode
+            float beamBrightness = 0.0;
+            
+            if (mode < 0.5) {
+              // Mode 0: Traditional waveform display
+              for (float x = -1.0; x <= 1.0; x += 0.02) {
+                vec2 tracePoint = waveformMode(x, t, audioBass, audioMid, audioTreble, cameraInfluence, cameraXY);
+                beamBrightness += beamIntensity(tracePoint, screenPos, effectIntensity);
               }
-
-
-              // --- Generate Outer Flow Pattern ---
-              vec3 flowColor = vec3(0.0);
-              if (coreMask < 0.99) { // Calculate only outside the core full influence
-                  // UV manipulation for flow - use time and audio mid
-                  vec2 flowUv = uv * flowNoiseScale;
-                  flowUv += vec2(timeScaled * flowSpeed, sin(uv.x * 5.0 + timeScaled * 0.1)); // Horizontal flow + sine warp
-
-                  // Multiple layers of noise for complexity
-                  float flowNoise1 = fbm(flowUv + vec2(10.0, 0.0), 5);
-                  float flowNoise2 = fbm(flowUv * 0.8 - vec2(0.0, timeScaled * 0.3), 4);
-
-                  // Combine noise layers
-                  float combinedNoise = flowNoise1 * 0.6 + flowNoise2 * 0.4;
-                  combinedNoise = pow(combinedNoise, 1.8); // Increase contrast
-
-                  // Color mapping for flow - blend multiple colors based on noise
-                  vec3 colorA = mix(uColorFlow1, uColorFlow2, smoothstep(0.2, 0.5, combinedNoise)); // Dark to bright green
-                  vec3 colorB = mix(uColorFlow3, uColorFlow4, smoothstep(0.4, 0.7, combinedNoise)); // Red to cyan highlights
-                  flowColor = mix(colorA, colorB, smoothstep(0.5, 0.8, combinedNoise)); // Blend the two mixes
-
-                  // Add sheen/highlight based on noise gradient approximation (using noise itself)
-                  float sheen = pow(max(0.0, combinedNoise - 0.4), 3.0);
-                  flowColor += vec3(0.8, 1.0, 0.9) * sheen * (1.0 + uAudioBass * 1.0) * 1.5 * uEffectIntensity; // Bass boosts sheen
+            } else if (mode < 1.5) {
+              // Mode 1: Lissajous patterns
+              for (float i = 0.0; i < 100.0; i += 1.0) {
+                float traceTime = t + i * 0.01;
+                vec2 tracePoint = lissajous(traceTime, audioBass, audioMid, audioTreble, cameraXY);
+                beamBrightness += beamIntensity(tracePoint, screenPos, effectIntensity * 0.8);
               }
-
-
-              // --- Combine Core and Flow ---
-              vec3 finalColor = mix(flowColor, coreColor, coreMask);
-
-              // --- Apply Overall Glow ---
-              finalColor *= overallGlow;
-
-              // --- Final Noise Overlay ---
-              // CORRECTED: Using declared uNoiseAmount
-              finalColor += (hash(vUv * 400.0 + uTime * 10.0) - 0.5) * uNoiseAmount * (1.0 + uAudioTreble * 0.5); 
-
-              gl_FragColor = vec4(clamp(finalColor, 0.0, 1.0), 1.0); // Clamp final result
+            } else if (mode < 2.5) {
+              // Mode 2: XY mode
+              for (float i = 0.0; i < 50.0; i += 1.0) {
+                float traceTime = t + i * 0.02;
+                vec2 tracePoint = xyMode(traceTime, audioBass, audioMid, audioTreble, cameraXY);
+                beamBrightness += beamIntensity(tracePoint, screenPos, effectIntensity * 1.2);
+              }
+            } else {
+              // Mode 3: Circular sweep
+              for (float i = 0.0; i < 80.0; i += 1.0) {
+                float traceTime = t + i * 0.015;
+                vec2 tracePoint = circularSweep(traceTime, audioBass, audioMid, audioTreble, cameraXY);
+                beamBrightness += beamIntensity(tracePoint, screenPos, effectIntensity * 0.9);
+              }
+            }
+            
+            // Authentic CRT phosphor color - bright, vivid green
+            vec3 phosphorColor = vec3(0.2, 1.0, 0.4);
+            finalColor += phosphorColor * clamp(beamBrightness * 1.5, 0.0, 1.0);
+            
+            // Add scanlines for CRT effect
+            float scanline = sin(uv.y * 800.0) * 0.03;
+            finalColor += vec3(0.0, scanline, 0.0);
+            
+            // Screen curvature effect (subtle)
+            float vignette = 1.0 - length(p * 0.5);
+            vignette = smoothstep(0.3, 1.0, vignette);
+            finalColor *= vignette;
+            
+            // === VISUAL MODE BLENDING ===
+            if (cameraActive > 0.5) {
+              vec3 cameraColor = texture2D(cameraTexture, vUv).rgb;
+              
+              if (abs(visualMode - 1.0) < 0.1) {
+                // Mode 1: Camera controls oscilloscope invisibly - NO camera display
+                // Keep finalColor as pure oscilloscope - camera only influences the trace behavior
+              } else if (abs(visualMode - 2.0) < 0.1) {
+                // Mode 2: Additive blend
+                finalColor = cameraColor + finalColor * 0.7;
+              } else if (abs(visualMode - 3.0) < 0.1) {
+                // Mode 3: Multiply blend
+                finalColor = cameraColor * (1.0 + finalColor);
+              } else if (abs(visualMode - 4.0) < 0.1) {
+                // Mode 4: Mixed blend
+                finalColor = mix(cameraColor, finalColor, 0.6) + finalColor * 0.4;
+              }
+            }
+            
+            gl_FragColor = vec4(finalColor, 1.0);
           }
       `,
       depthTest: false,
@@ -3905,99 +3988,82 @@ function createStarfieldWarpEffect() {
   });
 
   const mesh = new THREE.Mesh(geometry, material);
-  mesh.name = 'StarfieldWarpEffect'; // Apply to this effect slot
-  mesh.userData.isFeedbackEffect = false; // Not a feedback effect
+  mesh.name = 'StarfieldWarpEffect'; // Keep same name for compatibility
+  mesh.userData.isFeedbackEffect = false;
 
-  // Store base parameters for intensity adjustments
+  // Position the mesh properly for fullscreen coverage
+  mesh.position.set(0, 0, -100); // Move it back from camera
+  mesh.renderOrder = -1; // Render behind other elements
+
+  // Simple parameters
   mesh.userData.baseEffectIntensity = 1.0;
-  mesh.userData.baseFlowSpeed = 0.2;
-  mesh.userData.baseFlowNoiseScale = 1.5;
-  mesh.userData.baseCoreWidth = 0.15;
-  mesh.userData.baseCoreNoiseScaleY = 45.0;
-  mesh.userData.baseCoreJaggedness = 0.8;
-  mesh.userData.baseGlowIntensity = 1.5;
-  // CORRECTED: Added baseNoiseAmount here
-  mesh.userData.baseNoiseAmount = 0.03; 
 
   scene.add(mesh);
   visualElements.push(mesh);
 
-  // --- Custom JavaScript Functions ---
-
+  // Custom animation functions
   mesh.userData.customAnimateInitial = function() {
       const mat = this.material;
       const time = performance.now() * 0.001;
-      mat.uniforms.uTime.value = time;
-      mat.uniforms.uAudioBass.value = 0.0;
-      mat.uniforms.uAudioMid.value = 0.0;
-      mat.uniforms.uAudioTreble.value = 0.0;
-      mat.uniforms.uEffectIntensity.value = this.userData.baseEffectIntensity || 1.0;
-      mat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
-
-      // Apply base params
-      mat.uniforms.uFlowSpeed.value = this.userData.baseFlowSpeed || 0.2;
-      mat.uniforms.uFlowNoiseScale.value = this.userData.baseFlowNoiseScale || 1.5;
-      mat.uniforms.uCoreWidth.value = this.userData.baseCoreWidth || 0.15;
-      mat.uniforms.uCoreNoiseScaleY.value = this.userData.baseCoreNoiseScaleY || 45.0;
-      mat.uniforms.uCoreJaggedness.value = this.userData.baseCoreJaggedness || 0.8;
-      mat.uniforms.uGlowIntensity.value = this.userData.baseGlowIntensity || 1.5;
-      // CORRECTED: Apply baseNoiseAmount
-      mat.uniforms.uNoiseAmount.value = this.userData.baseNoiseAmount || 0.03; 
+      
+      mat.uniforms.time.value = time;
+      mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+      
+      // Stable idle state - good visibility levels
+      const idleBass = 0.25;     // Higher bass level for visible waveform
+      const idleMid = 0.12;      // Moderate mid for clear display
+      const idleTreble = 0.08;   // Low treble but visible
+      
+      mat.uniforms.audioBass.value = idleBass;
+      mat.uniforms.audioMid.value = idleMid;
+      mat.uniforms.audioTreble.value = idleTreble;
+      mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity * 0.8; // Clear visibility when idle
+      
+      // Update camera texture if available
+      if (window.userCameraTexture && window.userCameraTexture.image) {
+        mat.uniforms.cameraTexture.value = window.userCameraTexture;
+        mat.uniforms.cameraActive.value = 1.0;
+      } else {
+        mat.uniforms.cameraActive.value = 0.0;
+      }
   }.bind(mesh);
 
   mesh.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
       const mat = this.material;
       const time = performance.now() * 0.001;
-
-      // Update core uniforms
-      mat.uniforms.uTime.value = time;
-      mat.uniforms.uResolution.value.set(window.innerWidth, window.innerHeight);
-      mat.uniforms.uEffectIntensity.value = this.userData.baseEffectIntensity || 1.0;
-      mat.uniforms.uAudioBass.value = bassAvg;
-      mat.uniforms.uAudioMid.value = midAvg;
-      mat.uniforms.uAudioTreble.value = trebleAvg;
-
-      // Apply base params
-      mat.uniforms.uFlowSpeed.value = this.userData.baseFlowSpeed || 0.2;
-      mat.uniforms.uFlowNoiseScale.value = this.userData.baseFlowNoiseScale || 1.5;
-      mat.uniforms.uCoreWidth.value = this.userData.baseCoreWidth || 0.15;
-      mat.uniforms.uCoreNoiseScaleY.value = this.userData.baseCoreNoiseScaleY || 45.0;
-      mat.uniforms.uCoreJaggedness.value = this.userData.baseCoreJaggedness || 0.8;
-      mat.uniforms.uGlowIntensity.value = this.userData.baseGlowIntensity || 1.5;
-      // CORRECTED: Apply baseNoiseAmount
-      mat.uniforms.uNoiseAmount.value = this.userData.baseNoiseAmount || 0.03; 
       
+      mat.uniforms.time.value = time;
+      mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+      
+      // DIRECT audio data pass-through for maximum responsiveness
+      // No smoothing, no dampening - pure audio reactivity like a real oscilloscope
+      mat.uniforms.audioBass.value = bassAvg;
+      mat.uniforms.audioMid.value = midAvg;
+      mat.uniforms.audioTreble.value = trebleAvg;
+      
+      // Intensity follows the total audio energy directly
+      const totalAudio = bassAvg + midAvg + trebleAvg;
+      mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity * (0.8 + totalAudio * 1.2);
+      
+      // Update camera texture if available
+      if (window.userCameraTexture && window.userCameraTexture.image) {
+        mat.uniforms.cameraTexture.value = window.userCameraTexture;
+        mat.uniforms.cameraActive.value = 1.0;
+      } else {
+        mat.uniforms.cameraActive.value = 0.0;
+      }
   }.bind(mesh);
 
   mesh.userData.customAdjustIntensity = function(intensityLevel) {
-       // Map intensityLevel (1-9) to parameters
-      this.userData.baseEffectIntensity = 0.7 + intensityLevel * 0.13; // 0.83 to 1.87
+      // Simple intensity mapping
+      this.userData.baseEffectIntensity = 0.5 + intensityLevel * 0.15;
 
-      // Adjust parameters affecting complexity and reactivity
-      this.userData.baseFlowSpeed = 0.1 + intensityLevel * 0.03;        // 0.13 to 0.37
-      this.userData.baseFlowNoiseScale = 1.0 + intensityLevel * 0.15;   // 1.15 to 2.35
-      this.userData.baseCoreWidth = 0.08 + intensityLevel * 0.015;      // 0.095 to 0.215
-      this.userData.baseCoreNoiseScaleY = 30.0 + intensityLevel * 4.0;   // 34.0 to 66.0
-      this.userData.baseCoreJaggedness = 0.5 + intensityLevel * 0.1;      // 0.6 to 1.4
-      this.userData.baseGlowIntensity = 1.0 + intensityLevel * 0.15;    // 1.15 to 2.35
-      // CORRECTED: Adjust baseNoiseAmount
-      this.userData.baseNoiseAmount = 0.01 + intensityLevel * 0.003;      // 0.013 to 0.037
-
-
-       // Apply immediately
-       if(this.material && this.material.uniforms) {
-           this.material.uniforms.uEffectIntensity.value = this.userData.baseEffectIntensity;
-           this.material.uniforms.uFlowSpeed.value = this.userData.baseFlowSpeed;
-           this.material.uniforms.uFlowNoiseScale.value = this.userData.baseFlowNoiseScale;
-           this.material.uniforms.uCoreWidth.value = this.userData.baseCoreWidth;
-           this.material.uniforms.uCoreNoiseScaleY.value = this.userData.baseCoreNoiseScaleY;
-           this.material.uniforms.uCoreJaggedness.value = this.userData.baseCoreJaggedness;
-           this.material.uniforms.uGlowIntensity.value = this.userData.baseGlowIntensity;
-           // CORRECTED: Apply uNoiseAmount
-           this.material.uniforms.uNoiseAmount.value = this.userData.baseNoiseAmount; 
-       }
+      // Apply immediately
+      if (this.material && this.material.uniforms) {
+          this.material.uniforms.effectIntensity.value = this.userData.baseEffectIntensity;
+      }
   }.bind(mesh);
-} // End createStarfieldWarpEffect
+}
 
 function createLiquidCrystalEffect() {
   // Full-screen quad
@@ -5704,7 +5770,6 @@ function createWaterPoolEffect() {
   createAuroraEffect();
   createPortal();
   createWaterPoolEffect();
-  createStarfieldWarpEffect();
   createLiquidCrystalEffect();
   //createApple1Effect();
   //createApple2Effect();
@@ -5714,6 +5779,7 @@ function createWaterPoolEffect() {
   createPopArtEffect();
   createGlitchEffect();
   createPixelSortEffect();
+  createQuantumArchitectEffect();
   createTrippyColors();
   createNeonGridEffect();
   createGeometricPulseEffect();
@@ -5991,13 +6057,13 @@ if (neonGridIdle && neonGridIdle.material.uniforms) {
   neonGridIdle.material.uniforms.audioMid.value = 0.0;
 }
 
-// --- StarfieldWarpEffect (Molten Flow/Glitch Core - Idle) ---
-const starfieldWarpIdle = visualElements.find(e => e.name === 'StarfieldWarpEffect');
-if (starfieldWarpIdle && starfieldWarpIdle.userData && starfieldWarpIdle.userData.customAnimateInitial) {
+    // --- QuantumFoldEffect (Advanced Future-tech Effect - Idle) ---
+const quantumFoldIdle = visualElements.find(e => e.name === 'StarfieldWarpEffect');
+if (quantumFoldIdle && quantumFoldIdle.userData && quantumFoldIdle.userData.customAnimateInitial) {
   try {
-    starfieldWarpIdle.userData.customAnimateInitial();
+    quantumFoldIdle.userData.customAnimateInitial();
   } catch (err) {
-    console.error("Error in StarfieldWarpEffect customAnimateInitial:", err);
+    console.error("Error in QuantumFoldEffect customAnimateInitial:", err);
   }
 }
 
@@ -6354,13 +6420,13 @@ if (neonGridReact && neonGridReact.material.uniforms) {
   neonGridReact.material.uniforms.audioTreble.value = trebleAvg;
 }
 
-// --- StarfieldWarpEffect (Molten Flow/Glitch Core - Reactive) ---
-const starfieldWarpReact = visualElements.find(e => e.name === 'StarfieldWarpEffect');
-if (starfieldWarpReact && starfieldWarpReact.userData && starfieldWarpReact.userData.customAnimateReactive) {
+    // --- QuantumFoldEffect (Advanced Future-tech Effect - Reactive) ---
+const quantumFoldReact = visualElements.find(e => e.name === 'StarfieldWarpEffect');
+if (quantumFoldReact && quantumFoldReact.userData && quantumFoldReact.userData.customAnimateReactive) {
   try {
-    starfieldWarpReact.userData.customAnimateReactive(bassAvg, midAvg, trebleAvg);
+    quantumFoldReact.userData.customAnimateReactive(bassAvg, midAvg, trebleAvg);
   } catch (err) {
-    console.error("Error in StarfieldWarpEffect customAnimateReactive:", err);
+    console.error("Error in QuantumFoldEffect customAnimateReactive:", err);
   }
 }
 
@@ -6750,7 +6816,7 @@ case 'ArrowUp': {
   const activeMaterial = activeEffect.material; // Convenience variable
 
   // Check if the effect supports multiple visual styles
-  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "WaterPool");
+  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "WaterPool" || activeEffect.name === "StarfieldWarpEffect");
   const isOrange = (activeEffect.name === "Orange");
   const isParticles = (activeEffect.name === "CameraParticles");
   const isWaves = (activeEffect.name === "Waves");
@@ -6762,6 +6828,7 @@ case 'ArrowUp': {
   const isAurora = (activeEffect.name === "AuroraEffect");
   const isPortal = (activeEffect.name === "Portal");
   const isWaterPool = (activeEffect.name === "WaterPool");
+  const isStarfieldWarp = (activeEffect.name === "StarfieldWarpEffect");
 
   if (supportsMultiVisual && activeMaterial.uniforms && "visualMode" in activeMaterial.uniforms) {
     let currentState = Math.round(activeMaterial.uniforms.visualMode.value); // Use Math.round for robustness
@@ -6926,6 +6993,31 @@ case 'ArrowUp': {
         activeEffect.material.uniforms.visualMode.value = 0.0;
         console.log('WaterPool: visualMode set to', activeEffect.material.uniforms.visualMode.value);
         showActionMessage("water visual: off");
+      }
+    } else if (isStarfieldWarp) {
+    // --- QuantumFoldEffect Visual Mode Logic ---
+      if (currentState === 0) {
+        // Turn camera on and set to style 1
+        toggleCameraBackground();
+        activeEffect.userData.visualMode = 1.0;
+        activeEffect.material.uniforms.visualMode.value = 1.0;
+        showActionMessage("starfield visual: style 1 (warp distortion)");
+      } else if (currentState === 1) {
+        // Style 2 - portal view
+        activeEffect.userData.visualMode = 2.0;
+        activeEffect.material.uniforms.visualMode.value = 2.0;
+        showActionMessage("starfield visual: style 2 (portal view)");
+      } else if (currentState === 2) {
+        // Style 3 - space reflection
+        activeEffect.userData.visualMode = 3.0;
+        activeEffect.material.uniforms.visualMode.value = 3.0;
+        showActionMessage("starfield visual: style 3 (space reflection)");
+      } else { // currentState is 3
+        // Turn camera off and reset to off
+        toggleCameraBackground();
+        activeEffect.userData.visualMode = 0.0;
+        activeEffect.material.uniforms.visualMode.value = 0.0;
+        showActionMessage("starfield visual: off");
       }
     } else if (isScribble) {
       // --- NEW: Scribble Effect Logic --- (Cycle 0, 1, 2, 3)
@@ -7136,6 +7228,12 @@ if (aurora && aurora.material && aurora.material.uniforms) {
 const waterPool = visualElements.find(e => e.name === 'WaterPool');
 if (waterPool && waterPool.userData.customAdjustIntensity) {
   waterPool.userData.customAdjustIntensity(intensityLevel);
+}
+
+// --- QuantumFoldEffect Intensity Adjustment ---
+const quantumFold = visualElements.find(e => e.name === 'StarfieldWarpEffect');
+if (quantumFold && quantumFold.userData.customAdjustIntensity) {
+  quantumFold.userData.customAdjustIntensity(intensityLevel);
 }
 
 // --- Scribble (Intensity Slider) ---
