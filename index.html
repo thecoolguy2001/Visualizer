@@ -4077,8 +4077,9 @@ function createLiquidCrystalEffect() {
       audioMid:        { value: 0.0 },
       audioTreble:     { value: 0.0 },
       effectIntensity: { value: 1.0 },
-      warpAmplitude:   { value: 0.4 },     // Strong warping for flowing plaid effect
-      blurWidth:       { value: 0.3 },     // Not used but kept for compatibility
+      gridScale:       { value: 8.0 },     // Controls grid density
+      tunnelDepth:     { value: 0.6 },     // Controls fisheye distortion depth
+      lineWidth:       { value: 0.015 },   // Controls line thickness
       
       // Visual Mode Uniforms
       visualMode: { value: 0.0 },
@@ -4101,8 +4102,9 @@ function createLiquidCrystalEffect() {
       uniform float audioMid;
       uniform float audioTreble;
       uniform float effectIntensity;
-      uniform float warpAmplitude;
-      uniform float blurWidth;
+      uniform float gridScale;
+      uniform float tunnelDepth;
+      uniform float lineWidth;
       
       // Visual Mode
       uniform float visualMode;
@@ -4111,104 +4113,92 @@ function createLiquidCrystalEffect() {
 
       varying vec2 vUv;
 
+      // Function to create a soft, glowing line
+      float glowingLine(float dist, float width, float glow) {
+          float w = width * 0.5;
+          float g = w + glow;
+          float line = smoothstep(w, 0.0, dist);
+          float halo = smoothstep(g, w, dist) * 0.5; // Softer glow
+          return line + halo;
+      }
+
       void main() {
-        vec2 uv = vUv;
-        vec2 p = uv * 2.0 - 1.0;
+        vec2 p = (vUv - 0.5) * 2.0;
         p.x *= resolution.x / resolution.y;
         
-        // Create infinite zoom into tunnel effect
-        float zoom = time * 0.5 + audioBass * 2.0;
-        vec2 center = vec2(0.0, 0.0);
-        
-        // Create perspective warping like the reference image
-        float dist = length(p - center);
-        float angle = atan(p.y - center.y, p.x - center.x);
-        
-        // Apply zoom and perspective distortion
-        float perspective = 1.0 / (1.0 + dist * 0.5);
-        vec2 coords = p / (1.0 + zoom * perspective);
-        
-        // Heavy warping to create the tunnel effect like the reference
-        float warpStrength = 0.3 + audioMid * 0.2;
-        coords.x += sin(coords.y * 4.0 + time) * warpStrength * perspective;
-        coords.y += sin(coords.x * 4.0 - time) * warpStrength * perspective;
-        
-        // Create the grid pattern - this is what makes it PLAID
-        float gridSize = 0.2 - audioBass * 0.05;
-        vec2 grid = coords / gridSize;
-        
-        // Get the fractional part for line detection
-        vec2 gridFract = fract(grid);
-        vec2 gridCell = floor(grid);
-        
-        // Create thick horizontal and vertical lines
-        float lineWidth = 0.1 + audioTreble * 0.05;
-        float horizontalLine = smoothstep(lineWidth, lineWidth + 0.02, gridFract.y) * 
-                              smoothstep(lineWidth, lineWidth + 0.02, 1.0 - gridFract.y);
-        float verticalLine = smoothstep(lineWidth, lineWidth + 0.02, gridFract.x) * 
-                            smoothstep(lineWidth, lineWidth + 0.02, 1.0 - gridFract.x);
-        
-        // Invert so lines are 1.0, spaces are 0.0
-        horizontalLine = 1.0 - horizontalLine;
-        verticalLine = 1.0 - verticalLine;
-        
-        // Create plaid pattern with alternating colors
-        vec3 redColor = vec3(0.8, 0.2, 0.2);
-        vec3 greenColor = vec3(0.2, 0.8, 0.2);
-        vec3 darkRed = vec3(0.4, 0.1, 0.1);
-        vec3 darkGreen = vec3(0.1, 0.4, 0.1);
-        
-        // Background grid color based on position
-        bool isRedRow = mod(gridCell.y, 2.0) < 1.0;
-        bool isRedCol = mod(gridCell.x, 2.0) < 1.0;
-        
-        vec3 backgroundColor = vec3(0.05); // Dark background
-        
-        // Color the horizontal lines
-        vec3 horizontalColor = isRedRow ? redColor : greenColor;
-        vec3 verticalColor = isRedCol ? redColor : greenColor;
-        
-        // Combine the lines to create plaid effect
-        vec3 color = backgroundColor;
-        
-        // Add horizontal stripes
-        color = mix(color, horizontalColor, horizontalLine);
-        
-        // Add vertical stripes
-        color = mix(color, verticalColor, verticalLine * 0.7);
-        
-        // Create darker intersections for plaid pattern
-        float intersection = horizontalLine * verticalLine;
-        vec3 intersectionColor = (isRedRow == isRedCol) ? darkRed : darkGreen;
-        color = mix(color, intersectionColor, intersection * 0.5);
-        
-        // No glow effects - keep it solid like real plaid fabric
-        
-        // Audio brightness
-        float audioBrightness = 1.0 + (audioBass + audioMid + audioTreble) * 0.15 * effectIntensity;
-        color *= audioBrightness;
-        
-        // === VISUAL MODE BLENDING ===
-        if (cameraActive > 0.5) {
-          vec3 cameraColor = texture2D(cameraTexture, vUv).rgb;
+        // === CAMERA GRID DISTORTION (Mode 1) ===
+        vec2 distortedP = p;
+        if (abs(visualMode - 1.0) < 0.1 && cameraActive > 0.5) {
+          // Sample camera texture for distortion (downsampled to keep feed hidden)
+          vec2 camUv = vUv * 0.18 + 0.41; // Small sampling area to hide feed
+          vec3 camColor = texture2D(cameraTexture, camUv).rgb;
           
-          if (abs(visualMode - 1.0) < 0.1) {
-            // Mode 1: Camera modulates pattern intensity
-            float camLum = (cameraColor.r + cameraColor.g + cameraColor.b) / 3.0;
-            color *= 0.5 + camLum;
-          } else if (abs(visualMode - 2.0) < 0.1) {
-            // Mode 2: Additive blend
-            color = cameraColor + color * 0.8;
-          } else if (abs(visualMode - 3.0) < 0.1) {
-            // Mode 3: Multiply blend
-            color = cameraColor * (1.0 + color);
-          } else if (abs(visualMode - 4.0) < 0.1) {
-            // Mode 4: Mixed blend
-            color = mix(cameraColor, color, 0.5) + color * 0.3;
-          }
+          // Use camera data to create moderate parametric effects on the grid
+          float camLum = dot(camColor, vec3(0.299, 0.587, 0.114));
+          vec2 camDisplace = (camColor.rg - 0.5) * 1.2; // Moderate displacement
+          
+          // Apply moderate camera-based displacement to grid coordinates
+          float displaceStrength = 0.12; // Balanced strength
+          distortedP += camDisplace * displaceStrength;
+          
+          // Add moderate wave-like distortion based on camera brightness
+          distortedP.x += sin(vUv.y * 16.0 + time * 2.2 + camLum * 8.0) * camLum * 0.08;
+          distortedP.y += cos(vUv.x * 14.0 + time * 2.0 + camLum * 7.0) * camLum * 0.07;
+          
+          // Add subtle layers of camera-driven distortion
+          distortedP.x += sin(vUv.y * 6.0 + time + camColor.r * 4.0) * camColor.r * 0.04;
+          distortedP.y += cos(vUv.x * 5.0 + time + camColor.g * 4.0) * camColor.g * 0.03;
+          
+          // Add gentle spiral distortion based on camera blue channel
+          float angle = atan(distortedP.y, distortedP.x) + camColor.b * 1.5;
+          float radius = length(distortedP);
+          distortedP.x += cos(angle + time * camColor.b * 0.5) * radius * camColor.b * 0.02;
+          distortedP.y += sin(angle + time * camColor.b * 0.5) * radius * camColor.b * 0.02;
         }
+        
+        // Fisheye distortion - INWARD curve (tunnel effect) 
+        float r2 = dot(distortedP, distortedP);
+        float distortion = 1.0 / (1.0 + (tunnelDepth + audioBass * 0.3) * r2);
+        vec2 uv = distortedP * distortion;
+        
+        // Grid coordinates with zoom-out animation
+        float zoomSpeed = 0.3;
+        vec2 gridCoord = uv * (gridScale + audioMid * 1.5) - sign(uv) * time * zoomSpeed;
+        vec2 gridLines = abs(fract(gridCoord) - 0.5);
 
-        gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+        // Define colors from the image
+        vec3 redColor   = vec3(1.0, 0.1, 0.1);
+        vec3 greenColor = vec3(0.1, 1.0, 0.1);
+        vec3 bgColor    = vec3(0.0, 0.0, 0.1); // Deep navy blue
+
+        // Calculate line intensities with glow
+        float h_intensity = glowingLine(gridLines.y, lineWidth, 0.2 + audioTreble * 0.1);
+        float v_intensity = glowingLine(gridLines.x, lineWidth, 0.2 + audioTreble * 0.1);
+
+        // Additive color blending
+        vec3 finalColor = bgColor;
+        finalColor += h_intensity * redColor;
+        finalColor += v_intensity * greenColor;
+        
+        // Apply overall brightness based on audio and intensity (slightly reduced max)
+        float audioEnergy = 1.0 + (audioBass + audioMid + audioTreble) * 0.16 * effectIntensity;
+        finalColor *= audioEnergy;
+
+        // === VISUAL MODE BLENDING ===
+        if (cameraActive > 0.5 && abs(visualMode - 2.0) < 0.1) {
+          vec3 cameraColor = texture2D(cameraTexture, vUv).rgb;
+          // Mode 2: Additive blend with camera
+          finalColor = cameraColor * 0.6 + finalColor * 0.8;
+        } else if (cameraActive > 0.5 && abs(visualMode - 3.0) < 0.1) {
+          vec3 cameraColor = texture2D(cameraTexture, vUv).rgb;
+          // Mode 3: Color modulation
+          finalColor = cameraColor * (1.0 + finalColor * 0.5);
+        }
+        
+        // Note: Mode 1 camera influence is now handled in the main effect parameters,
+        // not in the final color blending
+
+        gl_FragColor = vec4(clamp(finalColor, 0.0, 1.0), 1.0);
       }
     `,
     depthTest: false,
@@ -4220,8 +4210,9 @@ function createLiquidCrystalEffect() {
 
   // Store base values for dynamic adjustments
   mesh.userData.baseEffectIntensity = 1.0;
-  mesh.userData.baseWarpAmplitude   = 0.4;
-  mesh.userData.baseBlurWidth       = 0.3;
+  mesh.userData.baseGridScale       = 4.0; // Adjusted for better visual scale
+  mesh.userData.baseTunnelDepth     = 0.5; // Adjusted for better fisheye
+  mesh.userData.baseLineWidth       = 0.25; // Significantly thicker bars
 
   scene.add(mesh);
   visualElements.push(mesh);
@@ -4232,10 +4223,12 @@ function createLiquidCrystalEffect() {
     const t = performance.now() * 0.001;
     mat.uniforms.time.value            = t;
     mat.uniforms.audioBass.value       = 0.0;
-    mat.uniforms.audioMid.value        = 0.05;   // small so warp remains visible
+    mat.uniforms.audioMid.value        = 0.0;
     mat.uniforms.audioTreble.value     = 0.0;
     mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity;
-    mat.uniforms.warpAmplitude.value   = this.userData.baseWarpAmplitude;
+    mat.uniforms.gridScale.value       = this.userData.baseGridScale;
+    mat.uniforms.tunnelDepth.value     = this.userData.baseTunnelDepth;
+    mat.uniforms.lineWidth.value       = this.userData.baseLineWidth;
     mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
     
     // Update camera texture if available
@@ -4251,17 +4244,88 @@ function createLiquidCrystalEffect() {
   mesh.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
     const mat = this.material;
     const t = performance.now() * 0.001;
-    mat.uniforms.time.value            = t;
-    mat.uniforms.audioBass.value       = bassAvg;
-    mat.uniforms.audioMid.value        = midAvg;
-    mat.uniforms.audioTreble.value     = trebleAvg;
-
-    // Simple audio reactivity
-    // Mids increase warping slightly
-    mat.uniforms.warpAmplitude.value = this.userData.baseWarpAmplitude * (1.0 + midAvg * 0.5);
     
-    // Effect intensity varies with overall audio energy
-    mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity * (1.0 + (bassAvg + midAvg + trebleAvg) * 0.2);
+    // Initialize smoothed values if they don't exist
+    if (!this.userData.smoothedBass) this.userData.smoothedBass = 0;
+    if (!this.userData.smoothedMid) this.userData.smoothedMid = 0;
+    if (!this.userData.smoothedTreble) this.userData.smoothedTreble = 0;
+    if (!this.userData.wormholeTime) this.userData.wormholeTime = 0;
+    
+    // Smooth the audio data to prevent jankiness
+    this.userData.smoothedBass = THREE.MathUtils.lerp(this.userData.smoothedBass, bassAvg, 0.1);
+    this.userData.smoothedMid = THREE.MathUtils.lerp(this.userData.smoothedMid, midAvg, 0.15);
+    this.userData.smoothedTreble = THREE.MathUtils.lerp(this.userData.smoothedTreble, trebleAvg, 0.2);
+    
+    // Create wormhole zoom effect tied directly to audio energy
+    const totalAudioEnergy = this.userData.smoothedBass + this.userData.smoothedMid + this.userData.smoothedTreble;
+    let wormholeSpeed = 2.0 + totalAudioEnergy * 8.0; // Much faster base speed + strong audio response
+    
+    // ADD: Dynamic speed variations based on individual frequency bands
+    // Bass creates sudden speed bursts (further moderated)
+    if (this.userData.smoothedBass > 0.75) {
+      wormholeSpeed *= 1.25 + this.userData.smoothedBass * 1.2;
+    }
+    // Treble creates rapid speed fluctuations
+    wormholeSpeed *= 1.0 + Math.sin(t * 10.0) * this.userData.smoothedTreble * 0.3;
+    // Mid creates smooth speed waves
+    wormholeSpeed *= 1.0 + Math.sin(t * 2.0) * this.userData.smoothedMid * 0.5;
+    
+    this.userData.wormholeTime += wormholeSpeed * 0.016; // Accumulate time for infinite zoom
+    
+    mat.uniforms.time.value = this.userData.wormholeTime;
+    mat.uniforms.audioBass.value = this.userData.smoothedBass;
+    mat.uniforms.audioMid.value = this.userData.smoothedMid;
+    mat.uniforms.audioTreble.value = this.userData.smoothedTreble;
+
+
+
+    // Smooth audio reactivity for parameters
+    // Bass drives tunnel depth (wormhole intensity)
+    let targetTunnelDepth = this.userData.baseTunnelDepth * (1.0 + this.userData.smoothedBass * 0.6);
+    
+    // ADD: Controlled warping variations based on audio peaks
+    // Sudden bass hits create warp spikes (further reduced intensity)
+    if (bassAvg > this.userData.smoothedBass + 0.4) {
+      targetTunnelDepth *= 1.3 + bassAvg * 0.5;
+    }
+    // High treble creates rapid warp oscillations (reduced)
+    targetTunnelDepth *= 1.0 + Math.sin(t * 15.0 + this.userData.smoothedTreble * 5.0) * this.userData.smoothedTreble * 0.25;
+    // Mid frequencies create breathing warp effect
+    targetTunnelDepth *= 1.0 + Math.sin(t * 3.0) * this.userData.smoothedMid * 0.3;
+    
+    mat.uniforms.tunnelDepth.value = THREE.MathUtils.lerp(mat.uniforms.tunnelDepth.value, targetTunnelDepth, 0.1);
+    
+    // Mid frequencies affect grid density smoothly
+    let targetGridScale = this.userData.baseGridScale * (1.0 + this.userData.smoothedMid * 0.4);
+    
+    // ADD: Grid density variations for more dynamic effects
+    // Bass drops create grid compression waves (reduced)
+    if (this.userData.smoothedBass > 0.6) {
+      targetGridScale *= 0.8 + Math.sin(t * 4.0) * this.userData.smoothedBass * 0.2;
+    }
+    // Treble creates grid jitter/shake effect (reduced)
+    targetGridScale *= 1.0 + Math.sin(t * 20.0 + Math.cos(t * 7.0)) * this.userData.smoothedTreble * 0.08;
+    
+    mat.uniforms.gridScale.value = THREE.MathUtils.lerp(mat.uniforms.gridScale.value, targetGridScale, 0.08);
+    
+    // Treble affects line thickness for fine detail
+    let targetLineWidth = this.userData.baseLineWidth * (1.0 + this.userData.smoothedTreble * 0.3);
+    
+    // ADD: Line width variations for more visual impact
+    // Mid frequencies create pulsing line thickness
+    targetLineWidth *= 1.0 + Math.sin(t * 6.0) * this.userData.smoothedMid * 0.4;
+    // Bass creates line width increases on hits (further reduced intensity)
+    if (bassAvg > 0.85) {
+      targetLineWidth *= 1.2 + bassAvg * 0.3;
+    }
+    
+    mat.uniforms.lineWidth.value = THREE.MathUtils.lerp(mat.uniforms.lineWidth.value, targetLineWidth, 0.12);
+    
+    // Overall effect intensity tied to total audio energy (reduced max)
+    let targetIntensity = this.userData.baseEffectIntensity * (1.0 + totalAudioEnergy * 0.25);
+    
+    mat.uniforms.effectIntensity.value = THREE.MathUtils.lerp(mat.uniforms.effectIntensity.value, targetIntensity, 0.1);
+    
     mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
     
     // Update camera texture if available
@@ -4276,11 +4340,15 @@ function createLiquidCrystalEffect() {
   // ——— Adjust overall intensity using keys 1–9
   mesh.userData.customAdjustIntensity = function(level) {
     this.userData.baseEffectIntensity = 0.5 + level * 0.15;   // maps 1→0.65, 9→1.85
-    this.userData.baseWarpAmplitude   = 0.2 + level * 0.08;   // 0.28→0.92 for warp intensity
+    this.userData.baseGridScale       = 2.0 + level * 0.5;    // 2.5→6.5 for grid density
+    this.userData.baseTunnelDepth     = 0.3 + level * 0.05;   // 0.35→0.75 for tunnel depth
+    this.userData.baseLineWidth       = 0.1 + level * 0.03; // 0.13→0.37 for line thickness
 
     if (this.material) {
       this.material.uniforms.effectIntensity.value = this.userData.baseEffectIntensity;
-      this.material.uniforms.warpAmplitude.value   = this.userData.baseWarpAmplitude;
+      this.material.uniforms.gridScale.value       = this.userData.baseGridScale;
+      this.material.uniforms.tunnelDepth.value     = this.userData.baseTunnelDepth;
+      this.material.uniforms.lineWidth.value       = this.userData.baseLineWidth;
     }
   }.bind(mesh);
 }
@@ -5844,6 +5912,11 @@ function updateVisibility() {
       // For effects that support only an on/off mode, we set it to 1.
       // (For multi-style effects like Orange, you might choose a default state such as 1.)
       activeEffect.material.uniforms.visualMode.value = 1.0;
+      
+      // Special handling for WaterPool effect which stores visual mode in userData too
+      if (activeEffect.name === 'WaterPool' && activeEffect.userData) {
+        activeEffect.userData.visualMode = 1.0;
+      }
     }
   });
 }
@@ -6608,6 +6681,11 @@ if (apple1Effect && apple1Effect.material.uniforms) {
         if ('visualMode' in elem.material.uniforms) {
           elem.material.uniforms.visualMode.value = 1.0;
         }
+        
+        // Special handling for WaterPool effect which stores visual mode in userData too
+        if (elem.name === 'WaterPool' && elem.userData) {
+          elem.userData.visualMode = 1.0;
+        }
       }
     });
     console.log('Camera feed applied to effects.');
@@ -6631,6 +6709,11 @@ if (apple1Effect && apple1Effect.material.uniforms) {
         // NEW: Set visualMode uniform to 0.0 if available
         if ('visualMode' in elem.material.uniforms) {
           elem.material.uniforms.visualMode.value = 0.0;
+        }
+        
+        // Special handling for WaterPool effect which stores visual mode in userData too
+        if (elem.name === 'WaterPool' && elem.userData) {
+          elem.userData.visualMode = 0.0;
         }
       }
     });
@@ -6858,7 +6941,7 @@ case 'ArrowUp': {
   const activeMaterial = activeEffect.material; // Convenience variable
 
   // Check if the effect supports multiple visual styles
-  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "WaterPool" || activeEffect.name === "StarfieldWarpEffect");
+  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "WaterPool" || activeEffect.name === "StarfieldWarpEffect" || activeEffect.name === "LiquidCrystalEffect" || activeEffect.name === "PixelSortEffect" || activeEffect.name === "PopArtEffect");
   const isOrange = (activeEffect.name === "Orange");
   const isParticles = (activeEffect.name === "CameraParticles");
   const isWaves = (activeEffect.name === "Waves");
@@ -6871,6 +6954,9 @@ case 'ArrowUp': {
   const isPortal = (activeEffect.name === "Portal");
   const isWaterPool = (activeEffect.name === "WaterPool");
   const isStarfieldWarp = (activeEffect.name === "StarfieldWarpEffect");
+  const isLiquidCrystal = (activeEffect.name === "LiquidCrystalEffect");
+  const isPixelSort = (activeEffect.name === "PixelSortEffect");
+  const isPopArt = (activeEffect.name === "PopArtEffect");
 
   if (supportsMultiVisual && activeMaterial.uniforms && "visualMode" in activeMaterial.uniforms) {
     let currentState = Math.round(activeMaterial.uniforms.visualMode.value); // Use Math.round for robustness
@@ -7094,6 +7180,45 @@ case 'ArrowUp': {
         toggleCameraBackground();
         activeMaterial.uniforms.visualMode.value = 0.0;
         showActionMessage("aurora visual: off");
+      }
+    } else if (isLiquidCrystal) {
+      // --- LiquidCrystalEffect Logic (3 modes: 0, 1, 2, 3) ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("liquid crystal visual: style 1 (camera bends grid)");
+      } else if (currentState === 1) {
+        activeMaterial.uniforms.visualMode.value = 2.0;
+        showActionMessage("liquid crystal visual: style 2 (additive blend)");
+      } else if (currentState === 2) {
+        activeMaterial.uniforms.visualMode.value = 3.0;
+        showActionMessage("liquid crystal visual: style 3 (color modulation)");
+      } else { // currentState is 3
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("liquid crystal visual: off");
+      }
+    } else if (isPixelSort) {
+      // --- PixelSortEffect Logic (binary: 0, 1) ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("pixel sort visual: camera input");
+      } else { // currentState is 1
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("pixel sort visual: procedural");
+      }
+    } else if (isPopArt) {
+      // --- PopArtEffect Logic (binary: 0, 1) ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("pop art visual: camera input");
+      } else { // currentState is 1
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("pop art visual: procedural");
       }
     } else {
        // Generic toggle for other effects
