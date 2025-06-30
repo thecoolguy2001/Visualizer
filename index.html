@@ -4509,251 +4509,756 @@ function createAbstractFlowEffect() {
 }
 
 function createGeometricPulseEffect() {
-  // Create a group to hold multiple geometric objects
+  // Create the main group for the 3D Pipes effect
   const group = new THREE.Group();
   group.name = 'GeometricPulseEffect';
 
-  // Add more 80s-style geometries
-  const geometryTypes = [
-      new THREE.BoxBufferGeometry(50, 50, 50),
-      new THREE.SphereBufferGeometry(30, 16, 16),
-      new THREE.TorusBufferGeometry(40, 10, 8, 20),
-      new THREE.ConeBufferGeometry(30, 60, 16),
-      new THREE.TorusKnotBufferGeometry(35, 8, 48, 6, 2, 3), // Added TorusKnot
-      new THREE.OctahedronBufferGeometry(40, 0), // Added Octahedron
+  // --- Pipe System Configuration ---
+  const maxPipes = 8; // Maximum number of simultaneous pipe systems
+  const segmentLength = 35; // MUCH LONGER pipe segments - proper pipe proportions!
+  const pipeRadius = 4; // Slightly larger radius for better visibility
+  const connectionSphereRadius = 5; // Slightly larger junction spheres
+  const maxSegments = 300; // Maximum segments per pipe before recycling - LONGER PIPES
+  
+  // Define the 6 possible directions for pipe growth (3D maze style)
+  const directions = [
+    new THREE.Vector3(1, 0, 0),   // Right
+    new THREE.Vector3(-1, 0, 0),  // Left  
+    new THREE.Vector3(0, 1, 0),   // Up
+    new THREE.Vector3(0, -1, 0),  // Down
+    new THREE.Vector3(0, 0, 1),   // Forward
+    new THREE.Vector3(0, 0, -1)   // Backward
   ];
+  
+  // Bright, vibrant color palette for pipes
+  const pipeColors = [
+    0xff1744, // Bright Red
+    0x2196f3, // Bright Blue
+    0x4caf50, // Bright Green
+    0xff9800, // Bright Orange
+    0x9c27b0, // Bright Purple
+    0xffeb3b, // Bright Yellow
+    0x00bcd4, // Bright Cyan
+    0xe91e63  // Bright Pink
+  ];
+  
+  // Create amazing reflective pipe materials with PBR shading
+  const pipeMaterials = pipeColors.map(color => new THREE.MeshStandardMaterial({
+    color: new THREE.Color(color).multiplyScalar(1.2), // BRIGHT colors!
+    metalness: 0.8, // High metallic look
+    roughness: 0.15, // Smooth reflective surface
+    emissive: new THREE.Color(color).multiplyScalar(0.15), // Subtle glow
+    emissiveIntensity: 0.3,
+    envMapIntensity: 1.5, // Enhanced environment reflections
+  }));
+  
+  // Create chrome-like material for connections
+  const sphereMaterial = new THREE.MeshStandardMaterial({
+    color: 0xc0c0c0, // Chrome silver
+    metalness: 0.95, // Almost fully metallic
+    roughness: 0.05, // Very smooth mirror-like finish
+    emissive: 0x333333, // Slight blue-white glow
+    emissiveIntensity: 0.2,
+    envMapIntensity: 2.0, // Maximum environment reflections
+  });
+  
+  // Geometries for efficiency (reuse) - HIGH RESOLUTION for amazing quality
+  const cylinderGeometry = new THREE.CylinderGeometry(pipeRadius, pipeRadius, segmentLength, 32, 4); // High resolution
+  const sphereGeometry = new THREE.SphereGeometry(connectionSphereRadius, 40, 32); // Ultra high resolution spheres
+  
+  // Initialize pipe systems array
+  group.userData.pipeSystems = [];
 
-  const numObjects = 30; // Increased object count slightly
-  const baseColors = [0xff00ff, 0x00ffff, 0xffff00, 0xff8800, 0x00ff00, 0xff4040]; // Added Green, Red
-
-  for (let i = 0; i < numObjects; i++) {
-      const geoIndex = i % geometryTypes.length;
-      const geo = geometryTypes[geoIndex];
-      const useWireframe = Math.random() < 0.15; // Randomly make some wireframe
-
-      const material = new THREE.MeshStandardMaterial({
-          color: baseColors[i % baseColors.length],
-          metalness: 0.4, // Slightly more metallic
-          roughness: 0.5,
-          wireframe: useWireframe,
-          emissive: 0x000000, // Start with no emission
-          // side: THREE.DoubleSide // Ensure wireframes render correctly if needed
-      });
-
-      const mesh = new THREE.Mesh(geo, material);
-
-      // --- Initial Position & State ---
-      const initialPos = new THREE.Vector3(
-          (Math.random() - 0.5) * 800,
-          (Math.random() - 0.5) * 600,
-          (Math.random() - 0.5) * 800
-      );
-      mesh.position.copy(initialPos);
-
-      mesh.rotation.set(
-          Math.random() * Math.PI * 2,
-          Math.random() * Math.PI * 2,
-          Math.random() * Math.PI * 2
-      );
-
-      // --- Store UserData ---
-      mesh.userData = {
-          initialPosition: initialPos.clone(),
-          initialScale: 0.4 + Math.random() * 0.8, // Slightly smaller base size range
-          rotationSpeed: new THREE.Vector3(
-              (Math.random() - 0.5) * 0.025, // Slightly faster base rotation
-              (Math.random() - 0.5) * 0.025,
-              (Math.random() - 0.5) * 0.025
-          ),
-          baseColor: new THREE.Color(baseColors[i % baseColors.length]),
-          phaseOffset: Math.random() * Math.PI * 2,
-          velocity: new THREE.Vector3(), // Initialize velocity
-          // Parameters for movement types
-          orbitRadius: 30 + Math.random() * 50,
-          orbitSpeed: 0.5 + Math.random() * 1.0,
-          orbitAxis: new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize()
-      };
-
-      mesh.scale.setScalar(mesh.userData.initialScale);
-      group.add(mesh);
-
-       // --- Optional Outlines --- (Can impact performance)
-       // if (!useWireframe && Math.random() < 0.2) { // Add outlines to some non-wireframe shapes
-       //     const edgesGeo = new THREE.EdgesGeometry(geo);
-       //     const edgesMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
-       //     const wireframe = new THREE.LineSegments(edgesGeo, edgesMat);
-       //     mesh.add(wireframe); // Add outline as child
-       // }
+  // Create initial pipe systems
+  for (let i = 0; i < maxPipes; i++) {
+    const pipeSystem = {
+      segments: [],
+      currentPosition: new THREE.Vector3(
+        (Math.random() - 0.5) * 200,
+        (Math.random() - 0.5) * 200, 
+        (Math.random() - 0.5) * 200
+      ),
+      currentDirection: directions[Math.floor(Math.random() * directions.length)].clone(),
+      color: i % pipeColors.length,
+      material: pipeMaterials[i % pipeMaterials.length].clone(),
+      growthTimer: Math.random() * 60, // Stagger initial growth
+      segmentCount: 0,
+      isActive: true,
+      branchChance: 0.02, // 2% chance to branch per segment
+      turnChance: 0.15,   // 15% chance to turn per segment
+      speed: 1.0,         // Growth speed multiplier
+      glowIntensity: 0.0, // Audio-reactive glow
+      pulseMagnitude: 1.0, // Audio-reactive pulse scale
+      // Audio-driven movement
+      movementOffset: new THREE.Vector3(),
+      movementSpeed: new THREE.Vector3(
+        (Math.random() - 0.5) * 0.02,
+        (Math.random() - 0.5) * 0.02,
+        (Math.random() - 0.5) * 0.02
+      ),
+      // Collapsing effect
+      isCollapsing: false,
+      collapseTimer: 0,
+      collapseSpeed: 1 + Math.floor(Math.random() * 3), // Random collapse speed per pipe
+      maxLength: maxSegments + Math.floor((Math.random() - 0.5) * 150) // Individual max length
+    };
+    group.userData.pipeSystems.push(pipeSystem);
   }
 
-  // --- Lights --- (Ensure they exist)
-  if (!scene.getObjectByName("PulseAmbientLight")) {
-      const ambientLight = new THREE.AmbientLight(0x505050); // Slightly brighter ambient
-      ambientLight.name = "PulseAmbientLight";
-      scene.add(ambientLight);
+  // --- AMAZING ENHANCED LIGHTING SYSTEM ---
+  if (!scene.getObjectByName("PipesAmbientLight")) {
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.8); // Slightly brighter ambient
+    ambientLight.name = "PipesAmbientLight";
+    scene.add(ambientLight);
   }
-  if (!scene.getObjectByName("PulseDirectionalLight")) {
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0); // Brighter directional
-      directionalLight.name = "PulseDirectionalLight";
-      directionalLight.position.set(0.8, 1, 0.5);
-      scene.add(directionalLight);
+  
+  // Create environment map for reflections
+  if (!scene.userData.pipeEnvMap) {
+    const envMapSize = 256;
+    const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(envMapSize);
+    cubeRenderTarget.texture.type = THREE.HalfFloatType;
+    scene.userData.pipeEnvMap = cubeRenderTarget.texture;
+    
+    // Apply environment map to all pipe materials
+    pipeMaterials.forEach(material => {
+      material.envMap = scene.userData.pipeEnvMap;
+    });
+    sphereMaterial.envMap = scene.userData.pipeEnvMap;
   }
+  
+  // Multiple directional lights for amazing illumination
+  const lightConfigs = [
+    { pos: new THREE.Vector3(300, 300, 300), color: 0xffffff, intensity: 1.2 },
+    { pos: new THREE.Vector3(-300, 300, -300), color: 0x4488ff, intensity: 0.8 }, // Cool blue
+    { pos: new THREE.Vector3(300, -300, 0), color: 0xff8844, intensity: 0.9 },   // Warm orange
+    { pos: new THREE.Vector3(-300, -300, 300), color: 0xff44aa, intensity: 0.7 }  // Purple accent
+  ];
+  
+  lightConfigs.forEach((config, index) => {
+    const lightName = `PipesDirectionalLight${index}`;
+    if (!scene.getObjectByName(lightName)) {
+      const dirLight = new THREE.DirectionalLight(config.color, config.intensity);
+      dirLight.name = lightName;
+      dirLight.position.copy(config.pos);
+      dirLight.target.position.set(0, 0, 0);
+      scene.add(dirLight);
+      scene.add(dirLight.target);
+    }
+  });
+  
+  // Add rim lighting effect
+  if (!scene.getObjectByName("PipesRimLight")) {
+    const rimLight = new THREE.DirectionalLight(0x88ddff, 0.6);
+    rimLight.name = "PipesRimLight";
+    rimLight.position.set(0, 500, -500);
+    scene.add(rimLight);
+  }
+  
+  // Add dynamic point lights that move with the pipes
+  const dynamicLights = [];
+  for (let i = 0; i < 4; i++) {
+    const pointLight = new THREE.PointLight(pipeColors[i % pipeColors.length], 0.8, 200);
+    pointLight.name = `PipesDynamicLight${i}`;
+    pointLight.position.set(
+      (Math.random() - 0.5) * 400,
+      (Math.random() - 0.5) * 400,
+      (Math.random() - 0.5) * 400
+    );
+    scene.add(pointLight);
+    dynamicLights.push(pointLight);
+  }
+  group.userData.dynamicLights = dynamicLights;
 
-  // --- Group UserData ---
+  // --- Group Configuration ---
   group.userData.baseEffectIntensity = 1.0;
-  group.userData.velocityDamping = 0.96;     // Damping factor for velocity
-  group.userData.returnForce = 0.005;      // Strength pulling shapes back to origin
-  group.userData.bassPushStrength = 3.0;    // Force multiplier for bass push
-  group.userData.midOrbitStrength = 0.8;    // Influence of mids on orbit speed/force
-  group.userData.trebleZapStrength = 15.0;  // Velocity magnitude for treble zaps
+  group.userData.bassGrowthMultiplier = 1.0;
+  group.userData.midColorShift = 0.0;
+  group.userData.trebleTurnRate = 1.0;
+  group.userData.lastGrowthTime = 0;
+  group.userData.growthInterval = 60; // Base growth interval in ms
+  
+  // Moving camera view variables
+  group.userData.cameraOrbitRadius = 300;
+  group.userData.cameraOrbitSpeed = 0.6; // Faster initial movement
+  group.userData.cameraHeight = 50;
+  group.userData.viewTime = 0;
+  
+  // Visual mode support
+  group.userData.visualMode = 0.0;
 
   scene.add(group);
   visualElements.push(group);
 
-   // --- Custom JavaScript Functions (Applied to the GROUP) ---
-
-   group.userData.customAnimateInitial = function() {
-      const intensity = this.userData.baseEffectIntensity || 1.0;
-      const damping = this.userData.velocityDamping || 0.96;
-      const returnForce = this.userData.returnForce || 0.005;
-
-      this.children.forEach(mesh => {
-          if (mesh.isMesh && mesh.userData) {
-              // --- Rotation ---
-              mesh.rotation.x += mesh.userData.rotationSpeed.x * intensity * 0.5;
-              mesh.rotation.y += mesh.userData.rotationSpeed.y * intensity * 0.5;
-              mesh.rotation.z += mesh.userData.rotationSpeed.z * intensity * 0.5;
-
-              // --- Scale & Color Reset ---
-              mesh.scale.lerp(new THREE.Vector3().setScalar(mesh.userData.initialScale), 0.1); // Smoothly return scale
-              mesh.material.color.lerp(mesh.userData.baseColor, 0.1); // Smoothly return color
-              mesh.material.emissive.lerp(new THREE.Color(0x000000), 0.1); // Fade out emission
-
-              // --- Movement ---
-              // Apply damping
-              mesh.userData.velocity.multiplyScalar(damping);
-              // Apply return force towards initial position
-              const directionToHome = mesh.userData.initialPosition.clone().sub(mesh.position);
-              const distToHome = directionToHome.length();
-              if (distToHome > 1.0) { // Only apply if reasonably far
-                 directionToHome.normalize();
-                 // Force increases slightly with distance
-                 mesh.userData.velocity.addScaledVector(directionToHome, distToHome * returnForce * intensity);
+  // --- Helper Functions ---
+  
+  // Function to create a new pipe segment
+  function createPipeSegment(position, direction, material, isConnection = false) {
+    let mesh;
+    
+    if (isConnection) {
+      mesh = new THREE.Mesh(sphereGeometry, sphereMaterial.clone());
+      mesh.position.copy(position);
+    } else {
+      mesh = new THREE.Mesh(cylinderGeometry, material);
+      mesh.position.copy(position);
+      
+      // Orient cylinder in direction of growth
+      if (direction.x !== 0) {
+        mesh.rotation.z = Math.PI / 2 * Math.sign(direction.x);
+      } else if (direction.z !== 0) {
+        mesh.rotation.x = Math.PI / 2 * Math.sign(direction.z);
+      }
+      // Y direction is already aligned with cylinder default orientation
+    }
+    
+    mesh.userData = {
+      creationTime: performance.now(),
+      originalPosition: position.clone(),
+      originalScale: isConnection ? 1.0 : 1.0,
+      audioScale: 1.0,
+      glowPhase: Math.random() * Math.PI * 2
+    };
+    
+    return mesh;
+  }
+  
+  // Function to get next direction (with turn logic)
+  function getNextDirection(currentDir, allowTurn = true, forceChange = false) {
+    if (!allowTurn && !forceChange) return currentDir.clone();
+    
+    const availableDirections = directions.filter(dir => {
+      // Prevent immediate reversal (going backwards)
+      return !dir.equals(currentDir.clone().multiplyScalar(-1));
+    });
+    
+    if (forceChange) {
+      // Remove current direction too
+      return availableDirections.filter(dir => !dir.equals(currentDir))[
+        Math.floor(Math.random() * (availableDirections.length - 1))
+      ].clone();
+    }
+    
+    return availableDirections[Math.floor(Math.random() * availableDirections.length)].clone();
+  }
+  
+  // Function to check for collisions/boundaries
+  function isValidPosition(position) {
+    const boundary = 400;
+    return Math.abs(position.x) < boundary && 
+           Math.abs(position.y) < boundary && 
+           Math.abs(position.z) < boundary;
+  }
+  
+  // Function to grow a pipe system
+  function growPipeSystem(pipeSystem, forceGrowth = false) {
+    const now = performance.now();
+    
+    if (!forceGrowth && now - pipeSystem.growthTimer < group.userData.growthInterval / pipeSystem.speed) {
+      return;
+    }
+    
+    // Reset growth timer
+    pipeSystem.growthTimer = now;
+    
+    // Check if we need to start collapsing this individual pipe system
+    if (pipeSystem.segmentCount >= pipeSystem.maxLength && !pipeSystem.isCollapsing) {
+      // Start collapsing effect for this specific pipe
+      pipeSystem.isCollapsing = true;
+      pipeSystem.collapseTimer = 0;
+    }
+    
+    // Handle collapsing pipes - remove segments piece by piece
+    if (pipeSystem.isCollapsing) {
+      pipeSystem.collapseTimer++;
+      
+      // Remove segments from the tail (oldest first) every few frames
+      if (pipeSystem.collapseTimer % 3 === 0 && pipeSystem.segments.length > 0) {
+        const segmentsToRemove = Math.min(pipeSystem.collapseSpeed, pipeSystem.segments.length);
+        
+        for (let i = 0; i < segmentsToRemove; i++) {
+          const segment = pipeSystem.segments.shift(); // Remove from beginning (tail)
+          if (segment) {
+            // Add fade-out effect
+            segment.material.transparent = true;
+            segment.material.opacity = 0.3;
+            
+            // Animate scale down before removal
+            const originalScale = segment.scale.clone();
+            const fadeOut = () => {
+              segment.scale.multiplyScalar(0.8);
+              segment.material.opacity *= 0.7;
+              if (segment.scale.x < 0.1) {
+                group.remove(segment);
+                if (segment.geometry) segment.geometry.dispose();
+                if (segment.material) segment.material.dispose();
+              } else {
+                requestAnimationFrame(fadeOut);
               }
-              // Stop velocity if very slow and near home to prevent oscillation
-              if (mesh.userData.velocity.lengthSq() < 0.01 && distToHome < 5.0) {
-                  mesh.userData.velocity.set(0, 0, 0);
+            };
+            fadeOut();
+          }
+        }
+        pipeSystem.segmentCount = Math.max(0, pipeSystem.segmentCount - segmentsToRemove);
+      }
+      
+      // Reset pipe system when all segments are gone
+      if (pipeSystem.segments.length === 0) {
+        pipeSystem.isCollapsing = false;
+        pipeSystem.collapseTimer = 0;
+        pipeSystem.segmentCount = 0;
+        pipeSystem.currentPosition.set(
+          (Math.random() - 0.5) * 200,
+          (Math.random() - 0.5) * 200,
+          (Math.random() - 0.5) * 200
+        );
+        pipeSystem.currentDirection = directions[Math.floor(Math.random() * directions.length)].clone();
+      }
+    }
+    
+    // Don't grow if pipe is collapsing
+    if (pipeSystem.isCollapsing) return;
+    
+    // Decide if we should turn or branch
+    const shouldTurn = Math.random() < pipeSystem.turnChance * group.userData.trebleTurnRate;
+    const shouldBranch = Math.random() < pipeSystem.branchChance && pipeSystem.segmentCount > 5;
+    
+    // Create connection sphere at current position
+    if (pipeSystem.segmentCount > 0) {
+      const connection = createPipeSegment(pipeSystem.currentPosition, pipeSystem.currentDirection, null, true);
+      connection.material.color.copy(pipeSystem.material.color);
+      connection.material.emissive.copy(pipeSystem.material.emissive);
+      pipeSystem.segments.push(connection);
+      group.add(connection);
+    }
+    
+    // Update direction if turning
+    if (shouldTurn) {
+      pipeSystem.currentDirection = getNextDirection(pipeSystem.currentDirection, true, true);
+    }
+    
+    // Calculate next position
+    const nextPosition = pipeSystem.currentPosition.clone()
+      .add(pipeSystem.currentDirection.clone().multiplyScalar(segmentLength));
+    
+    // Check if next position is valid
+    if (!isValidPosition(nextPosition)) {
+      // Force a turn towards center
+      const toCenter = new THREE.Vector3().sub(pipeSystem.currentPosition).normalize();
+      pipeSystem.currentDirection = getNextDirection(toCenter, true, true);
+      nextPosition.copy(pipeSystem.currentPosition)
+        .add(pipeSystem.currentDirection.clone().multiplyScalar(segmentLength));
               }
+    
+    // Create the pipe segment
+    const segment = createPipeSegment(
+      pipeSystem.currentPosition.clone().add(
+        pipeSystem.currentDirection.clone().multiplyScalar(segmentLength / 2)
+      ),
+      pipeSystem.currentDirection,
+      pipeSystem.material
+    );
+    
+    pipeSystem.segments.push(segment);
+    group.add(segment);
 
               // Update position
-              mesh.position.add(mesh.userData.velocity);
-          }
+    pipeSystem.currentPosition.copy(nextPosition);
+    pipeSystem.segmentCount++;
+    
+    // Handle branching (create a new pipe system)
+    if (shouldBranch && group.userData.pipeSystems.length < maxPipes * 2) {
+      const branchDirection = getNextDirection(pipeSystem.currentDirection, true, true);
+      const newPipeSystem = {
+        segments: [],
+        currentPosition: pipeSystem.currentPosition.clone(),
+        currentDirection: branchDirection,
+        color: Math.floor(Math.random() * pipeColors.length),
+        material: pipeMaterials[Math.floor(Math.random() * pipeMaterials.length)].clone(),
+        growthTimer: now,
+        segmentCount: 0,
+        isActive: true,
+        branchChance: 0.01, // Lower chance for branches
+        turnChance: 0.15,
+        speed: 0.8 + Math.random() * 0.4,
+        glowIntensity: 0.0,
+        pulseMagnitude: 1.0,
+        movementOffset: new THREE.Vector3(),
+        movementSpeed: new THREE.Vector3(
+          (Math.random() - 0.5) * 0.02,
+          (Math.random() - 0.5) * 0.02,
+          (Math.random() - 0.5) * 0.02
+        ),
+        // Collapsing effect
+        isCollapsing: false,
+        collapseTimer: 0,
+        collapseSpeed: 1 + Math.floor(Math.random() * 3), // Random collapse speed per pipe
+        maxLength: maxSegments + Math.floor((Math.random() - 0.5) * 150) // Individual max length
+      };
+      group.userData.pipeSystems.push(newPipeSystem);
+    }
+  }
+  
+  // --- Custom Animation Functions ---
+  
+  group.userData.customAnimateInitial = function() {
+    const intensity = this.userData.baseEffectIntensity || 1.0;
+    const time = performance.now() * 0.001;
+    
+    // Update view time for camera movement
+    this.userData.viewTime = time;
+    
+    // Move the entire group to simulate camera movement around pipes
+    const orbitRadius = this.userData.cameraOrbitRadius;
+    const orbitSpeed = this.userData.cameraOrbitSpeed * 0.5; // Slower when idle
+    const height = this.userData.cameraHeight;
+    
+    // Circular orbit with some vertical movement - FASTER initial animation
+    this.position.x = Math.sin(time * orbitSpeed) * orbitRadius * 0.5;
+    this.position.y = Math.sin(time * orbitSpeed * 0.7) * height * 0.8;
+    this.position.z = Math.cos(time * orbitSpeed) * orbitRadius * 0.5;
+    
+    // Gentle rotation
+    this.rotation.y = time * orbitSpeed * 0.2;
+    
+    // Gentle, steady growth
+    this.userData.growthInterval = 80; // Slower growth when idle
+    this.userData.bassGrowthMultiplier = 1.0;
+    this.userData.trebleTurnRate = 1.0;
+    
+    // Animate dynamic lighting for amazing visual effects
+    if (this.userData.dynamicLights) {
+      this.userData.dynamicLights.forEach((light, index) => {
+        const lightPhase = time * 0.5 + index * Math.PI * 0.5;
+        light.position.x = Math.sin(lightPhase) * 300;
+        light.position.y = Math.cos(lightPhase * 0.7) * 200;
+        light.position.z = Math.cos(lightPhase) * 300;
+        light.intensity = 0.6 + Math.sin(time * 2 + index) * 0.3;
       });
+    }
+
+    // Update each pipe system
+    this.userData.pipeSystems.forEach(pipeSystem => {
+      if (pipeSystem.isActive) {
+        pipeSystem.speed = 0.5 * intensity; // Slower idle speed
+        pipeSystem.turnChance = 0.08; // Less turning when idle
+        
+        // Gentle system movement
+        pipeSystem.movementOffset.x = Math.sin(time * 0.3 + pipeSystem.color) * 2 * intensity;
+        pipeSystem.movementOffset.y = Math.cos(time * 0.4 + pipeSystem.color) * 2 * intensity;
+        pipeSystem.movementOffset.z = Math.sin(time * 0.5 + pipeSystem.color) * 2 * intensity;
+        
+        // Grow pipes occasionally
+        if (Math.random() < 0.02 * intensity) {
+          growPipeSystem(pipeSystem);
+        }
+        
+        // Update segment visual effects with enhanced reflections
+        pipeSystem.segments.forEach((segment, segIndex) => {
+          if (segment.userData) {
+            // Apply system movement offset
+            segment.position.copy(segment.userData.originalPosition)
+              .add(pipeSystem.movementOffset);
+            
+            // Gentle pulsing with enhanced brightness
+            const pulseScale = 1.0 + Math.sin(time * 2 + segment.userData.glowPhase) * 0.05 * intensity;
+            segment.scale.setScalar(segment.userData.originalScale * pulseScale);
+            
+            // Enhanced material effects for initial animation
+            if (segment.material && segment.material.emissive) {
+              const emissiveIntensity = 0.2 + Math.sin(time * 3 + segment.userData.glowPhase) * 0.1;
+              segment.material.emissiveIntensity = emissiveIntensity;
+            }
+          }
+                });
+      }
+    });
+    
+    // Update visual overlay uniforms
+    if (this.material && this.material.uniforms) {
+      this.material.uniforms.time.value = time;
+      this.material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+      if (window.userCameraTexture && window.userCameraTexture.image) {
+        this.material.uniforms.cameraTexture.value = window.userCameraTexture;
+        this.material.uniforms.cameraActive.value = 1.0;
+      } else {
+        this.material.uniforms.cameraActive.value = 0.0;
+      }
+    }
    }.bind(group);
 
    group.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
        const intensity = this.userData.baseEffectIntensity || 1.0;
        const time = performance.now() * 0.001;
-       const damping = this.userData.velocityDamping || 0.96;
-       const returnForce = this.userData.returnForce || 0.005;
-       const bassPushStrength = this.userData.bassPushStrength || 3.0;
-       const midOrbitStrength = this.userData.midOrbitStrength || 0.8;
-       const trebleZapStrength = this.userData.trebleZapStrength || 15.0;
+    
+    // Update view time for camera movement
+    this.userData.viewTime = time;
+    
+    // Smooth camera movement - EXACTLY like initial animation
+    const orbitRadius = this.userData.cameraOrbitRadius;
+    const orbitSpeed = this.userData.cameraOrbitSpeed; // NO audio reactivity
+    const height = this.userData.cameraHeight;
+    
+    // Same smooth orbit as initial animation
+    this.position.x = Math.sin(time * orbitSpeed) * orbitRadius * 0.5;
+    this.position.y = Math.sin(time * orbitSpeed * 0.7) * height * 0.8;
+    this.position.z = Math.cos(time * orbitSpeed) * orbitRadius * 0.5;
+    
+    // Same smooth rotation as initial animation
+    this.rotation.y = time * orbitSpeed * 0.2;
+    
+    // Audio-reactive parameters
+    const bassMultiplier = 1.0 + Math.pow(bassAvg, 1.5) * 3.0 * intensity;
+    const midColorIntensity = midAvg * intensity;
+    const trebleChangeRate = 1.0 + Math.pow(trebleAvg, 2.0) * 4.0 * intensity;
+    
+    // Update growth interval based on bass - EXTREMELY AUDIO REACTIVE
+    this.userData.growthInterval = Math.max(2, 20 / (bassMultiplier * (1.0 + bassAvg * 3.0))); // Much faster with audio
+    this.userData.trebleTurnRate = trebleChangeRate;
+    
+    // Animate dynamic lighting with audio reactivity for AMAZING effects
+    if (this.userData.dynamicLights) {
+      this.userData.dynamicLights.forEach((light, index) => {
+        const lightPhase = time * (0.5 + bassAvg) + index * Math.PI * 0.5;
+        const radius = 250 + bassAvg * 100;
+        light.position.x = Math.sin(lightPhase) * radius;
+        light.position.y = Math.cos(lightPhase * 0.7) * (150 + midAvg * 100);
+        light.position.z = Math.cos(lightPhase) * radius;
+        light.intensity = 0.8 + bassAvg * 1.2 + Math.sin(time * 4 + index) * trebleAvg * 0.5;
+      });
+    }
 
-       this.children.forEach((mesh, index) => {
-           if (mesh.isMesh && mesh.userData) {
-               // --- Rotation (more reactive) ---
-               const rotSpeedFactor = 1.0 + midAvg * 1.5 * intensity; // Mids have stronger effect
-               const trebleRotKick = Math.pow(trebleAvg, 2.5) * 0.1 * intensity; // Sharper treble kick
-               mesh.rotation.x += mesh.userData.rotationSpeed.x * rotSpeedFactor + Math.sin(time * 5 + mesh.userData.phaseOffset) * trebleRotKick;
-               mesh.rotation.y += mesh.userData.rotationSpeed.y * rotSpeedFactor + Math.cos(time * 5 + mesh.userData.phaseOffset) * trebleRotKick;
-               mesh.rotation.z += mesh.userData.rotationSpeed.z * rotSpeedFactor;
+    // Update each pipe system
+    this.userData.pipeSystems.forEach((pipeSystem, index) => {
+      if (pipeSystem.isActive) {
+        // Bass affects growth speed DRAMATICALLY - MUCH MORE AUDIO REACTIVE
+        pipeSystem.speed = bassMultiplier * (1.0 + bassAvg * 5.0); // 5x multiplier!
+        
+        // Treble affects turn probability MASSIVELY - MUCH MORE AUDIO REACTIVE  
+        pipeSystem.turnChance = 0.05 + trebleAvg * 1.5 * intensity; // Much higher base effect
+        
+        // Mid affects branch probability STRONGLY - MUCH MORE AUDIO REACTIVE
+        pipeSystem.branchChance = 0.01 + midAvg * 0.15 * intensity; // 3x stronger
+        
+        // Smooth system movement - EXACTLY like initial animation  
+        const systemPhase = index * 0.7; // Different phase for each system
+        
+        pipeSystem.movementOffset.x = Math.sin(time * (0.3 + systemPhase * 0.1)) * 4 * intensity;
+        pipeSystem.movementOffset.y = Math.cos(time * (0.4 + systemPhase * 0.1)) * 4 * intensity;
+        pipeSystem.movementOffset.z = Math.sin(time * (0.5 + systemPhase * 0.1)) * 4 * intensity;
+        
+        // Force growth on audio hits - EXTREMELY AUDIO REACTIVE
+        if (bassAvg > 0.3 || midAvg > 0.4 || trebleAvg > 0.5) {
+          growPipeSystem(pipeSystem, true); // Much more sensitive to audio
+        }
+        
+        // Always try to grow (but speed controlled by audio)
+        if (Math.random() < 0.1 + (bassAvg + midAvg + trebleAvg) * 0.3) {
+          growPipeSystem(pipeSystem);
+        }
+        
+        // Update segment visual effects - AMAZING AUDIO-REACTIVE MATERIALS
+        pipeSystem.segments.forEach((segment, segIndex) => {
+          if (segment.userData) {
+            // Apply ONLY system movement offset - NO individual segment movement
+            segment.position.copy(segment.userData.originalPosition)
+              .add(pipeSystem.movementOffset);
+            
+            // Audio-reactive scaling - smooth, no jitter
+            const bassScale = 1.0 + bassAvg * 0.2 * intensity; // Reduced effect
+            segment.scale.setScalar(segment.userData.originalScale * bassScale);
 
-               // --- Scale (remains similar) ---
-               const scalePulse = Math.pow(bassAvg, 1.8) * 1.2 * intensity;
-               const timeBasedVariation = 0.5 + Math.sin(time * 5.0 + mesh.userData.phaseOffset) * 0.5;
-               const currentScale = mesh.userData.initialScale * (1.0 + scalePulse * timeBasedVariation);
-               mesh.scale.setScalar(Math.max(0.1, currentScale));
+            // AMAZING audio-reactive material effects
+            if (segment.material && segment.material.emissive) {
+              // Audio-reactive glow
+              const audioGlow = (bassAvg + midAvg + trebleAvg) * 0.4;
+              segment.material.emissiveIntensity = 0.3 + audioGlow;
+              
+              // Audio-reactive metalness for dynamic reflections
+              segment.material.metalness = 0.8 + midAvg * 0.2;
+              segment.material.roughness = 0.15 - trebleAvg * 0.1;
+            }
+          }
+        });
+      }
+    });
 
-               // --- Color/Emissive (remains similar) ---
-               const emissivePulse = Math.pow(trebleAvg, 1.8) * intensity;
-               mesh.material.color.lerpColors(mesh.userData.baseColor, new THREE.Color(0xffffff), emissivePulse * 0.6);
-               mesh.material.emissive.copy(mesh.userData.baseColor).multiplyScalar(emissivePulse * 1.2);
-
-               // --- Velocity / Force Calculation ---
-               const currentVelocity = mesh.userData.velocity;
-
-               // 1. Damping
-               currentVelocity.multiplyScalar(damping);
-
-               // 2. Return Force (gentle pull towards initial position)
-               const directionToHome = mesh.userData.initialPosition.clone().sub(mesh.position);
-               const distToHome = directionToHome.length();
-               if (distToHome > 1.0) { // Don't apply if already close
-                  directionToHome.normalize();
-                  currentVelocity.addScaledVector(directionToHome, distToHome * returnForce * intensity);
-               }
-
-               // 3. Bass Push Force (pushes away from origin)
-               const pushForce = mesh.position.clone().normalize();
-                if (pushForce.lengthSq() < 0.001) { // Handle case where object is at origin
-                   pushForce.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
-               }
-               pushForce.multiplyScalar(Math.pow(bassAvg, 2.0) * bassPushStrength * intensity);
-               currentVelocity.add(pushForce);
-
-               // 4. Mid Orbit/Jitter Force (around initial position)
-               const orbitSpeed = time * mesh.userData.orbitSpeed * (1.0 + midAvg * 1.5) * intensity;
-               const orbitRadius = mesh.userData.orbitRadius * (1.0 + midAvg * 0.5);
-               // Calculate target orbit point relative to initial position
-               const orbitOffset = new THREE.Vector3(
-                  Math.cos(orbitSpeed + mesh.userData.phaseOffset) * orbitRadius,
-                  Math.sin(orbitSpeed + mesh.userData.phaseOffset) * orbitRadius,
-                  Math.cos(orbitSpeed * 1.1 + mesh.userData.phaseOffset * 1.2) * orbitRadius * 0.5 // Add some Z wobble
-               );
-               // Apply orbit axis rotation if needed (can make complex paths)
-               // orbitOffset.applyAxisAngle(mesh.userData.orbitAxis, orbitSpeed * 0.1); // Optional complexity
-
-               const targetOrbitPos = mesh.userData.initialPosition.clone().add(orbitOffset);
-               const directionToOrbit = targetOrbitPos.sub(mesh.position);
-               // Apply force towards orbit position, stronger with mids
-               currentVelocity.addScaledVector(directionToOrbit, midAvg * midOrbitStrength * intensity * 0.1); // Scaled down force
-
-               // 5. Treble Zap Force (sudden random direction change)
-               if (trebleAvg > 0.5) { // Trigger on high treble
-                   const zapChance = Math.random();
-                   if (zapChance < trebleAvg * 0.1) { // Low chance per frame, increases with treble
-                       const zapDirection = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
-                       const zapMagnitude = (0.5 + Math.random() * 0.5) * trebleZapStrength * intensity; // Random strength
-                       currentVelocity.addScaledVector(zapDirection, zapMagnitude);
-                   }
-               }
-
-               // Limit max velocity to prevent extreme speeds
-               const maxSpeed = 20.0 * intensity;
-               if (currentVelocity.lengthSq() > maxSpeed * maxSpeed) {
-                   currentVelocity.normalize().multiplyScalar(maxSpeed);
-               }
-
-               // Update position
-               mesh.position.add(currentVelocity);
-           }
-       });
+    // Create new pipe systems on audio - EXTREMELY AUDIO REACTIVE
+    const totalAudio = bassAvg + midAvg + trebleAvg;
+    if (totalAudio > 0.8 && this.userData.pipeSystems.length < maxPipes * 3) {
+      if (Math.random() < 0.15 * intensity * Math.pow(totalAudio, 2)) { // Much more reactive
+        const newPipeSystem = {
+          segments: [],
+          currentPosition: new THREE.Vector3(
+            (Math.random() - 0.5) * 300,
+            (Math.random() - 0.5) * 300,
+            (Math.random() - 0.5) * 300
+          ),
+          currentDirection: directions[Math.floor(Math.random() * directions.length)].clone(),
+          color: Math.floor(Math.random() * pipeColors.length),
+          material: pipeMaterials[Math.floor(Math.random() * pipeMaterials.length)].clone(),
+          growthTimer: performance.now(),
+          segmentCount: 0,
+          isActive: true,
+          branchChance: 0.02 + trebleAvg * 0.03,
+          turnChance: 0.15 + trebleAvg * 0.2,
+          speed: bassMultiplier,
+          glowIntensity: totalAudio,
+          pulseMagnitude: 1.0 + totalAudio,
+          movementOffset: new THREE.Vector3(),
+          movementSpeed: new THREE.Vector3(
+            (Math.random() - 0.5) * 0.02,
+            (Math.random() - 0.5) * 0.02,
+            (Math.random() - 0.5) * 0.02
+          ),
+          // Collapsing effect
+          isCollapsing: false,
+          collapseTimer: 0,
+          collapseSpeed: 1 + Math.floor(Math.random() * 3), // Random collapse speed per pipe
+          maxLength: maxSegments + Math.floor((Math.random() - 0.5) * 150) // Individual max length
+        };
+                this.userData.pipeSystems.push(newPipeSystem);
+      }
+    }
+    
+    // Update visual overlay uniforms
+    if (this.material && this.material.uniforms) {
+      this.material.uniforms.time.value = time;
+      this.material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+      if (window.userCameraTexture && window.userCameraTexture.image) {
+        this.material.uniforms.cameraTexture.value = window.userCameraTexture;
+        this.material.uniforms.cameraActive.value = 1.0;
+      } else {
+        this.material.uniforms.cameraActive.value = 0.0;
+      }
+    }
    }.bind(group);
 
    group.userData.customAdjustIntensity = function(intensityLevel) {
-       // Map intensityLevel (1-9)
-       this.userData.baseEffectIntensity = 0.6 + intensityLevel * 0.16; // Range ~0.76 to 2.04
+    // Map intensityLevel (1-9) to effect parameters
+    this.userData.baseEffectIntensity = 0.3 + intensityLevel * 0.2; // Range 0.5 to 2.1
 
-       // Adjust reaction strengths
-       this.userData.bassPushStrength = 1.5 + intensityLevel * 0.3;  // Range 1.8 to 4.2
-       this.userData.midOrbitStrength = 0.4 + intensityLevel * 0.1;   // Range 0.5 to 1.3
-       this.userData.trebleZapStrength = 8.0 + intensityLevel * 2.0; // Range 10 to 26
-       // Adjust damping/return
-       this.userData.velocityDamping = 0.97 - intensityLevel * 0.004; // Range ~0.966 to 0.934 (more damping at low intensity)
-       this.userData.returnForce = 0.002 + intensityLevel * 0.0005; // Range ~0.0025 to 0.0065
-
+    // Adjust pipe system parameters
+    this.userData.pipeSystems.forEach(pipeSystem => {
+      pipeSystem.branchChance = 0.01 + intensityLevel * 0.005; // More branching at higher intensity
+      pipeSystem.turnChance = 0.10 + intensityLevel * 0.01;    // More turning at higher intensity
+    });
+    
+    // Adjust growth speed
+    const baseGrowthInterval = 80 - intensityLevel * 5; // Faster growth at higher intensity
+    this.userData.growthInterval = Math.max(20, baseGrowthInterval);
+    
+    // Adjust camera movement
+    this.userData.cameraOrbitSpeed = 0.6 + intensityLevel * 0.05; // Faster base speed
+    this.userData.cameraOrbitRadius = 250 + intensityLevel * 20;
    }.bind(group);
+   
+   // --- ENHANCED VISUAL MODE SUPPORT ---
+   
+   // Create a fullscreen shader overlay for visual mode (like other effects)
+   const visualOverlayGeometry = new THREE.PlaneBufferGeometry(2, 2);
+   const visualOverlayMaterial = new THREE.ShaderMaterial({
+     uniforms: {
+       visualMode: { value: 0.0 },
+       cameraTexture: { value: null },
+       cameraActive: { value: 0.0 },
+       time: { value: 0.0 },
+       resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+     },
+     vertexShader: `
+       varying vec2 vUv;
+       void main() {
+         vUv = uv;
+         gl_Position = vec4(position, 1.0);
+       }
+     `,
+     fragmentShader: `
+       uniform float visualMode;
+       uniform sampler2D cameraTexture;
+       uniform float cameraActive;
+       uniform float time;
+       uniform vec2 resolution;
+       varying vec2 vUv;
+       
+       void main() {
+         vec4 finalColor = vec4(0.0, 0.0, 0.0, 0.0);
+         
+         if (abs(visualMode - 1.0) < 0.1 && cameraActive > 0.5) {
+           // Visual Mode 1: Camera overlay with enhanced pipe-like effects
+           vec2 screenUV = gl_FragCoord.xy / resolution.xy;
+           vec4 cameraColor = texture2D(cameraTexture, screenUV);
+           
+           // Enhanced pipe-like distortion with multiple layers
+           vec2 distortion1 = sin(screenUV * 8.0 + time * 2.0) * 0.015;
+           vec2 distortion2 = cos(screenUV * 12.0 + time * 1.5) * 0.01;
+           vec2 combinedDistortion = distortion1 + distortion2;
+           
+           vec4 distortedCamera = texture2D(cameraTexture, screenUV + combinedDistortion);
+           
+           // Add chrome-like color tinting
+           vec3 chromeEffect = cameraColor.rgb * 1.2 + vec3(0.1, 0.15, 0.2);
+           finalColor = vec4(mix(chromeEffect, distortedCamera.rgb, 0.7), 0.4);
+         }
+         
+         gl_FragColor = finalColor;
+       }
+     `,
+     transparent: true,
+     depthTest: false,
+     depthWrite: false
+   });
+   
+   const visualOverlay = new THREE.Mesh(visualOverlayGeometry, visualOverlayMaterial);
+   visualOverlay.renderOrder = 1000; // Render on top
+   visualOverlay.position.z = 100; // In front of camera
+   group.add(visualOverlay);
+   
+   // Store references for the effect
+   group.material = visualOverlayMaterial; // This makes it work like other effects!
+   group.userData.visualOverlay = visualOverlay;
+   
+   // Add custom visual mode toggle function
+   group.userData.toggleVisualMode = function() {
+     this.userData.visualMode = 1.0 - this.userData.visualMode;
+     const isVisualMode = this.userData.visualMode > 0.5;
+     
+     // Update all pipe materials for enhanced visual mode
+     this.userData.pipeSystems.forEach(pipeSystem => {
+       pipeSystem.segments.forEach(segment => {
+         if (segment.material) {
+           if (isVisualMode) {
+             // Ultra-chrome visual mode
+             segment.material.metalness = 0.98;
+             segment.material.roughness = 0.02;
+             segment.material.color.setHex(0x88bbff); // Chrome blue tint
+             segment.material.emissiveIntensity = 0.5;
+           } else {
+             // Restore original properties
+             segment.material.metalness = 0.8;
+             segment.material.roughness = 0.15;
+             segment.material.color.copy(pipeSystem.material.color);
+             segment.material.emissiveIntensity = 0.3;
+           }
+         }
+       });
+     });
+     
+     // Update shader overlay
+     if (this.material && this.material.uniforms) {
+       this.material.uniforms.visualMode.value = this.userData.visualMode;
+     }
+     
+     showActionMessage("3D Pipes Visual Mode: " + (isVisualMode ? "Chrome Reflection" : "Normal"));
+     
+     if (isVisualMode && window.userCameraTexture) {
+       this.material.uniforms.cameraTexture.value = window.userCameraTexture;
+       this.material.uniforms.cameraActive.value = 1.0;
+       if (!window.isCameraMode) toggleCameraBackground();
+     } else {
+       this.material.uniforms.cameraActive.value = 0.0;
+     }
+   }.bind(group);
+   
+   
 }
 
 function createPixelSortEffect() {
@@ -5880,6 +6385,7 @@ function createWaterPoolEffect() {
   createAuroraEffect();
   createPortal();
   createWaterPoolEffect();
+  createGeometricPulseEffect();
   createLiquidCrystalEffect();
   //createApple1Effect();
   //createApple2Effect();
@@ -6941,7 +7447,7 @@ case 'ArrowUp': {
   const activeMaterial = activeEffect.material; // Convenience variable
 
   // Check if the effect supports multiple visual styles
-  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "WaterPool" || activeEffect.name === "StarfieldWarpEffect" || activeEffect.name === "LiquidCrystalEffect" || activeEffect.name === "PixelSortEffect" || activeEffect.name === "PopArtEffect");
+  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "WaterPool" || activeEffect.name === "StarfieldWarpEffect" || activeEffect.name === "LiquidCrystalEffect" || activeEffect.name === "PixelSortEffect" || activeEffect.name === "PopArtEffect" || activeEffect.name === "GeometricPulseEffect");
   const isOrange = (activeEffect.name === "Orange");
   const isParticles = (activeEffect.name === "CameraParticles");
   const isWaves = (activeEffect.name === "Waves");
@@ -6957,6 +7463,7 @@ case 'ArrowUp': {
   const isLiquidCrystal = (activeEffect.name === "LiquidCrystalEffect");
   const isPixelSort = (activeEffect.name === "PixelSortEffect");
   const isPopArt = (activeEffect.name === "PopArtEffect");
+  const isGeometricPulse = (activeEffect.name === "GeometricPulseEffect");
 
   if (supportsMultiVisual && activeMaterial.uniforms && "visualMode" in activeMaterial.uniforms) {
     let currentState = Math.round(activeMaterial.uniforms.visualMode.value); // Use Math.round for robustness
@@ -7219,6 +7726,17 @@ case 'ArrowUp': {
         toggleCameraBackground();
         activeMaterial.uniforms.visualMode.value = 0.0;
         showActionMessage("pop art visual: procedural");
+      }
+    } else if (isGeometricPulse) {
+      // --- GeometricPulseEffect Logic (binary: 0, 1) ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("pipes visual: camera overlay");
+      } else { // currentState is 1
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("pipes visual: off");
       }
     } else {
        // Generic toggle for other effects
