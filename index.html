@@ -4517,8 +4517,8 @@ function createGeometricPulseEffect() {
   const maxPipes = 8; // Maximum number of simultaneous pipe systems
   const segmentLength = 35; // MUCH LONGER pipe segments - proper pipe proportions!
   const pipeRadius = 4; // Slightly larger radius for better visibility
-  const connectionSphereRadius = 5; // Slightly larger junction spheres
-  const maxSegments = 300; // Maximum segments per pipe before recycling - LONGER PIPES
+  const connectionSphereRadius = 6; // Bigger balls as user preferred
+  const maxSegments = 150; // Maximum segments per pipe before recycling - balanced length
   
   // Define the 6 possible directions for pipe growth (3D maze style)
   const directions = [
@@ -4600,7 +4600,7 @@ function createGeometricPulseEffect() {
       isCollapsing: false,
       collapseTimer: 0,
       collapseSpeed: 1 + Math.floor(Math.random() * 3), // Random collapse speed per pipe
-      maxLength: maxSegments + Math.floor((Math.random() - 0.5) * 150) // Individual max length
+      maxLength: maxSegments + Math.floor((Math.random() - 0.5) * 50) // Individual max length with less variation
     };
     group.userData.pipeSystems.push(pipeSystem);
   }
@@ -4699,25 +4699,50 @@ function createGeometricPulseEffect() {
       mesh = new THREE.Mesh(sphereGeometry, sphereMaterial.clone());
       mesh.position.copy(position);
     } else {
-      mesh = new THREE.Mesh(cylinderGeometry, material);
+      // POTENTIAL FIX: Clone the material for cylinders like we do for spheres
+      const cylinderMaterial = material.clone();
+      
+      // POTENTIAL FIX: Ensure material has proper emissive properties (based on debug success)
+      cylinderMaterial.emissiveIntensity = Math.max(0.2, cylinderMaterial.emissiveIntensity || 0);
+      
+      mesh = new THREE.Mesh(cylinderGeometry, cylinderMaterial);
       mesh.position.copy(position);
       
-      // Orient cylinder in direction of growth
-      if (direction.x !== 0) {
-        mesh.rotation.z = Math.PI / 2 * Math.sign(direction.x);
-      } else if (direction.z !== 0) {
-        mesh.rotation.x = Math.PI / 2 * Math.sign(direction.z);
+      // POTENTIAL FIX: Scale cylinders to be more visible (based on debug success)
+      mesh.scale.setScalar(1.5); // Make them larger to match visibility
+      
+
+      
+      // Properly orient cylinder to point in the growth direction
+      // THREE.js cylinders default to Y-axis, we need to align with direction vector
+      const up = new THREE.Vector3(0, 1, 0);
+      const normalizedDirection = direction.clone().normalize();
+      
+      // Only rotate if direction is not already aligned with Y-axis
+      if (!normalizedDirection.equals(up) && !normalizedDirection.equals(up.clone().negate())) {
+        // Create rotation quaternion to rotate from Y-axis to direction
+        const quaternion = new THREE.Quaternion();
+        quaternion.setFromUnitVectors(up, normalizedDirection);
+        mesh.setRotationFromQuaternion(quaternion);
+      } else if (normalizedDirection.equals(up.clone().negate())) {
+        // Special case: pointing down (negative Y)
+        mesh.rotation.z = Math.PI;
       }
-      // Y direction is already aligned with cylinder default orientation
     }
     
     mesh.userData = {
       creationTime: performance.now(),
       originalPosition: position.clone(),
-      originalScale: isConnection ? 1.0 : 1.0,
+      originalScale: isConnection ? 1.0 : 1.5, // Cylinders are now 1.5x scale
       audioScale: 1.0,
-      glowPhase: Math.random() * Math.PI * 2
+      glowPhase: Math.random() * Math.PI * 2,
+      isConnection: isConnection, // Track if this is a sphere or cylinder
+      isRemoving: false, // Track removal state
+      segmentType: isConnection ? 'sphere' : 'cylinder' // Debug info
     };
+    
+
+
     
     return mesh;
   }
@@ -4771,26 +4796,47 @@ function createGeometricPulseEffect() {
     if (pipeSystem.isCollapsing) {
       pipeSystem.collapseTimer++;
       
-      // Remove segments from the tail (oldest first) every few frames
-      if (pipeSystem.collapseTimer % 3 === 0 && pipeSystem.segments.length > 0) {
-        const segmentsToRemove = Math.min(pipeSystem.collapseSpeed, pipeSystem.segments.length);
-        
-        for (let i = 0; i < segmentsToRemove; i++) {
-          const segment = pipeSystem.segments.shift(); // Remove from beginning (tail)
-          if (segment) {
-            // Add fade-out effect
+          // Remove segments from the tail (oldest first) every few frames
+    if (pipeSystem.collapseTimer % 3 === 0 && pipeSystem.segments.length > 0) {
+      const segmentsToRemove = Math.min(pipeSystem.collapseSpeed * 2, pipeSystem.segments.length); // Remove pairs
+      
+
+      
+      for (let i = 0; i < segmentsToRemove; i++) {
+        const segment = pipeSystem.segments.shift(); // Remove from beginning (tail)
+        if (segment) {
+          // Mark segment as being removed to prevent duplicate removal
+          if (segment.userData.isRemoving) continue;
+          segment.userData.isRemoving = true;
+          
+                    // Add fade-out effect
             segment.material.transparent = true;
-            segment.material.opacity = 0.3;
+            segment.material.opacity = segment.material.opacity || 1.0;
             
-            // Animate scale down before removal
-            const originalScale = segment.scale.clone();
+            // Animate scale down and fade out
             const fadeOut = () => {
-              segment.scale.multiplyScalar(0.8);
-              segment.material.opacity *= 0.7;
-              if (segment.scale.x < 0.1) {
+              // Scale down more aggressively
+              segment.scale.multiplyScalar(0.85);
+              segment.material.opacity *= 0.8;
+              
+              // Remove when sufficiently small or transparent
+              if (segment.scale.x < 0.05 || segment.material.opacity < 0.05) {
+                // Ensure complete removal from scene
                 group.remove(segment);
-                if (segment.geometry) segment.geometry.dispose();
-                if (segment.material) segment.material.dispose();
+                segment.visible = false;
+                
+                // Dispose of resources
+                if (segment.geometry && !segment.geometry.isBufferGeometry) {
+                  segment.geometry.dispose();
+                }
+                if (segment.material && segment.material.dispose) {
+                  segment.material.dispose();
+                }
+                
+                // Remove from parent just to be sure
+                if (segment.parent) {
+                  segment.parent.remove(segment);
+                }
               } else {
                 requestAnimationFrame(fadeOut);
               }
@@ -4800,6 +4846,11 @@ function createGeometricPulseEffect() {
         }
         pipeSystem.segmentCount = Math.max(0, pipeSystem.segmentCount - segmentsToRemove);
       }
+      
+      // Clean up segments array - remove segments that have been marked for removal
+      pipeSystem.segments = pipeSystem.segments.filter(segment => {
+        return segment && !segment.userData.isRemoving;
+      });
       
       // Reset pipe system when all segments are gone
       if (pipeSystem.segments.length === 0) {
@@ -4899,26 +4950,33 @@ function createGeometricPulseEffect() {
   }
   
   // --- Custom Animation Functions ---
-  
-  group.userData.customAnimateInitial = function() {
-    const intensity = this.userData.baseEffectIntensity || 1.0;
+
+   group.userData.customAnimateInitial = function() {
+      const intensity = this.userData.baseEffectIntensity || 1.0;
     const time = performance.now() * 0.001;
     
     // Update view time for camera movement
     this.userData.viewTime = time;
     
-    // Move the entire group to simulate camera movement around pipes
-    const orbitRadius = this.userData.cameraOrbitRadius;
-    const orbitSpeed = this.userData.cameraOrbitSpeed * 0.5; // Slower when idle
-    const height = this.userData.cameraHeight;
-    
-    // Circular orbit with some vertical movement - FASTER initial animation
-    this.position.x = Math.sin(time * orbitSpeed) * orbitRadius * 0.5;
-    this.position.y = Math.sin(time * orbitSpeed * 0.7) * height * 0.8;
-    this.position.z = Math.cos(time * orbitSpeed) * orbitRadius * 0.5;
-    
-    // Gentle rotation
-    this.rotation.y = time * orbitSpeed * 0.2;
+    // Move the entire group to simulate camera movement around pipes (ONLY when not in visual mode)
+    const isVisualMode = this.userData.visualMode > 0.5;
+    if (!isVisualMode) {
+      const orbitRadius = this.userData.cameraOrbitRadius;
+      const orbitSpeed = this.userData.cameraOrbitSpeed * 0.5; // Slower when idle
+      const height = this.userData.cameraHeight;
+      
+      // Circular orbit with some vertical movement - FASTER initial animation
+      this.position.x = Math.sin(time * orbitSpeed) * orbitRadius * 0.5;
+      this.position.y = Math.sin(time * orbitSpeed * 0.7) * height * 0.8;
+      this.position.z = Math.cos(time * orbitSpeed) * orbitRadius * 0.5;
+      
+      // Gentle rotation
+      this.rotation.y = time * orbitSpeed * 0.2;
+    } else {
+      // In visual mode, keep group centered to prevent camera warping
+      this.position.set(0, 0, 0);
+      this.rotation.y = 0;
+    }
     
     // Gentle, steady growth
     this.userData.growthInterval = 80; // Slower growth when idle
@@ -4954,7 +5012,7 @@ function createGeometricPulseEffect() {
         
         // Update segment visual effects with enhanced reflections
         pipeSystem.segments.forEach((segment, segIndex) => {
-          if (segment.userData) {
+          if (segment.userData && !segment.userData.isRemoving) { // Skip segments being removed
             // Apply system movement offset
             segment.position.copy(segment.userData.originalPosition)
               .add(pipeSystem.movementOffset);
@@ -4993,18 +5051,25 @@ function createGeometricPulseEffect() {
     // Update view time for camera movement
     this.userData.viewTime = time;
     
-    // Smooth camera movement - EXACTLY like initial animation
-    const orbitRadius = this.userData.cameraOrbitRadius;
-    const orbitSpeed = this.userData.cameraOrbitSpeed; // NO audio reactivity
-    const height = this.userData.cameraHeight;
-    
-    // Same smooth orbit as initial animation
-    this.position.x = Math.sin(time * orbitSpeed) * orbitRadius * 0.5;
-    this.position.y = Math.sin(time * orbitSpeed * 0.7) * height * 0.8;
-    this.position.z = Math.cos(time * orbitSpeed) * orbitRadius * 0.5;
-    
-    // Same smooth rotation as initial animation
-    this.rotation.y = time * orbitSpeed * 0.2;
+    // Smooth camera movement - EXACTLY like initial animation (ONLY when not in visual mode)
+    const isVisualMode = this.userData.visualMode > 0.5;
+    if (!isVisualMode) {
+      const orbitRadius = this.userData.cameraOrbitRadius;
+      const orbitSpeed = this.userData.cameraOrbitSpeed; // NO audio reactivity
+      const height = this.userData.cameraHeight;
+      
+      // Same smooth orbit as initial animation
+      this.position.x = Math.sin(time * orbitSpeed) * orbitRadius * 0.5;
+      this.position.y = Math.sin(time * orbitSpeed * 0.7) * height * 0.8;
+      this.position.z = Math.cos(time * orbitSpeed) * orbitRadius * 0.5;
+      
+      // Same smooth rotation as initial animation
+      this.rotation.y = time * orbitSpeed * 0.2;
+    } else {
+      // In visual mode, keep group centered to prevent camera warping
+      this.position.set(0, 0, 0);
+      this.rotation.y = 0;
+    }
     
     // Audio-reactive parameters
     const bassMultiplier = 1.0 + Math.pow(bassAvg, 1.5) * 3.0 * intensity;
@@ -5058,7 +5123,7 @@ function createGeometricPulseEffect() {
         
         // Update segment visual effects - AMAZING AUDIO-REACTIVE MATERIALS
         pipeSystem.segments.forEach((segment, segIndex) => {
-          if (segment.userData) {
+          if (segment.userData && !segment.userData.isRemoving) { // Skip segments being removed
             // Apply ONLY system movement offset - NO individual segment movement
             segment.position.copy(segment.userData.originalPosition)
               .add(pipeSystem.movementOffset);
@@ -5152,74 +5217,24 @@ function createGeometricPulseEffect() {
     this.userData.cameraOrbitRadius = 250 + intensityLevel * 20;
    }.bind(group);
    
-   // --- ENHANCED VISUAL MODE SUPPORT ---
-   
-   // Create a fullscreen shader overlay for visual mode (like other effects)
-   const visualOverlayGeometry = new THREE.PlaneBufferGeometry(2, 2);
-   const visualOverlayMaterial = new THREE.ShaderMaterial({
+   // --- VISUAL MODE SUPPORT ---
+   // Add minimal material with visualMode uniform for compatibility with global toggle
+   const dummyMaterial = new THREE.ShaderMaterial({
      uniforms: {
-       visualMode: { value: 0.0 },
-       cameraTexture: { value: null },
-       cameraActive: { value: 0.0 },
-       time: { value: 0.0 },
-       resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+       visualMode: { value: 0.0 }
      },
-     vertexShader: `
-       varying vec2 vUv;
-       void main() {
-         vUv = uv;
-         gl_Position = vec4(position, 1.0);
-       }
-     `,
-     fragmentShader: `
-       uniform float visualMode;
-       uniform sampler2D cameraTexture;
-       uniform float cameraActive;
-       uniform float time;
-       uniform vec2 resolution;
-       varying vec2 vUv;
-       
-       void main() {
-         vec4 finalColor = vec4(0.0, 0.0, 0.0, 0.0);
-         
-         if (abs(visualMode - 1.0) < 0.1 && cameraActive > 0.5) {
-           // Visual Mode 1: Camera overlay with enhanced pipe-like effects
-           vec2 screenUV = gl_FragCoord.xy / resolution.xy;
-           vec4 cameraColor = texture2D(cameraTexture, screenUV);
-           
-           // Enhanced pipe-like distortion with multiple layers
-           vec2 distortion1 = sin(screenUV * 8.0 + time * 2.0) * 0.015;
-           vec2 distortion2 = cos(screenUV * 12.0 + time * 1.5) * 0.01;
-           vec2 combinedDistortion = distortion1 + distortion2;
-           
-           vec4 distortedCamera = texture2D(cameraTexture, screenUV + combinedDistortion);
-           
-           // Add chrome-like color tinting
-           vec3 chromeEffect = cameraColor.rgb * 1.2 + vec3(0.1, 0.15, 0.2);
-           finalColor = vec4(mix(chromeEffect, distortedCamera.rgb, 0.7), 0.4);
-         }
-         
-         gl_FragColor = finalColor;
-       }
-     `,
-     transparent: true,
-     depthTest: false,
-     depthWrite: false
+     vertexShader: `void main() { gl_Position = vec4(0.0); }`,
+     fragmentShader: `void main() { gl_FragColor = vec4(0.0); }`,
+     visible: false
    });
    
-   const visualOverlay = new THREE.Mesh(visualOverlayGeometry, visualOverlayMaterial);
-   visualOverlay.renderOrder = 1000; // Render on top
-   visualOverlay.position.z = 100; // In front of camera
-   group.add(visualOverlay);
+   group.material = dummyMaterial; // Required for global toggle compatibility
    
-   // Store references for the effect
-   group.material = visualOverlayMaterial; // This makes it work like other effects!
-   group.userData.visualOverlay = visualOverlay;
-   
-   // Add custom visual mode toggle function
+   // Override toggle function to handle pipe material changes
    group.userData.toggleVisualMode = function() {
-     this.userData.visualMode = 1.0 - this.userData.visualMode;
-     const isVisualMode = this.userData.visualMode > 0.5;
+     // Get current state from the material uniform (managed by global toggle)
+     const currentState = this.material.uniforms.visualMode.value;
+     const isVisualMode = Math.abs(currentState - 1.0) < 0.1;
      
      // Update all pipe materials for enhanced visual mode
      this.userData.pipeSystems.forEach(pipeSystem => {
@@ -5241,21 +5256,6 @@ function createGeometricPulseEffect() {
          }
        });
      });
-     
-     // Update shader overlay
-     if (this.material && this.material.uniforms) {
-       this.material.uniforms.visualMode.value = this.userData.visualMode;
-     }
-     
-     showActionMessage("3D Pipes Visual Mode: " + (isVisualMode ? "Chrome Reflection" : "Normal"));
-     
-     if (isVisualMode && window.userCameraTexture) {
-       this.material.uniforms.cameraTexture.value = window.userCameraTexture;
-       this.material.uniforms.cameraActive.value = 1.0;
-       if (!window.isCameraMode) toggleCameraBackground();
-     } else {
-       this.material.uniforms.cameraActive.value = 0.0;
-     }
    }.bind(group);
    
    
@@ -6385,7 +6385,6 @@ function createWaterPoolEffect() {
   createAuroraEffect();
   createPortal();
   createWaterPoolEffect();
-  createGeometricPulseEffect();
   createLiquidCrystalEffect();
   //createApple1Effect();
   //createApple2Effect();
@@ -6456,8 +6455,17 @@ function updateVisibility() {
         isParticleStyle2Active = true;
       }
 
-      // Set scene background based on Particle Style 2 state
-      if (isParticleStyle2Active && isCameraMode && userCameraTexture) {
+      // Check if GeometricPulseEffect is in visual mode
+      let isGeometricPulseVisualActive = false;
+      if (activeEffect && activeEffect.name === 'GeometricPulseEffect' && 
+          activeEffect.material && activeEffect.material.uniforms && 
+          'visualMode' in activeEffect.material.uniforms && 
+          Math.abs(activeEffect.material.uniforms.visualMode.value - 1.0) < 0.1) {
+        isGeometricPulseVisualActive = true;
+      }
+
+      // Set scene background based on active effect states
+      if ((isParticleStyle2Active || isGeometricPulseVisualActive) && isCameraMode && userCameraTexture) {
         scene.background = userCameraTexture;
       } else {
         // Ensure background is cleared otherwise
