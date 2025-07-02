@@ -3595,13 +3595,20 @@ function createPopArtEffect() {
       if (this.material) {
           this.material.uniforms.visualMode.value = this.userData.visualMode;
            // Apply/remove camera texture based on the new mode
-           if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
-               this.material.uniforms.cameraTexture.value = window.userCameraTexture;
-               if (!window.isCameraMode) toggleCameraBackground(); // Ensure camera is on if needed
+           if (this.userData.visualMode > 0.5) {
+               // Start camera feed if it is not already active
+               if (!window.isCameraMode) {
+                   toggleCameraBackground();
+               }
+               if (window.userCameraTexture) {
+                   this.material.uniforms.cameraTexture.value = window.userCameraTexture;
+               }
            } else {
+               // Turn off camera for this effect; if no other effect uses camera, disable it globally
                this.material.uniforms.cameraTexture.value = null;
-               // Consider turning camera off if nothing else needs it
-               // if (window.isCameraMode && !isAnyEffectUsingCamera()) toggleCameraBackground();
+               if (window.isCameraMode && !isAnyEffectUsingCamera()) {
+                   toggleCameraBackground();
+               }
            }
       }
   }.bind(mesh);
@@ -5509,7 +5516,7 @@ function createGeometricPulseEffect() {
         movementSpeed: new THREE.Vector3(
           (Math.random() - 0.5) * 0.02,
           (Math.random() - 0.5) * 0.02,
-          (Math.random() - 0.5) * 0.02
+          (Math.random() - .5) * 0.02
         ),
         // Collapsing effect
         isCollapsing: false,
@@ -5838,13 +5845,15 @@ function createPixelSortEffect() {
   const material = new THREE.ShaderMaterial({
       uniforms: {
           time: { value: 0.0 },
-          audioBass: { value: 0.0 }, // Bass for sort threshold
-          audioMid: { value: 0.0 },  // Mid for sort distance/direction
-          audioTreble: { value: 0.0 },// Treble for random glitches/swaps
+          audioBass: { value: 0.0 },
+          audioMid: { value: 0.0 },
+          audioTreble: { value: 0.0 },
           effectIntensity: { value: 1.0 },
           resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-          cameraTexture: { value: null }, // Needs camera or a procedural base
-          visualMode: { value: 0.0 } // 0: Procedural, 1: Camera Input
+          cameraTexture: { value: null },
+          visualMode: { value: 0.0 }, // 0: ASCII art mode, 1: Camera detection mode
+              cameraActive: { value: 0.0 }, // 0: camera off, 1: camera active
+              randomSeed: { value: Math.random() * 1000.0 } // Random seed per page load
       },
       vertexShader: `
           varying vec2 vUv;
@@ -5862,71 +5871,1114 @@ function createPixelSortEffect() {
           uniform float effectIntensity;
           uniform vec2 resolution;
           uniform sampler2D cameraTexture;
-          uniform float visualMode; // 0 or 1
+          uniform float visualMode;
+          uniform float cameraActive;
+          uniform float randomSeed;
           varying vec2 vUv;
 
-          // Simple noise
-          float rand(vec2 co){ return fract(sin(dot(co ,vec2(12.9898,78.233))) * 43758.5453123); }
+          // Noise functions
+          float rand(vec2 co){ 
+              return fract(sin(dot(co, vec2(12.9898,78.233))) * 43758.5453123); 
+          }
+          
+          float noise(vec2 st) {
+              vec2 i = floor(st);
+              vec2 f = fract(st);
+              float a = rand(i);
+              float b = rand(i + vec2(1.0, 0.0));
+              float c = rand(i + vec2(0.0, 1.0));
+              float d = rand(i + vec2(1.0, 1.0));
+              vec2 u = f * f * (3.0 - 2.0 * f);
+              return mix(a, b, u.x) + (c - a)* u.y * (1.0 - u.x) + (d - b) * u.x * u.y;
+          }
 
-          // Luminance calculation
-          float luminance(vec3 color) {
-              return dot(color, vec3(0.299, 0.587, 0.114));
+          // ASCII character pattern generators
+          float drawChar(vec2 uv, float charIndex) {
+              // Different character patterns based on index
+              float pattern = 0.0;
+              
+              if (charIndex < 0.1) {
+                  // '@' - full circle pattern
+                  float d = length(uv - vec2(0.5));
+                  pattern = smoothstep(0.45, 0.35, d) * smoothstep(0.2, 0.3, d);
+              } else if (charIndex < 0.2) {
+                  // '#' - grid pattern
+                  float h1 = smoothstep(0.2, 0.25, abs(uv.x - 0.3)) * smoothstep(0.7, 0.75, abs(uv.x - 0.3));
+                  float h2 = smoothstep(0.2, 0.25, abs(uv.x - 0.7)) * smoothstep(0.7, 0.75, abs(uv.x - 0.7));
+                  float v1 = smoothstep(0.2, 0.25, abs(uv.y - 0.3)) * smoothstep(0.7, 0.75, abs(uv.y - 0.3));
+                  float v2 = smoothstep(0.2, 0.25, abs(uv.y - 0.7)) * smoothstep(0.7, 0.75, abs(uv.y - 0.7));
+                  pattern = max(max(h1, h2), max(v1, v2));
+              } else if (charIndex < 0.3) {
+                  // '%' - diagonal dots
+                  float d1 = length(uv - vec2(0.25, 0.75));
+                  float d2 = length(uv - vec2(0.75, 0.25));
+                  float diag = abs(uv.x - uv.y);
+                  pattern = smoothstep(0.15, 0.1, d1) + smoothstep(0.15, 0.1, d2) + smoothstep(0.05, 0.02, diag);
+              } else if (charIndex < 0.4) {
+                  // '&' - complex curves
+                  float c1 = length(uv - vec2(0.4, 0.3));
+                  float c2 = length(uv - vec2(0.6, 0.7));
+                  pattern = smoothstep(0.25, 0.2, c1) * smoothstep(0.1, 0.15, c1) + 
+                           smoothstep(0.25, 0.2, c2) * smoothstep(0.1, 0.15, c2);
+              } else if (charIndex < 0.5) {
+                  // '*' - star pattern
+                  vec2 p = uv - 0.5;
+                  float a = atan(p.y, p.x);
+                  float r = length(p);
+                  float star = cos(a * 5.0) * 0.3 + 0.5;
+                  pattern = smoothstep(star, star - 0.1, r) * smoothstep(0.05, 0.1, r);
+              } else if (charIndex < 0.6) {
+                  // '+' - cross
+                  float h = smoothstep(0.4, 0.45, abs(uv.y - 0.5));
+                  float v = smoothstep(0.4, 0.45, abs(uv.x - 0.5));
+                  pattern = max(h * smoothstep(0.7, 0.75, abs(uv.x - 0.5)), 
+                               v * smoothstep(0.7, 0.75, abs(uv.y - 0.5)));
+              } else if (charIndex < 0.7) {
+                  // '=' - equal sign
+                  float l1 = smoothstep(0.1, 0.05, abs(uv.y - 0.35));
+                  float l2 = smoothstep(0.1, 0.05, abs(uv.y - 0.65));
+                  pattern = (l1 + l2) * smoothstep(0.8, 0.85, abs(uv.x - 0.5));
+              } else if (charIndex < 0.8) {
+                  // 'O' - ring
+                  float d = length(uv - vec2(0.5));
+                  pattern = smoothstep(0.4, 0.35, d) * smoothstep(0.25, 0.3, d);
+              } else if (charIndex < 0.9) {
+                  // '~' - wave
+                  float wave = sin(uv.x * 10.0) * 0.2 + 0.5;
+                  pattern = smoothstep(0.1, 0.05, abs(uv.y - wave));
+              } else {
+                  // '.' - dot
+                  float d = length(uv - vec2(0.5));
+                  pattern = smoothstep(0.15, 0.1, d);
+              }
+              
+              return pattern;
+          }
+
+          // ASCII art drawing functions
+          float drawFace(vec2 uv, float expression) {
+              float pattern = 0.0;
+              
+              // Eyes
+              float leftEye = length(uv - vec2(0.3, 0.7));
+              float rightEye = length(uv - vec2(0.7, 0.7));
+              pattern += smoothstep(0.08, 0.06, leftEye);
+              pattern += smoothstep(0.08, 0.06, rightEye);
+              
+              // Mouth based on expression
+              if (expression < 0.3) {
+                  // Smile
+                  float mouthDist = length(uv - vec2(0.5, 0.3));
+                  float mouthAngle = atan(uv.y - 0.3, uv.x - 0.5);
+                  float smileMask = step(-1.57, mouthAngle) * step(mouthAngle, 0.0);
+                  pattern += smoothstep(0.25, 0.2, mouthDist) * smoothstep(0.15, 0.2, mouthDist) * smileMask;
+              } else if (expression < 0.6) {
+                  // Neutral
+                  pattern += smoothstep(0.05, 0.03, abs(uv.y - 0.3)) * smoothstep(0.15, 0.2, abs(uv.x - 0.5));
+              } else {
+                  // Frown
+                  float mouthDist = length(uv - vec2(0.5, 0.4));
+                  float mouthAngle = atan(uv.y - 0.4, uv.x - 0.5);
+                  float frownMask = step(0.0, mouthAngle) * step(mouthAngle, 3.14);
+                  pattern += smoothstep(0.25, 0.2, mouthDist) * smoothstep(0.15, 0.2, mouthDist) * frownMask;
+              }
+              
+              return pattern;
+          }
+          
+          float drawWaveform(vec2 uv, float audioLevel) {
+              float y = 0.5 + sin(uv.x * 20.0 + time * 5.0) * audioLevel * 0.3;
+              return smoothstep(0.03, 0.01, abs(uv.y - y));
+          }
+          
+          float drawSpectrum(vec2 uv, float bass, float mid, float treble) {
+              float pattern = 0.0;
+              
+              // Bass bars (left third)
+              if (uv.x < 0.33) {
+                  float barHeight = bass * 0.8;
+                  float barMask = step(uv.y, barHeight);
+                  float barIndex = floor(uv.x * 10.0);
+                  float barPattern = step(0.5, fract(barIndex));
+                  pattern += barMask * barPattern;
+              }
+              // Mid bars (middle third)
+              else if (uv.x < 0.66) {
+                  float barHeight = mid * 0.8;
+                  float barMask = step(uv.y, barHeight);
+                  float barIndex = floor((uv.x - 0.33) * 10.0);
+                  float barPattern = step(0.5, fract(barIndex));
+                  pattern += barMask * barPattern;
+              }
+              // Treble bars (right third)
+              else {
+                  float barHeight = treble * 0.8;
+                  float barMask = step(uv.y, barHeight);
+                  float barIndex = floor((uv.x - 0.66) * 10.0);
+                  float barPattern = step(0.5, fract(barIndex));
+                  pattern += barMask * barPattern;
+              }
+              
+              return pattern;
+          }
+          
+          float drawGeometric(vec2 uv, float complexity) {
+              vec2 center = vec2(0.5);
+              vec2 pos = uv - center;
+              float angle = atan(pos.y, pos.x);
+              float radius = length(pos);
+              
+              int sides = int(3.0 + complexity * 7.0); // 3-10 sides
+              float sideAngle = 6.28318 / float(sides);
+              float currentAngle = mod(angle + 3.14159, sideAngle) - sideAngle * 0.5;
+              float edgeDist = cos(currentAngle) * radius;
+              
+              return smoothstep(0.45, 0.4, edgeDist) * smoothstep(0.1, 0.15, edgeDist);
+          }
+          
+          float drawText(vec2 uv, float textMode) {
+              float pattern = 0.0;
+              
+              if (textMode < 0.25) {
+                  // Draw "MUSIC"
+                  // M
+                  if (uv.x < 0.15) {
+                      pattern += smoothstep(0.03, 0.01, abs(uv.x - 0.05));
+                      pattern += smoothstep(0.03, 0.01, abs(uv.x - 0.13));
+                      if (uv.y > 0.6) pattern += smoothstep(0.03, 0.01, abs(uv.y - 0.7));
+                  }
+              } else if (textMode < 0.5) {
+                  // Draw "WAVE"
+                  pattern += drawWaveform(uv, 0.3);
+              } else if (textMode < 0.75) {
+                  // Draw "BEAT"
+                  // Simple pulse pattern
+                  float pulse = sin(time * 10.0) * 0.5 + 0.5;
+                  float centerDist = length(uv - vec2(0.5));
+                  pattern += smoothstep(0.4, 0.3, centerDist) * pulse;
+              } else {
+                  // Draw "FREQ"
+                  pattern += drawSpectrum(uv, 0.5, 0.7, 0.3);
+              }
+              
+              return pattern;
+          }
+
+          // Dynamic ASCII art visualizer - draws different art based on audio
+          vec3 dynamicASCIIVisualizer(vec2 cellUv, vec2 intraCellUv, float cellSeed) {
+              // Controlled audio-reactive timing
+              float bassControl = smoothstep(0.1, 0.8, audioBass);
+              float midControl = smoothstep(0.1, 0.8, audioMid);
+              float trebleControl = smoothstep(0.1, 0.8, audioTreble);
+              
+              // Controlled animation speed - minimum 3 seconds per drawing
+              float audioIntensityTotal = bassControl + midControl + trebleControl;
+              float superFastAudio = step(2.4, audioIntensityTotal); // Super fast when all 3 are high
+              float baseSpeed = 0.2; // Much slower base speed
+              float fastSpeed = superFastAudio * 0.15; // Slightly faster when audio is intense
+              float animSpeed = baseSpeed + fastSpeed;
+              float drawTime = time * animSpeed;
+              
+              // Fixed 3 second display time for all drawings
+              float cycleLength = 3.0 * animSpeed; // Always results in exactly 3 seconds per drawing
+              float drawingCycle = floor(drawTime / cycleLength);
+              float drawingPhase = fract(drawTime / cycleLength);
+              
+              // Audio intensity with controlled thresholds
+              float audioIntensity = (bassControl + midControl + trebleControl) / 3.0;
+              
+              // Advanced drawing cycling to prevent repetition
+              // Add random offset that's different each page load but consistent during session
+              float sessionOffset = fract(sin(randomSeed * 127.1) * 43758.5453);
+              float globalSeed = (drawingCycle + sessionOffset * 100.0) * 7.3; // Unique seed per cycle with random start
+              float cycleHash = fract(sin(globalSeed * 127.1) * 43758.5); // Better randomization
+              
+              // Prevent recent patterns - cycle through groups of 20
+              float groupIndex = mod(drawingCycle, 20.0); // Groups of 20 different patterns
+              float groupOffset = floor(drawingCycle / 20.0) * 0.1; // Offset each group
+              float globalDrawingType = fract(cycleHash + groupOffset);
+              
+              // Subtle regional variation for detail
+              vec2 regionCoord = floor(cellUv * 8.0); // 8x8 regions for finer detail
+              float regionVariation = fract(rand(regionCoord) * 0.15);
+              float drawingType = fract(globalDrawingType + regionVariation * 0.03);
+              
+              float pattern = 0.0;
+              
+              // Beautiful flowing ASCII art - 20 total animations
+              if (drawingType < 0.05) {
+                  // Enhanced Flowing Infinity Symbol - more complex geometry
+                  vec2 pos = (cellUv - vec2(0.5)) * 2.0;
+                  float t = time * (2.0 + bassControl * 4.0);
+                  float infinity = sin(t) * 0.5;
+                  vec2 center1 = vec2(infinity, 0.0);
+                  vec2 center2 = vec2(-infinity, 0.0);
+                  float d1 = length(pos - center1);
+                  float d2 = length(pos - center2);
+                  float curve = min(d1, d2) - (0.3 + sin(time * 5.0 + midControl * 8.0) * 0.1);
+                  
+                  // Add complex mathematical patterns flowing along infinity
+                  float flowPattern = sin(pos.x * 10.0 + time * (3.0 + trebleControl * 6.0)) * 
+                                     cos(pos.y * 8.0 + time * (2.0 + midControl * 4.0));
+                  float spiralPattern = sin(atan(pos.y, pos.x) * 8.0 + time * (4.0 + bassControl * 8.0));
+                  
+                  pattern = smoothstep(0.05, 0.0, abs(curve)) * (0.6 + trebleControl * 0.4);
+                  pattern += smoothstep(0.08, 0.05, abs(curve)) * flowPattern * (0.3 + audioIntensity * 0.2);
+                  pattern += smoothstep(0.12, 0.08, abs(curve)) * spiralPattern * (0.2 + midControl * 0.3);
+              } else if (drawingType < 0.1) {
+                  // Simple Smiley Face - clean and cheerful
+                  vec2 pos = cellUv;
+                  float face = 0.0;
+                  
+                  // Simple circular head
+                  vec2 head = pos - vec2(0.5, 0.5);
+                  float headSize = 0.3 + sin(time * (2.0 + bassControl * 3.0)) * 0.02;
+                  float headDist = length(head);
+                  
+                  // Head outline
+                  face += smoothstep(headSize + 0.02, headSize - 0.01, headDist) * (0.8 + audioIntensity * 0.2);
+                  
+                  // Simple dot eyes
+                  float eyeBlink = step(0.9, sin(time * (3.0 + midControl * 4.0)));
+                  float leftEye = length(pos - vec2(0.4, 0.55)) - 0.03;
+                  float rightEye = length(pos - vec2(0.6, 0.55)) - 0.03;
+                  face += smoothstep(0.03, 0.02, leftEye) * (0.9 + trebleControl * 0.1) * (1.0 - eyeBlink);
+                  face += smoothstep(0.03, 0.02, rightEye) * (0.9 + trebleControl * 0.1) * (1.0 - eyeBlink);
+                  
+                  // Simple smile arc
+                  vec2 smileCenter = pos - vec2(0.5, 0.45);
+                  float smileRadius = 0.15 + sin(time * (2.0 + bassControl * 4.0)) * 0.03;
+                  float smileAngle = atan(smileCenter.y, smileCenter.x);
+                  float smileMask = step(-2.5, smileAngle) * step(smileAngle, -0.65);
+                  float smile = smoothstep(0.02, 0.01, abs(length(smileCenter) - smileRadius)) * smileMask;
+                  face += smile * (0.9 + audioIntensity * 0.1);
+                  
+                  pattern = face;
+              } else if (drawingType < 0.15) {
+                  // Big Clear Car - obvious vehicle shape
+                  vec2 pos = cellUv;
+                  float car = 0.0;
+                  
+                  // Car movement with bass
+                  float carSpeed = time * (2.0 + bassControl * 4.0);
+                  float carX = 0.5 + sin(carSpeed * 0.5) * 0.2;
+                  float carY = 0.5;
+                  
+                  // Large car body - main rectangle
+                  float carBody = max(abs(pos.x - carX) - 0.15, abs(pos.y - carY) - 0.06);
+                  car += smoothstep(0.01, 0.0, carBody) * (0.9 + audioIntensity * 0.1);
+                  
+                  // Car roof - smaller rectangle on top
+                  float roofBody = max(abs(pos.x - carX) - 0.08, abs(pos.y - (carY + 0.08)) - 0.04);
+                  car += smoothstep(0.01, 0.0, roofBody) * (0.85 + midControl * 0.15);
+                  
+                  // Front windshield - angled line
+                  float windshieldSlope = (pos.x - (carX - 0.08)) * 0.8 - (pos.y - (carY + 0.04));
+                  float windshield = smoothstep(0.02, 0.01, abs(windshieldSlope)) * 
+                                    step(carX - 0.08, pos.x) * step(pos.x, carX - 0.02) *
+                                    step(carY + 0.04, pos.y) * step(pos.y, carY + 0.12);
+                  car += windshield * (0.7 + trebleControl * 0.3);
+                  
+                  // Rear windshield
+                  float rearSlope = -(pos.x - (carX + 0.08)) * 0.8 - (pos.y - (carY + 0.04));
+                  float rearWindshield = smoothstep(0.02, 0.01, abs(rearSlope)) * 
+                                        step(carX + 0.02, pos.x) * step(pos.x, carX + 0.08) *
+                                        step(carY + 0.04, pos.y) * step(pos.y, carY + 0.12);
+                  car += rearWindshield * (0.7 + trebleControl * 0.3);
+                  
+                  // Big wheels - clear circles
+                  float wheelSpin = time * (8.0 + bassControl * 12.0);
+                  float leftWheel = length(pos - vec2(carX - 0.1, carY - 0.06)) - 0.04;
+                  float rightWheel = length(pos - vec2(carX + 0.1, carY - 0.06)) - 0.04;
+                  
+                  // Wheel outlines
+                  car += smoothstep(0.04, 0.035, leftWheel) * smoothstep(0.025, 0.03, leftWheel) * (0.9 + audioIntensity * 0.1);
+                  car += smoothstep(0.04, 0.035, rightWheel) * smoothstep(0.025, 0.03, rightWheel) * (0.9 + audioIntensity * 0.1);
+                  
+                  // Wheel centers
+                  float leftHub = length(pos - vec2(carX - 0.1, carY - 0.06)) - 0.015;
+                  float rightHub = length(pos - vec2(carX + 0.1, carY - 0.06)) - 0.015;
+                  car += smoothstep(0.015, 0.01, leftHub) * (0.8 + trebleControl * 0.2);
+                  car += smoothstep(0.015, 0.01, rightHub) * (0.8 + trebleControl * 0.2);
+                  
+                  // Windows - side windows
+                  float leftWindow = max(abs(pos.x - (carX - 0.05)) - 0.03, abs(pos.y - (carY + 0.05)) - 0.025);
+                  float rightWindow = max(abs(pos.x - (carX + 0.05)) - 0.03, abs(pos.y - (carY + 0.05)) - 0.025);
+                  car += smoothstep(0.008, 0.0, leftWindow) * (0.6 + midControl * 0.2);
+                  car += smoothstep(0.008, 0.0, rightWindow) * (0.6 + midControl * 0.2);
+                  
+                  // Headlights
+                  float leftHeadlight = length(pos - vec2(carX - 0.13, carY + 0.02)) - 0.02;
+                  float rightHeadlight = length(pos - vec2(carX - 0.13, carY - 0.02)) - 0.02;
+                  car += smoothstep(0.02, 0.015, leftHeadlight) * (0.95 + audioIntensity * 0.05);
+                  car += smoothstep(0.02, 0.015, rightHeadlight) * (0.95 + audioIntensity * 0.05);
+                  
+                  // Taillights
+                  float leftTaillight = max(abs(pos.x - (carX + 0.14)) - 0.015, abs(pos.y - (carY + 0.02)) - 0.01);
+                  float rightTaillight = max(abs(pos.x - (carX + 0.14)) - 0.015, abs(pos.y - (carY - 0.02)) - 0.01);
+                  car += smoothstep(0.005, 0.0, leftTaillight) * (0.9 + bassControl * 0.1);
+                  car += smoothstep(0.005, 0.0, rightTaillight) * (0.9 + bassControl * 0.1);
+                  
+                  pattern = car;
+              } else if (drawingType < 0.2) {
+                  // Butterfly in Wind - graceful nature
+                  vec2 pos = cellUv;
+                  float butterfly = 0.0;
+                  
+                  // Butterfly flight path
+                  float flightTime = time * (1.5 + bassControl * 2.0);
+                  float butterflyX = 0.5 + sin(flightTime * 0.8) * 0.3;
+                  float butterflyY = 0.5 + sin(flightTime * 1.3) * 0.2 + cos(flightTime * 0.6) * 0.1;
+                  vec2 butterflyPos = vec2(butterflyX, butterflyY);
+                  
+                  // Wing flapping animation
+                  float wingFlap = sin(time * (8.0 + trebleControl * 10.0)) * 0.5 + 0.5;
+                  float wingAngle = sin(flightTime) * 0.3;
+                  
+                  // Body
+                  float body = smoothstep(0.02, 0.015, abs(pos.x - butterflyX)) * 
+                              step(butterflyY - 0.04, pos.y) * step(pos.y, butterflyY + 0.04);
+                  butterfly += body * (0.9 + audioIntensity * 0.1);
+                  
+                  // Left wing
+                  vec2 leftWingPos = pos - butterflyPos;
+                  leftWingPos.x += 0.05 * (1.0 + wingFlap * 0.5);
+                  leftWingPos = vec2(
+                      leftWingPos.x * cos(wingAngle) - leftWingPos.y * sin(wingAngle),
+                      leftWingPos.x * sin(wingAngle) + leftWingPos.y * cos(wingAngle)
+                  );
+                  float leftWing = length(leftWingPos * vec2(1.0, 2.0)) - 0.06 * (1.0 + wingFlap * 0.3);
+                  butterfly += smoothstep(0.08, 0.06, leftWing) * (0.8 + midControl * 0.2);
+                  
+                  // Right wing
+                  vec2 rightWingPos = pos - butterflyPos;
+                  rightWingPos.x -= 0.05 * (1.0 + wingFlap * 0.5);
+                  rightWingPos = vec2(
+                      rightWingPos.x * cos(-wingAngle) - rightWingPos.y * sin(-wingAngle),
+                      rightWingPos.x * sin(-wingAngle) + rightWingPos.y * cos(-wingAngle)
+                  );
+                  float rightWing = length(rightWingPos * vec2(1.0, 2.0)) - 0.06 * (1.0 + wingFlap * 0.3);
+                  butterfly += smoothstep(0.08, 0.06, rightWing) * (0.8 + midControl * 0.2);
+                  
+                  // Wing patterns
+                  float wingPattern = sin(length(leftWingPos) * 30.0 + time * 4.0) * 
+                                     sin(atan(leftWingPos.y, leftWingPos.x) * 8.0);
+                  butterfly += smoothstep(0.06, 0.04, leftWing) * smoothstep(0.5, 0.8, wingPattern) * (0.5 + trebleControl * 0.3);
+                  
+                  wingPattern = sin(length(rightWingPos) * 30.0 + time * 4.0) * 
+                               sin(atan(rightWingPos.y, rightWingPos.x) * 8.0);
+                  butterfly += smoothstep(0.06, 0.04, rightWing) * smoothstep(0.5, 0.8, wingPattern) * (0.5 + trebleControl * 0.3);
+                  
+                  // Wind effect trails
+                  for(int i = 0; i < 5; i++) {
+                      float trailDelay = float(i) * 0.1;
+                      float trailX = 0.5 + sin((flightTime - trailDelay) * 0.8) * 0.3;
+                      float trailY = 0.5 + sin((flightTime - trailDelay) * 1.3) * 0.2 + cos((flightTime - trailDelay) * 0.6) * 0.1;
+                      float trail = length(pos - vec2(trailX, trailY)) - (0.01 - float(i) * 0.002);
+                      butterfly += smoothstep(0.01, 0.005, trail) * (0.3 - float(i) * 0.05) * (0.5 + audioIntensity * 0.5);
+                  }
+                  
+                  pattern = butterfly;
+              } else if (drawingType < 0.25) {
+                  // Tree Swaying in Breeze
+                  vec2 pos = cellUv;
+                  float tree = 0.0;
+                  
+                  // Tree trunk
+                  float trunkSway = sin(time * (1.5 + bassControl * 2.0)) * 0.02;
+                  float trunk = smoothstep(0.04, 0.035, abs(pos.x - (0.5 + trunkSway * (pos.y - 0.2)))) * 
+                               step(0.2, pos.y) * step(pos.y, 0.6);
+                  tree += trunk * (0.8 + audioIntensity * 0.2);
+                  
+                  // Tree branches
+                  for(int i = 0; i < 6; i++) {
+                      float branchY = 0.35 + float(i) * 0.05;
+                      float branchLength = 0.1 - float(i) * 0.015;
+                      float branchAngle = (float(i % 2) * 2.0 - 1.0) * (0.5 + sin(time * (2.0 + midControl * 3.0) + float(i)) * 0.2);
+                      
+                      vec2 branchStart = vec2(0.5 + trunkSway * (branchY - 0.2), branchY);
+                      vec2 branchEnd = branchStart + vec2(cos(branchAngle), sin(branchAngle)) * branchLength;
+                      
+                      float branch = smoothstep(0.02, 0.015, 
+                          length(pos - mix(branchStart, branchEnd, clamp(dot(pos - branchStart, branchEnd - branchStart) / dot(branchEnd - branchStart, branchEnd - branchStart), 0.0, 1.0))));
+                      tree += branch * (0.7 + trebleControl * 0.3);
+                  }
+                  
+                  // Leaves clusters
+                  for(int i = 0; i < 20; i++) {
+                      float leafAngle = float(i) * 0.314;
+                      float leafRadius = 0.15 + sin(float(i) * 0.7) * 0.1;
+                      float leafPhase = time * (3.0 + trebleControl * 5.0) + float(i) * 0.5;
+                      
+                      vec2 leafPos = vec2(0.5, 0.6) + vec2(
+                          cos(leafAngle) * leafRadius + sin(leafPhase) * 0.02,
+                          sin(leafAngle) * leafRadius * 0.7 + cos(leafPhase * 1.3) * 0.01
+                      );
+                      
+                      float leaf = length(pos - leafPos) - 0.02;
+                      tree += smoothstep(0.02, 0.015, leaf) * (0.6 + audioIntensity * 0.4);
+                  }
+                  
+                  pattern = tree;
+              } else if (drawingType < 0.3) {
+                  // Simple Highway - clear road view
+                  vec2 pos = cellUv;
+                  float highway = 0.0;
+                  
+                  // Simple perspective road
+                  float roadSpeed = time * (3.0 + bassControl * 5.0);
+                  float perspective = 1.0 - pos.y;
+                  float roadCenter = 0.5;
+                  float roadWidth = 0.3 * perspective + 0.1;
+                  
+                  // Road surface
+                  float road = step(abs(pos.x - roadCenter), roadWidth);
+                  highway += road * (0.7 + audioIntensity * 0.3);
+                  
+                  // Center line dashes
+                  float centerLine = smoothstep(0.01, 0.005, abs(pos.x - roadCenter)) * road;
+                  float dashPattern = step(0.5, sin((pos.y + roadSpeed * 0.5) * 20.0));
+                  highway += centerLine * dashPattern * (0.9 + trebleControl * 0.1);
+                  
+                  // Side lines
+                  float leftLine = smoothstep(0.01, 0.005, abs(pos.x - (roadCenter - roadWidth + 0.02))) * road;
+                  float rightLine = smoothstep(0.01, 0.005, abs(pos.x - (roadCenter + roadWidth - 0.02))) * road;
+                  highway += (leftLine + rightLine) * (0.8 + midControl * 0.2);
+                  
+                  // Simple cars
+                  for(int i = 0; i < 3; i++) {
+                      float carY = fract(pos.y + roadSpeed * 0.3 + float(i) * 0.33) * 0.8 + 0.1;
+                      float carX = roadCenter + (float(i) - 1.0) * 0.1;
+                      float carSize = (1.0 - carY) * 0.05 + 0.02;
+                      
+                      // Car body
+                      float car = max(abs(pos.x - carX) - carSize * 0.8, abs(pos.y - carY) - carSize * 1.2);
+                      highway += smoothstep(0.01, 0.0, car) * (0.85 + audioIntensity * 0.15);
+                      
+                      // Car lights
+                      float lights = length(pos - vec2(carX, carY + carSize)) - carSize * 0.3;
+                      highway += smoothstep(carSize * 0.3, carSize * 0.2, lights) * (0.95 + bassControl * 0.05);
+                  }
+                  
+                  // Simple horizon line
+                  float horizon = smoothstep(0.005, 0.002, abs(pos.y - 0.8));
+                  highway += horizon * (0.8 + audioIntensity * 0.2);
+                  
+                  // Simple mountains
+                  float mountains = step(pos.y, 0.8 + sin(pos.x * 10.0) * 0.05) * step(0.7, pos.y);
+                  highway += mountains * (0.5 + midControl * 0.3);
+                  
+                  pattern = highway;
+              } else if (drawingType < 0.35) {
+                  // Flowers Dancing - nature's choreography
+                  vec2 pos = cellUv;
+                  float flowers = 0.0;
+                  
+                  // Create dancing flower field
+                  for(int i = 0; i < 15; i++) {
+                      float flowerX = 0.1 + fract(float(i) * 0.618) * 0.8; // Golden ratio distribution
+                      float flowerBaseY = 0.2 + fract(float(i) * 0.382) * 0.4;
+                      
+                      // Individual dance movement for each flower
+                      float dancePhase = time * (3.0 + bassControl * 6.0) + float(i) * 0.8;
+                      float swayX = sin(dancePhase) * (0.03 + trebleControl * 0.02);
+                      float bobY = sin(dancePhase * 1.3) * (0.02 + midControl * 0.015);
+                      vec2 flowerCenter = vec2(flowerX + swayX, flowerBaseY + bobY);
+                      
+                      // Flower stem - flexible and flowing
+                      float stemHeight = 0.15 + fract(float(i) * 0.127) * 0.1;
+                      for(int s = 0; s < 8; s++) {
+                          float stemY = flowerBaseY - stemHeight + float(s) * stemHeight * 0.125;
+                          float stemSway = sin(dancePhase + float(s) * 0.5) * 0.01 * float(s);
+                          float stemX = flowerX + stemSway;
+                          float stem = smoothstep(0.006, 0.003, abs(pos.x - stemX)) * 
+                                      smoothstep(0.008, 0.004, abs(pos.y - stemY));
+                          flowers += stem * (0.6 + midControl * 0.2);
+                      }
+                      
+                      // Main flower center
+                      float centerSize = 0.015 + fract(float(i) * 0.891) * 0.01;
+                      float center = length(pos - flowerCenter) - centerSize;
+                      flowers += smoothstep(centerSize + 0.005, centerSize, center) * (0.9 + audioIntensity * 0.1);
+                      
+                      // Dancing petals that spin and pulse
+                      float petalCount = 5.0 + floor(fract(float(i) * 0.456) * 3.0); // 5-7 petals
+                      float petalSpin = dancePhase * (2.0 + trebleControl * 4.0);
+                      float petalSize = 0.02 + fract(float(i) * 0.234) * 0.015;
+                      
+                      for(int p = 0; p < 8; p++) {
+                          if (float(p) < petalCount) {
+                              float petalAngle = petalSpin + float(p) * 6.28 / petalCount;
+                              float petalDist = centerSize + 0.015 + sin(dancePhase * 3.0 + float(p)) * 0.008;
+                              vec2 petalPos = flowerCenter + vec2(cos(petalAngle), sin(petalAngle)) * petalDist;
+                              
+                              // Petal shape with organic curves
+                              float petal = length(pos - petalPos) - petalSize;
+                              float petalIntensity = 0.7 + sin(petalSpin * 2.0 + float(p)) * 0.2;
+                              flowers += smoothstep(petalSize + 0.003, petalSize * 0.7, petal) * petalIntensity * (0.8 + trebleControl * 0.2);
+                          }
+                      }
+                      
+                      // Flower leaves at base
+                      for(int l = 0; l < 3; l++) {
+                          float leafAngle = float(l) * 2.09 + dancePhase * 0.5;
+                          vec2 leafPos = vec2(flowerX, flowerBaseY - stemHeight * 0.3) + 
+                                        vec2(cos(leafAngle), sin(leafAngle)) * 0.025;
+                          float leaf = length(pos - leafPos) - 0.012;
+                          flowers += smoothstep(0.015, 0.008, leaf) * (0.6 + midControl * 0.3);
+                      }
+                  }
+                  
+                  // Wind effect - grass and atmosphere
+                  float windPhase = time * (2.0 + bassControl * 3.0);
+                  float grassPattern = sin(pos.x * 50.0 + windPhase * 4.0) * sin(pos.y * 30.0 + windPhase * 2.0);
+                  float grassMask = step(0.05, pos.y) * step(pos.y, 0.25);
+                  flowers += smoothstep(0.6, 0.9, grassPattern) * grassMask * (0.4 + audioIntensity * 0.2);
+                  
+                  // Pollen particles floating in air
+                  for(int i = 0; i < 20; i++) {
+                      float pollenX = fract(float(i) * 0.717 + time * (1.0 + trebleControl * 2.0) * 0.1);
+                      float pollenY = fract(float(i) * 0.291 + time * (0.8 + midControl * 1.5) * 0.1);
+                      float pollen = length(pos - vec2(pollenX, pollenY)) - 0.003;
+                      flowers += smoothstep(0.005, 0.001, pollen) * (0.7 + trebleControl * 0.3);
+                  }
+                  
+                  pattern = flowers;
+              } else if (drawingType < 0.4) {
+                  // Simple UFO with Alien - clear spaceship
+                  vec2 pos = cellUv;
+                  float aliens = 0.0;
+                  
+                  // UFO hovering
+                  float hover = sin(time * (2.0 + bassControl * 3.0)) * 0.05;
+                  vec2 ufoCenter = vec2(0.5, 0.5 + hover);
+                  
+                  // UFO disc shape
+                  float ufoDisc = length((pos - ufoCenter) * vec2(1.0, 2.0)) - 0.2;
+                  aliens += smoothstep(0.2, 0.18, ufoDisc) * (0.8 + audioIntensity * 0.2);
+                  
+                  // UFO dome on top
+                  vec2 domePos = pos - vec2(0.5, 0.55 + hover);
+                  float dome = length(domePos * vec2(1.0, 1.5)) - 0.1;
+                  float domeTop = step(domePos.y, 0.0);
+                  aliens += smoothstep(0.1, 0.08, dome) * domeTop * (0.7 + midControl * 0.3);
+                  
+                  // Simple alien inside dome
+                  float alienHead = length(pos - vec2(0.5, 0.55 + hover)) - 0.04;
+                  aliens += smoothstep(0.04, 0.035, alienHead) * domeTop * (0.9 + trebleControl * 0.1);
+                  
+                  // Big alien eyes
+                  float leftEye = length(pos - vec2(0.48, 0.56 + hover)) - 0.015;
+                  float rightEye = length(pos - vec2(0.52, 0.56 + hover)) - 0.015;
+                  aliens += smoothstep(0.015, 0.01, leftEye) * (0.95 + audioIntensity * 0.05);
+                  aliens += smoothstep(0.015, 0.01, rightEye) * (0.95 + audioIntensity * 0.05);
+                  
+                  // Blinking lights around UFO rim
+                  float lightBlink = sin(time * (6.0 + trebleControl * 8.0));
+                  for(int i = 0; i < 8; i++) {
+                      float angle = float(i) * 0.785;
+                      vec2 lightPos = ufoCenter + vec2(cos(angle), sin(angle) * 0.5) * 0.18;
+                      float light = length(pos - lightPos) - 0.02;
+                      aliens += smoothstep(0.02, 0.015, light) * step(0.5, lightBlink + sin(float(i))) * (0.9 + trebleControl * 0.1);
+                  }
+                  
+                  // Simple beam
+                  float beamPulse = 0.6 + sin(time * (4.0 + bassControl * 6.0)) * 0.4;
+                  float beam = smoothstep(0.15, 0.1, abs(pos.x - 0.5)) * 
+                              step(pos.y, 0.45 + hover) * step(0.0, pos.y);
+                  aliens += beam * beamPulse * (0.5 + audioIntensity * 0.3);
+                  
+                  pattern = aliens;
+              } else if (drawingType < 0.45) {
+                  // Rain Drops - peaceful weather
+                  vec2 pos = cellUv;
+                  float rain = 0.0;
+                  
+                  // Multiple rain drops falling
+                  for(int i = 0; i < 20; i++) {
+                      float dropX = fract(float(i) * 0.618) * 0.9 + 0.05;
+                      float dropSpeed = 2.0 + fract(float(i) * 0.382) * 3.0 + bassControl * 2.0;
+                      float dropY = fract(time * dropSpeed * 0.3 + float(i) * 0.271);
+                      
+                      // Raindrop shape - elongated
+                      vec2 dropPos = pos - vec2(dropX, dropY);
+                      float drop = length(dropPos * vec2(1.0, 0.5)) - 0.015;
+                      rain += smoothstep(0.015, 0.01, drop) * (0.7 + audioIntensity * 0.3);
+                      
+                      // Splash effect when drop hits bottom
+                      if (dropY < 0.1) {
+                          float splashRadius = (0.1 - dropY) * 0.5;
+                          float splash = length(pos - vec2(dropX, 0.05)) - splashRadius;
+                          rain += smoothstep(0.01, 0.005, abs(splash - 0.02)) * (0.5 + trebleControl * 0.5);
+                      }
+                  }
+                  
+                  // Ripples in puddles
+                  for(int i = 0; i < 5; i++) {
+                      float rippleTime = time * (1.5 + midControl * 2.0) + float(i) * 1.5;
+                      float rippleX = 0.2 + float(i) * 0.15;
+                      float rippleRadius = fract(rippleTime * 0.3) * 0.1;
+                      float ripple = length(pos - vec2(rippleX, 0.1)) - rippleRadius;
+                      rain += smoothstep(0.008, 0.004, abs(ripple)) * (1.0 - fract(rippleTime * 0.3)) * (0.6 + midControl * 0.4);
+                  }
+                  
+                  pattern = rain;
+              } else if (drawingType < 0.5) {
+                  // Dancing People - audio reactive
+                  vec2 pos = cellUv;
+                  float dance = 0.0;
+                  
+                  // Create 3 dancing figures
+                  for(int i = 0; i < 3; i++) {
+                      float personX = 0.25 + float(i) * 0.25;
+                      float dancePhase = time * (3.0 + bassControl * 6.0) + float(i) * 2.0;
+                      
+                      // Body swaying with bass
+                      float sway = sin(dancePhase) * (0.03 + bassControl * 0.02);
+                      vec2 bodyCenter = vec2(personX + sway, 0.4);
+                      
+                      // Head bobbing
+                      float headBob = sin(dancePhase * 2.0) * (0.02 + midControl * 0.02);
+                      float head = length(pos - vec2(bodyCenter.x, 0.7 + headBob)) - 0.04;
+                      dance += smoothstep(0.04, 0.02, head) * (0.8 + audioIntensity * 0.2);
+                      
+                      // Body
+                      float body = max(abs(pos.x - bodyCenter.x) - 0.025, abs(pos.y - bodyCenter.y) - 0.1);
+                      dance += smoothstep(0.01, 0.0, body) * (0.7 + bassControl * 0.3);
+                      
+                      // Arms waving with treble
+                      float armWave = sin(dancePhase * 1.5 + trebleControl * 5.0) * (0.1 + trebleControl * 0.08);
+                      float leftArm = smoothstep(0.015, 0.01, length(pos - vec2(bodyCenter.x - 0.06, bodyCenter.y + 0.05 + armWave)));
+                      float rightArm = smoothstep(0.015, 0.01, length(pos - vec2(bodyCenter.x + 0.06, bodyCenter.y + 0.05 - armWave)));
+                      dance += (leftArm + rightArm) * (0.6 + trebleControl * 0.4);
+                      
+                      // Legs moving with beat
+                      float legBeat = sin(dancePhase * 4.0) * (0.02 + bassControl * 0.02);
+                      float leftLeg = smoothstep(0.012, 0.008, abs(pos.x - (bodyCenter.x - 0.02 + legBeat))) *
+                                     step(0.2, pos.y) * step(pos.y, bodyCenter.y - 0.1);
+                      float rightLeg = smoothstep(0.012, 0.008, abs(pos.x - (bodyCenter.x + 0.02 - legBeat))) *
+                                      step(0.2, pos.y) * step(pos.y, bodyCenter.y - 0.1);
+                      dance += (leftLeg + rightLeg) * (0.7 + bassControl * 0.3);
+                  }
+                  
+                  pattern = dance;
+              } else if (drawingType < 0.55) {
+                  // Birds Flying - V formation
+                  vec2 pos = cellUv;
+                  float birds = 0.0;
+                  
+                  // Lead bird position
+                  float flightTime = time * (1.0 + bassControl * 1.5);
+                  float leadX = fract(flightTime * 0.2) * 1.2 - 0.1;
+                  float leadY = 0.7 + sin(flightTime * 2.0) * 0.05;
+                  
+                  // V formation
+                  for(int i = 0; i < 7; i++) {
+                      float offsetX = float(i - 3) * 0.08;
+                      float offsetY = abs(float(i - 3)) * 0.04;
+                      float birdX = leadX + offsetX;
+                      float birdY = leadY - offsetY;
+                      
+                      // Wing flap phase
+                      float wingPhase = time * (6.0 + trebleControl * 8.0) + float(i) * 0.5;
+                      float wingSpread = 0.04 + sin(wingPhase) * 0.02;
+                      
+                      // Bird body
+                      float body = smoothstep(0.01, 0.008, abs(pos.x - birdX)) * 
+                                  smoothstep(0.01, 0.008, abs(pos.y - birdY));
+                      birds += body * (0.9 + audioIntensity * 0.1);
+                      
+                      // Wings
+                      float leftWing = smoothstep(0.02, 0.015, abs(pos.y - (birdY + sin(wingPhase) * 0.01))) * 
+                                      step(birdX - wingSpread, pos.x) * step(pos.x, birdX);
+                      float rightWing = smoothstep(0.02, 0.015, abs(pos.y - (birdY + sin(wingPhase) * 0.01))) * 
+                                       step(birdX, pos.x) * step(pos.x, birdX + wingSpread);
+                      birds += (leftWing + rightWing) * (0.8 + midControl * 0.2);
+                  }
+                  
+                  pattern = birds;
+              } else if (drawingType < 0.6) {
+                  // Ocean Waves - rhythmic motion
+                  vec2 pos = cellUv;
+                  float ocean = 0.0;
+                  
+                  // Multiple wave layers
+                  for(int i = 0; i < 5; i++) {
+                      float waveY = 0.3 + float(i) * 0.1;
+                      float wavePhase = time * (2.0 + bassControl * 3.0) + float(i) * 0.8;
+                      float waveHeight = 0.05 + audioIntensity * 0.03;
+                      
+                      float wave = sin(pos.x * 10.0 + wavePhase) * waveHeight;
+                      float waveLine = smoothstep(0.02, 0.01, abs(pos.y - (waveY + wave)));
+                      ocean += waveLine * (0.8 + trebleControl * 0.2) * (1.0 - float(i) * 0.15);
+                      
+                      // Foam on wave peaks
+                      float foam = smoothstep(0.03, 0.02, abs(pos.y - (waveY + wave + 0.01))) * 
+                                  step(0.7, sin(pos.x * 20.0 + wavePhase * 2.0));
+                      ocean += foam * (0.9 + midControl * 0.1);
+                  }
+                  
+                  // Seagulls above waves
+                  for(int i = 0; i < 3; i++) {
+                      float gullX = 0.2 + float(i) * 0.3 + sin(time + float(i)) * 0.1;
+                      float gullY = 0.8 + cos(time * 1.5 + float(i) * 2.0) * 0.05;
+                      float gullWing = sin(time * 8.0 + float(i) * 3.0) * 0.02;
+                      
+                      float gull = smoothstep(0.02, 0.01, length(pos - vec2(gullX - gullWing, gullY))) + 
+                                  smoothstep(0.02, 0.01, length(pos - vec2(gullX + gullWing, gullY)));
+                      ocean += gull * (0.7 + audioIntensity * 0.3);
+                  }
+                  
+                  pattern = ocean;
+              } else if (drawingType < 0.65) {
+                  // Sunrise/Sunset - day cycle
+                  vec2 pos = cellUv;
+                  float sun = 0.0;
+                  
+                  // Sun position based on time
+                  float sunPhase = time * (0.5 + bassControl * 1.0);
+                  float sunX = 0.5;
+                  float sunY = 0.3 + sin(sunPhase * 0.5) * 0.4;
+                  
+                  // Sun disc
+                  float sunDist = length(pos - vec2(sunX, sunY));
+                  sun += smoothstep(0.1, 0.08, sunDist) * (0.9 + audioIntensity * 0.1);
+                  
+                  // Sun rays
+                  float rayAngle = atan(pos.y - sunY, pos.x - sunX);
+                  float rays = sin(rayAngle * 16.0 + time * (2.0 + trebleControl * 4.0)) * 0.5 + 0.5;
+                  sun += smoothstep(0.15, 0.1, sunDist) * smoothstep(0.08, 0.15, sunDist) * 
+                        rays * (0.6 + midControl * 0.4);
+                  
+                  // Horizon line
+                  float horizon = smoothstep(0.01, 0.005, abs(pos.y - 0.3));
+                  sun += horizon * (0.8 + audioIntensity * 0.2);
+                  
+                  // Clouds
+                  for(int i = 0; i < 5; i++) {
+                      float cloudX = fract(float(i) * 0.618 + time * 0.05) * 1.2 - 0.1;
+                      float cloudY = 0.6 + fract(float(i) * 0.382) * 0.2;
+                      float cloudSize = 0.08 + fract(float(i) * 0.271) * 0.04;
+                      
+                      float cloud = length((pos - vec2(cloudX, cloudY)) * vec2(0.5, 1.0)) - cloudSize;
+                      sun += smoothstep(cloudSize, cloudSize - 0.02, cloud) * (0.5 + bassControl * 0.3);
+                  }
+                  
+                  pattern = sun;
+              } else if (drawingType < 0.7) {
+                  // Fireflies at Night - magical dots
+                  vec2 pos = cellUv;
+                  float fireflies = 0.0;
+                  
+                  // Dark background hint
+                  fireflies += 0.1 * (1.0 - pos.y) * audioIntensity;
+                  
+                  // Multiple fireflies
+                  for(int i = 0; i < 15; i++) {
+                      float flyPhase = time * (1.0 + fract(float(i) * 0.127) * 2.0) + float(i) * 0.628;
+                      float flyX = 0.5 + sin(flyPhase * 0.8) * 0.4 * fract(float(i) * 0.382 + 0.5);
+                      float flyY = 0.5 + cos(flyPhase * 1.1) * 0.3 * fract(float(i) * 0.618 + 0.3);
+                      
+                      // Blinking pattern
+                      float blink = sin(time * (4.0 + float(i) * 2.0 + trebleControl * 8.0)) * 0.5 + 0.5;
+                      float brightness = blink * (0.8 + audioIntensity * 0.2);
+                      
+                      // Glow effect
+                      float glow = length(pos - vec2(flyX, flyY));
+                      fireflies += smoothstep(0.03, 0.01, glow) * brightness;
+                      fireflies += smoothstep(0.06, 0.03, glow) * brightness * 0.3;
+                  }
+                  
+                  pattern = fireflies;
+              } else if (drawingType < 0.75) {
+                  // Wind Mill - rotating blades
+                  vec2 pos = cellUv;
+                  float windmill = 0.0;
+                  
+                  // Tower
+                  float tower = smoothstep(0.04, 0.035, abs(pos.x - 0.5)) * 
+                               step(0.2, pos.y) * step(pos.y, 0.6);
+                  windmill += tower * (0.8 + audioIntensity * 0.2);
+                  
+                  // Rotating blades
+                  vec2 bladeCenter = vec2(0.5, 0.6);
+                  float rotation = time * (2.0 + bassControl * 4.0);
+                  
+                  for(int i = 0; i < 4; i++) {
+                      float bladeAngle = rotation + float(i) * 1.571;
+                      vec2 bladeDir = vec2(cos(bladeAngle), sin(bladeAngle));
+                      vec2 bladePos = pos - bladeCenter;
+                      
+                      float bladeDist = dot(bladePos, bladeDir);
+                      float bladePerp = abs(dot(bladePos, vec2(-bladeDir.y, bladeDir.x)));
+                      
+                      float blade = smoothstep(0.02, 0.015, bladePerp) * 
+                                   step(0.0, bladeDist) * step(bladeDist, 0.15);
+                      windmill += blade * (0.9 + trebleControl * 0.1);
+                  }
+                  
+                  // Center hub
+                  float hub = length(pos - bladeCenter) - 0.02;
+                  windmill += smoothstep(0.02, 0.015, hub) * (0.85 + midControl * 0.15);
+                  
+                  pattern = windmill;
+              } else if (drawingType < 0.8) {
+                  // School of Fish - swimming together
+                  vec2 pos = cellUv;
+                  float fish = 0.0;
+                  
+                  // School movement
+                  float schoolTime = time * (1.5 + bassControl * 2.0);
+                  vec2 schoolCenter = vec2(0.5 + sin(schoolTime * 0.3) * 0.2, 
+                                          0.5 + cos(schoolTime * 0.4) * 0.15);
+                  
+                  for(int i = 0; i < 12; i++) {
+                      float fishAngle = float(i) * 0.524 + schoolTime;
+                      float fishDist = 0.1 + fract(float(i) * 0.382) * 0.1;
+                      vec2 fishPos = schoolCenter + vec2(cos(fishAngle), sin(fishAngle)) * fishDist;
+                      
+                      // Fish body
+                      vec2 fishLocal = pos - fishPos;
+                      float fishRot = atan(sin(fishAngle), cos(fishAngle));
+                      fishLocal = vec2(
+                          fishLocal.x * cos(fishRot) - fishLocal.y * sin(fishRot),
+                          fishLocal.x * sin(fishRot) + fishLocal.y * cos(fishRot)
+                      );
+                      
+                      float body = length(fishLocal * vec2(0.5, 1.0)) - 0.02;
+                      fish += smoothstep(0.02, 0.015, body) * (0.8 + audioIntensity * 0.2);
+                      
+                      // Tail fin
+                      float tailWag = sin(time * (8.0 + trebleControl * 10.0) + float(i)) * 0.01;
+                      float tail = length(fishLocal - vec2(0.025 + tailWag, 0.0)) - 0.01;
+                      fish += smoothstep(0.01, 0.008, tail) * (0.7 + midControl * 0.3);
+                  }
+                  
+                  // Bubbles
+                  for(int i = 0; i < 8; i++) {
+                      float bubbleY = fract(time * 0.3 + float(i) * 0.125);
+                      float bubbleX = 0.3 + fract(float(i) * 0.618) * 0.4;
+                      float bubble = length(pos - vec2(bubbleX, bubbleY)) - 0.01;
+                      fish += smoothstep(0.01, 0.008, abs(bubble - 0.005)) * (0.6 + trebleControl * 0.4);
+                  }
+                  
+                  pattern = fish;
+              } else if (drawingType < 0.85) {
+                  // Campfire - flickering flames
+                  vec2 pos = cellUv;
+                  float fire = 0.0;
+                  
+                  // Fire base/logs
+                  float logs = smoothstep(0.08, 0.07, abs(pos.x - 0.5)) * 
+                              smoothstep(0.02, 0.01, abs(pos.y - 0.25));
+                  fire += logs * (0.6 + audioIntensity * 0.2);
+                  
+                  // Flames
+                  for(int i = 0; i < 8; i++) {
+                      float flameX = 0.5 + sin(float(i) * 0.8) * 0.05;
+                      float flamePhase = time * (4.0 + bassControl * 6.0) + float(i) * 0.7;
+                      float flameHeight = 0.15 + sin(flamePhase) * 0.05 + audioIntensity * 0.1;
+                      
+                      vec2 flamePos = pos - vec2(flameX, 0.3);
+                      float flameDist = length(flamePos * vec2(1.0, 0.5));
+                      float flameShape = smoothstep(flameHeight, flameHeight * 0.3, flamePos.y) * 
+                                        smoothstep(0.06, 0.02, flameDist);
+                      
+                      fire += flameShape * (0.9 + trebleControl * 0.1) * (1.0 - float(i) * 0.1);
+                  }
+                  
+                  // Sparks
+                  for(int i = 0; i < 6; i++) {
+                      float sparkY = 0.3 + fract(time * 0.8 + float(i) * 0.167) * 0.4;
+                      float sparkX = 0.5 + sin(sparkY * 10.0 + float(i)) * 0.1;
+                      float spark = length(pos - vec2(sparkX, sparkY)) - 0.005;
+                      fire += smoothstep(0.005, 0.003, spark) * (0.8 + midControl * 0.2);
+                  }
+                  
+                  pattern = fire;
+              } else if (drawingType < 0.9) {
+                  // Mountain Range - majestic peaks
+                  vec2 pos = cellUv;
+                  float mountains = 0.0;
+                  
+                  // Multiple mountain layers
+                  for(int layer = 0; layer < 3; layer++) {
+                      float layerOffset = float(layer) * 0.1;
+                      float layerHeight = 0.5 - layerOffset;
+                      
+                      // Mountain peaks using sine waves
+                      float peak1 = sin(pos.x * 3.0 + layerOffset) * 0.2;
+                      float peak2 = sin(pos.x * 5.0 + layerOffset * 2.0) * 0.15;
+                      float peak3 = sin(pos.x * 7.0 + layerOffset * 3.0) * 0.1;
+                      
+                      float mountainLine = layerHeight + peak1 + peak2 + peak3 + 
+                                         sin(time * (1.0 + bassControl * 2.0) + layerOffset) * 0.02;
+                      
+                      float mountain = step(pos.y, mountainLine);
+                      mountains += mountain * (0.7 - float(layer) * 0.2) * (0.8 + audioIntensity * 0.2);
+                  }
+                  
+                  // Snow caps
+                  float snowLine = 0.65 + sin(pos.x * 8.0) * 0.05;
+                  float snow = step(snowLine, pos.y) * step(pos.y, 0.7);
+                  mountains += snow * (0.9 + trebleControl * 0.1);
+                  
+                  // Stars in sky
+                  float stars = step(0.95, sin(pos.x * 50.0 + time) * sin(pos.y * 50.0 + time * 0.7)) * 
+                               step(0.7, pos.y);
+                  mountains += stars * (0.8 + midControl * 0.2);
+                  
+                  pattern = mountains;
+              } else if (drawingType < 0.95) {
+                  // Lightning Storm - electric sky
+                  vec2 pos = cellUv;
+                  float lightning = 0.0;
+                  
+                  // Storm clouds
+                  float cloudBase = 0.7 + sin(pos.x * 5.0 + time * 0.5) * 0.1;
+                  float clouds = smoothstep(0.02, 0.0, pos.y - cloudBase) * (0.4 + bassControl * 0.3);
+                  lightning += clouds;
+                  
+                  // Lightning bolts
+                  float strikeTime = floor(time * 2.0);
+                  float strikeFrac = fract(time * 2.0);
+                  
+                  if (strikeFrac < 0.1 + audioIntensity * 0.2) {
+                      float boltX = 0.3 + fract(strikeTime * 0.618) * 0.4;
+                      
+                      // Main bolt
+                      for(int i = 0; i < 10; i++) {
+                          float segmentY = 0.8 - float(i) * 0.08;
+                          float zigzag = sin(float(i) * 2.0 + strikeTime) * 0.05;
+                          float segment = smoothstep(0.01, 0.005, abs(pos.x - (boltX + zigzag))) * 
+                                        smoothstep(0.02, 0.01, abs(pos.y - segmentY));
+                          lightning += segment * (0.95 + trebleControl * 0.05);
+                      }
+                      
+                      // Branches
+                  for(int i = 0; i < 3; i++) {
+                          float branchY = 0.5 + float(i) * 0.1;
+                          float branchX = boltX + sin(float(i) + strikeTime) * 0.1;
+                          float branch = smoothstep(0.008, 0.004, 
+                              length(pos - mix(vec2(boltX, branchY), vec2(branchX, branchY - 0.1), 
+                                             clamp((pos.y - branchY + 0.1) / 0.1, 0.0, 1.0))));
+                          lightning += branch * (0.8 + midControl * 0.2);
+                      }
+                  }
+                  
+                  pattern = lightning;
+              } else {
+                  // Heart Beat - pulsing love
+                  vec2 pos = cellUv;
+                  float heart = 0.0;
+                  
+                  // Heart shape with audio pulse
+                  float heartScale = 1.0 + sin(time * (4.0 + bassControl * 8.0)) * 0.1;
+                  vec2 heartPos = (pos - vec2(0.5, 0.45)) / heartScale;
+                  
+                  // Heart formula
+                  float a = length(heartPos - vec2(0.0, 0.05)) - 0.12;
+                  float b = length(heartPos - vec2(-0.08, 0.13)) - 0.08;
+                  float c = length(heartPos - vec2(0.08, 0.13)) - 0.08;
+                  float heartShape = min(a, min(b, c));
+                  
+                  heart += smoothstep(0.02, 0.0, heartShape) * (0.9 + audioIntensity * 0.1);
+                  
+                  // Pulse rings
+                  float pulseTime = fract(time * (2.0 + midControl * 3.0));
+                  float pulseRing = length(pos - vec2(0.5, 0.5)) - pulseTime * 0.3;
+                  heart += smoothstep(0.02, 0.01, abs(pulseRing)) * (1.0 - pulseTime) * (0.6 + trebleControl * 0.4);
+                  
+                  // Small hearts floating up
+                  for(int i = 0; i < 5; i++) {
+                      float miniY = fract(time * 0.3 + float(i) * 0.2);
+                      float miniX = 0.3 + fract(float(i) * 0.618) * 0.4;
+                      vec2 miniPos = (pos - vec2(miniX, miniY)) * 3.0;
+                      
+                      float miniHeart = min(
+                          length(miniPos - vec2(0.0, 0.05)) - 0.12,
+                          min(
+                              length(miniPos - vec2(-0.08, 0.13)) - 0.08,
+                              length(miniPos - vec2(0.08, 0.13)) - 0.08
+                          )
+                      );
+                      
+                      heart += smoothstep(0.02, 0.0, miniHeart) * (0.7 + audioIntensity * 0.3);
+                  }
+                  
+                  pattern = heart;
+              }
+              
+              // More controlled phase transitions with audio sync
+              float audioSync = sin(time * 4.0 + bassControl * 8.0) * 0.1 + 0.9;
+              float phaseMask = smoothstep(0.0, 0.2, drawingPhase) * smoothstep(1.0, 0.8, drawingPhase) * audioSync;
+              pattern *= phaseMask;
+              
+              // Enhanced brightness with stronger audio control
+              float brightness = pattern * (0.9 + audioIntensity * 0.3);
+              
+              // Synchronized highlights with controlled audio response
+              float globalHighlightTime = floor(time * (4.0 + trebleControl * 8.0));
+              float highlightSeed = rand(cellUv + globalHighlightTime);
+              if (highlightSeed < trebleControl * 0.5) {
+                  brightness += 0.4 * trebleControl; // Audio-controlled highlights
+              }
+              
+              // More sophisticated character selection
+              float charSelect = pattern * 0.8 + audioIntensity * 0.15 + highlightSeed * 0.05;
+              float charPattern = drawChar(intraCellUv, charSelect);
+              
+              // Much darker ASCII for better visibility
+              float finalBrightness = brightness * charPattern * effectIntensity * 2.5; // Much darker
+              finalBrightness = clamp(finalBrightness, 0.0, 1.0);
+              return vec3(1.0 - finalBrightness); // Invert for black on white
           }
 
           void main() {
-              // Define character cell size - smaller cells for denser text
-              float baseCharSize = 10.0;
-              float charSizeScale = 1.0 + (1.0 - effectIntensity) * 2.0; // Higher intensity = smaller, more numerous chars
-              vec2 cellSize = vec2(baseCharSize * 0.6, baseCharSize) * charSizeScale; // Fixed aspect ratio
-              vec2 charGridRes = floor(resolution / cellSize);
-
-              // --- Grid Distortion --- 
-              // Apply audio/time based distortion to the main UVs before cell calculation
-              float distortAmount = audioMid * 0.05 * effectIntensity;
-              float distortAngle = time * 0.5 + audioMid * 2.0;
-              vec2 distortOffset = vec2(sin(vUv.y * 15.0 + distortAngle), cos(vUv.x * 10.0 - distortAngle)) * distortAmount;
-              vec2 distortedVuv = vUv + distortOffset;
-
-              // Calculate the UV coordinates for the center of the current character cell
-              vec2 cellUv = floor(distortedVuv * charGridRes) / charGridRes + (0.5 / charGridRes);
-
-              // Calculate UV coordinates within the current character cell (0.0 to 1.0)
-              vec2 intraCellUv = fract(distortedVuv * charGridRes);
-
-              // Use a time-sliced seed for character changes, influenced by treble
-              float charChangeRate = 2.0 + audioTreble * 15.0 * effectIntensity;
-              float cellRandSeed = rand(cellUv + floor(time * charChangeRate));
-
-              // --- Procedural Character Shape Generation --- 
-              // Generate shapes using sin/cos and the cell seed - looks more like glyphs
-              float patternComplexity = 2.0 + floor(cellRandSeed * 5.0); // 2-6 based on seed
-              float patternFreq = 5.0 + audioBass * 10.0 * effectIntensity; // Bass increases complexity
-              float patternPhase = cellRandSeed * 6.28; // Seed determines phase
-
-              float pat1 = sin(intraCellUv.x * patternFreq * 1.1 + patternPhase) * cos(intraCellUv.y * patternFreq * 0.9 + patternPhase);
-              float pat2 = cos(intraCellUv.y * patternFreq * 1.3 - patternPhase * 0.5) * sin(intraCellUv.x * patternFreq * 0.7 - patternPhase * 0.5);
-              float combinedPattern = pow(abs(pat1 + pat2), 0.7); // Combine and shape
+              // Character cell size calculation
+              float baseSize = 12.0 - effectIntensity * 4.0; // Smaller cells with higher intensity
+              vec2 cellSize = vec2(baseSize * 0.6, baseSize);
+              vec2 charGrid = floor(resolution / cellSize);
               
-              // Use threshold based on pattern and cell seed
-              float charThreshold = 0.3 + cellRandSeed * 0.4; // Threshold varies per cell
-              float charPixel = smoothstep(charThreshold - 0.1, charThreshold + 0.1, combinedPattern); // Anti-aliased character shape
-
-              // Add Glitch: Randomly turn off some pixels based on treble
-              if (rand(cellUv + fract(time * 5.0)) < audioTreble * 0.1 * effectIntensity) {
-                  if (rand(intraCellUv + cellRandSeed) > 0.7) {
-                      charPixel = 0.0; // Randomly erase parts
-                  }
+              // Cell coordinates
+              vec2 cellCoord = floor(vUv * charGrid);
+              vec2 cellUv = cellCoord / charGrid;
+              vec2 intraCellUv = fract(vUv * charGrid);
+              
+              // Cell-specific random seed
+              float cellSeed = rand(cellCoord);
+              
+              // Dynamic ASCII art visualization (changes automatically with audio)
+              vec3 color = dynamicASCIIVisualizer(cellUv, intraCellUv, cellSeed);
+              
+              // Visual mode styles:
+              //   0 – Off (procedural ASCII)
+              //   1 – Object / edge detection overlay
+              //   2 – Camera feed replaces white background
+              //   3 – Same as 2, but ASCII glyphs tinted green
+              if (abs(visualMode - 1.0) < 0.1 && cameraActive > 0.5 && textureSize(cameraTexture, 0).x > 0) {
+                  // Style 1 – pure camera-driven ASCII: luminance selects glyph shapes
+                  vec3 camColor = texture2D(cameraTexture, vUv).rgb;
+                  float camLuma = dot(camColor, vec3(0.299, 0.587, 0.114));
+                  float asciiIntensity = 1.0 - camLuma; // darker areas use denser glyphs
+                  float charSelect = asciiIntensity;
+                  float asciiChar = drawChar(intraCellUv, charSelect);
+                  vec3 asciiColor = vec3(1.0 - asciiChar);
+                  color = asciiColor;
+              } else if (abs(visualMode - 2.0) < 0.1 && cameraActive > 0.5) {
+                  // Style 2 – show camera feed where background is white
+                  vec3 camColor = texture2D(cameraTexture, vUv).rgb;
+                  float whiteMask = step(0.95, color.r) * step(0.95, color.g) * step(0.95, color.b);
+                  color = mix(color, camColor, whiteMask);
+              } else if (abs(visualMode - 3.0) < 0.1 && cameraActive > 0.5) {
+                  // Style 3 – camera background + green ASCII glyphs
+                  vec3 camColor = texture2D(cameraTexture, vUv).rgb;
+                  float whiteMask = step(0.95, color.r) * step(0.95, color.g) * step(0.95, color.b);
+                  // Tint glyphs green
+                  color = mix(camColor, vec3(0.0, 1.0, 0.0), 1.0 - whiteMask);
               }
-
-              // --- Color the character --- 
-              // Monochrome color with brightness influenced by cell seed and audio flicker
-              float baseBrightness = 0.7 + cellRandSeed * 0.3; // Base brightness varies per char
-              float brightnessFlicker = (rand(cellUv + time * 30.0) - 0.5) * 0.4 * audioTreble; // Treble flicker
-              float finalBrightness = clamp(baseBrightness + brightnessFlicker, 0.0, 1.0);
-              vec3 finalColor = vec3(finalBrightness * charPixel); // Apply shape mask
-
-              // Output the final color
-              gl_FragColor = vec4(finalColor, 1.0);
+              
+              gl_FragColor = vec4(color, 1.0);
           }
       `,
       depthTest: false,
@@ -5936,7 +6988,7 @@ function createPixelSortEffect() {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'PixelSortEffect';
   mesh.userData.baseEffectIntensity = 1.0;
-  mesh.userData.visualMode = 0.0; // Start procedural
+  mesh.userData.visualMode = 0.0; // Start with Matrix Rain
   scene.add(mesh);
   visualElements.push(mesh);
 
@@ -5945,12 +6997,14 @@ function createPixelSortEffect() {
       const mat = this.material;
       const time = performance.now() * 0.001;
       mat.uniforms.time.value = time;
-      mat.uniforms.audioBass.value = 0.0;
-      mat.uniforms.audioMid.value = 0.0;
-      mat.uniforms.audioTreble.value = 0.0;
+      mat.uniforms.audioBass.value = 0.1; // Small baseline activity
+      mat.uniforms.audioMid.value = 0.05;
+      mat.uniforms.audioTreble.value = 0.05;
       mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 1.0;
       mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
       mat.uniforms.visualMode.value = this.userData.visualMode;
+      mat.uniforms.cameraActive.value = (this.userData.visualMode > 0.5 && window.userCameraTexture) ? 1.0 : 0.0;
+      // randomSeed is set once during creation and doesn't need updating
       if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
           mat.uniforms.cameraTexture.value = window.userCameraTexture;
               } else {
@@ -5968,6 +7022,8 @@ function createPixelSortEffect() {
       mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 1.0;
       mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
       mat.uniforms.visualMode.value = this.userData.visualMode;
+      mat.uniforms.cameraActive.value = (this.userData.visualMode > 0.5 && window.userCameraTexture) ? 1.0 : 0.0;
+      // randomSeed is set once during creation and doesn't need updating
        if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
           mat.uniforms.cameraTexture.value = window.userCameraTexture;
       } else {
@@ -5976,22 +7032,36 @@ function createPixelSortEffect() {
   }.bind(mesh);
 
   mesh.userData.customAdjustIntensity = function(intensityLevel) {
-      // Controls sort threshold sensitivity, sort distance, glitch chance
-      this.userData.baseEffectIntensity = 0.5 + intensityLevel * 0.2;
+      // Controls character density and animation speed
+      this.userData.baseEffectIntensity = 0.3 + intensityLevel * 0.15;
   }.bind(mesh);
 
-  // Override visual mode toggling
+    // Visual mode toggling (camera overlay only)
    mesh.userData.toggleVisualMode = function() {
-      this.userData.visualMode = 1.0 - this.userData.visualMode;
-      showActionMessage("Pixel Sort Mode: " + (this.userData.visualMode > 0.5 ? "Camera Input" : "Procedural"));
-      if (this.material) {
+      // Cycle through the four visual states: 0 → 1 → 2 → 3 → 0
+      this.userData.visualMode = (this.userData.visualMode + 1.0) % 4.0;
+      let label;
+      if (this.userData.visualMode === 0.0)      label = "off";
+      else if (this.userData.visualMode === 1.0) label = "detection overlay";
+      else if (this.userData.visualMode === 2.0) label = "camera background";
+      else                                       label = "green ascii";
+      showActionMessage(`ASCII visual: ${label}`);
+       if (this.material) {
           this.material.uniforms.visualMode.value = this.userData.visualMode;
-           if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
-               this.material.uniforms.cameraTexture.value = window.userCameraTexture;
-                if (!window.isCameraMode) toggleCameraBackground();
+           if (this.userData.visualMode > 0.5) {
+               // Start camera feed if it is not already active
+               if (!window.isCameraMode) {
+                   toggleCameraBackground();
+               }
+               if (window.userCameraTexture) {
+                   this.material.uniforms.cameraTexture.value = window.userCameraTexture;
+               }
            } else {
+               // Turn off camera for this effect; if no other effect uses camera, disable it globally
                this.material.uniforms.cameraTexture.value = null;
-               // if (window.isCameraMode && !isAnyEffectUsingCamera()) toggleCameraBackground();
+               if (window.isCameraMode && !isAnyEffectUsingCamera()) {
+                   toggleCameraBackground();
+               }
            }
       }
   }.bind(mesh);
@@ -6839,14 +7909,14 @@ function createWaterPoolEffect() {
 //         float curve = sin(p.x * 3.0 + time * 2.0 + phase) * 0.3;
 //         curve += sin(p.x * 5.0 - time * 1.5 + phase * 2.0) * 0.15;
 //         curve += fbm(vec2(p.x * 2.0 + time, phase)) * 0.2 * midIntensity;
-        
+//        
 //         // Distance from curve
 //         float d = abs(p.y - curve);
-        
+//        
 //         // Smooth tendril with variable thickness
 //         float tendrilThickness = thickness * (1.0 + bassIntensity * 0.5);
 //         tendrilThickness *= (1.0 - smoothstep(0.0, 2.0, abs(p.x)));
-        
+//        
 //         return smoothstep(tendrilThickness, 0.0, d);
 //       }
       
@@ -6854,15 +7924,12 @@ function createWaterPoolEffect() {
 //       float particleDots(vec2 p, float phase) {
 //         float particleSpacing = 0.15 - midIntensity * 0.05;
 //         float particlePhase = floor(p.x / particleSpacing) * particleSpacing;
-        
 //         vec2 particlePos = vec2(particlePhase, 0.0);
 //         float curve = sin(particlePos.x * 3.0 + time * 2.0 + phase) * 0.3;
 //         curve += sin(particlePos.x * 5.0 - time * 1.5 + phase * 2.0) * 0.15;
 //         particlePos.y = curve;
-        
 //         float d = length(p - particlePos);
 //         float size = 0.02 + bassIntensity * 0.01;
-        
 //         return smoothstep(size, 0.0, d);
 //       }
       
@@ -7285,7 +8352,7 @@ if (liquidCrystalIdle && liquidCrystalIdle.userData && liquidCrystalIdle.userDat
   } catch (err) {
     console.error("Error in LiquidCrystalEffect customAnimateInitial:", err);
   }
-  }
+}
 
 const abstractFlowIdle = visualElements.find(e => e.name === 'AbstractFlowEffect');
 if (abstractFlowIdle && abstractFlowIdle.material.uniforms) {
@@ -7296,10 +8363,8 @@ if (abstractFlowIdle && abstractFlowIdle.material.uniforms) {
 
 
 const pixelSortIdle = visualElements.find(e => e.name === 'PixelSortEffect');
-if (pixelSortIdle && pixelSortIdle.material.uniforms) {
-  pixelSortIdle.material.uniforms.time.value = time;
-  pixelSortIdle.material.uniforms.audioBass.value = 0.0;
-  pixelSortIdle.material.uniforms.audioMid.value = 0.0;
+if (pixelSortIdle && pixelSortIdle.userData.customAnimateInitial) {
+  pixelSortIdle.userData.customAnimateInitial();
 }
  // --- KaleidoTunnel (Redesigned) Idle State ---
  const kaleidoTunnel = visualElements.find(e => e.name === 'KaleidoTunnel');
@@ -7670,9 +8735,8 @@ if (abstractFlowReact && abstractFlowReact.material.uniforms) {
 
 
 const pixelSortReact = visualElements.find(e => e.name === 'PixelSortEffect');
-if (pixelSortReact && pixelSortReact.material.uniforms) {
-  pixelSortReact.material.uniforms.time.value = time;
-  pixelSortReact.material.uniforms.audioBass.value = bassAvg;
+if (pixelSortReact && pixelSortReact.userData.customAnimateReactive) {
+  pixelSortReact.userData.customAnimateReactive(bassAvg, midAvg, trebleAvg);
 }
 // --- WaterPool PS1-style Audio-Reactive Animation ---
 const waterPool = visualElements.find(e => e.name === 'WaterPool');
@@ -8305,15 +9369,26 @@ case 'ArrowUp': {
         showActionMessage("liquid crystal visual: off");
       }
     } else if (isPixelSort) {
-      // --- PixelSortEffect Logic (binary: 0, 1) ---
+      // --- PixelSortEffect Logic (4 modes: 0, 1, 2, 3) ---
+      let currentState = Math.round(activeMaterial.uniforms.visualMode.value);
       if (currentState === 0) {
         toggleCameraBackground();
+        activeEffect.userData.visualMode = 1.0;
         activeMaterial.uniforms.visualMode.value = 1.0;
-        showActionMessage("pixel sort visual: camera input");
-      } else { // currentState is 1
+        showActionMessage("ascii visual: style 1 (camera ascii)");
+      } else if (currentState === 1) {
+        activeEffect.userData.visualMode = 2.0;
+        activeMaterial.uniforms.visualMode.value = 2.0;
+        showActionMessage("ascii visual: style 2 (cam background)");
+      } else if (currentState === 2) {
+        activeEffect.userData.visualMode = 3.0;
+        activeMaterial.uniforms.visualMode.value = 3.0;
+        showActionMessage("ascii visual: style 3 (green ascii)");
+      } else { // currentState is 3
         toggleCameraBackground();
+        activeEffect.userData.visualMode = 0.0;
         activeMaterial.uniforms.visualMode.value = 0.0;
-        showActionMessage("pixel sort visual: procedural");
+        showActionMessage("ascii visual: off");
       }
     } else if (isPopArt) {
       // --- PopArtEffect Logic (binary: 0, 1) ---
@@ -8565,6 +9640,12 @@ if (apple1Effect && apple1Effect.material && apple1Effect.material.uniforms) {
 const neonGridEffect = visualElements.find(elem => elem.name === 'NeonGridEffect');
 if (neonGridEffect && neonGridEffect.userData && neonGridEffect.userData.customAdjustIntensity) {
   neonGridEffect.userData.customAdjustIntensity(intensityLevel);
+}
+
+// PixelSortEffect (ASCII Art) intensity adjustment
+const pixelSortEffect = visualElements.find(elem => elem.name === 'PixelSortEffect');
+if (pixelSortEffect && pixelSortEffect.userData && pixelSortEffect.userData.customAdjustIntensity) {
+  pixelSortEffect.userData.customAdjustIntensity(intensityLevel);
 }
 
   
