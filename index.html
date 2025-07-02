@@ -3608,10 +3608,9 @@ function createPopArtEffect() {
 }
 
 function createNeonGridEffect() {
-  // Use a large plane with many subdivisions
-  const gridSize = 1500;
-  const divisions = 100;
-  const geometry = new THREE.PlaneBufferGeometry(gridSize, gridSize, divisions, divisions);
+  // Create subdivided plane for vertex displacement wobbling
+  const gridSize = 1000;
+  const geometry = new THREE.PlaneGeometry(gridSize, gridSize, 64, 64); // High subdivision for smooth wobbling
 
   const material = new THREE.ShaderMaterial({
       uniforms: {
@@ -3620,9 +3619,12 @@ function createNeonGridEffect() {
           audioMid: { value: 0.0 },
           audioTreble: { value: 0.0 },
           effectIntensity: { value: 1.0 },
-          lineWidth: { value: 0.05 }, // Relative line width
-          glowPower: { value: 3.0 }, // Power for glow calculation
-          gridColor: { value: new THREE.Color(0x00ffff) } // Cyan color
+          gridColor: { value: new THREE.Color(0xff4400) }, // Classic orange/red like the image
+          scanlineIntensity: { value: 0.3 },
+          // Visual Mode Uniforms
+          visualMode: { value: 0.0 },
+          cameraTexture: { value: null },
+          cameraActive: { value: 0.0 }
       },
       vertexShader: `
           uniform float time;
@@ -3630,79 +3632,196 @@ function createNeonGridEffect() {
           uniform float audioMid;
           uniform float audioTreble;
           uniform float effectIntensity;
-
+          
           varying vec2 vUv;
           varying float vDisplacement;
-
-          // Noise function (e.g., Simplex or Perlin)
-          // Using a simple periodic one for now
-          float noise(vec2 p) {
-              return sin(p.x * 5.0 + time * 0.5 + audioMid * 2.0) * cos(p.y * 5.0 + time * 0.3 + audioTreble * 2.0);
+          
+          // Random function
+          float random(vec2 st) {
+              return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
           }
-
+          
+          // Noise function for smooth organic movement
+          float noise(vec2 p) {
+              vec2 i = floor(p);
+              vec2 f = fract(p);
+              f = f * f * (3.0 - 2.0 * f);
+              
+              float a = random(i);
+              float b = random(i + vec2(1.0, 0.0));
+              float c = random(i + vec2(0.0, 1.0));
+              float d = random(i + vec2(1.0, 1.0));
+              
+              return mix(a, b, f.x) + (c - a) * f.y * (1.0 - f.x) + (d - b) * f.x * f.y;
+          }
+          
           void main() {
               vUv = uv;
               vec3 pos = position;
-
-              // Displacement based on noise and bass
-              float noiseVal = noise(uv * 3.0);
-              float displacement = noiseVal * 30.0 * effectIntensity; // Base wave
-              displacement += pow(audioBass, 2.0) * 100.0 * effectIntensity * sin(uv.x * 10.0 + time); // Bass pulse
-
-              vDisplacement = abs(displacement); // Pass absolute displacement
-
-              pos.z += displacement;
-
+              
+              // === DRAMATIC PLATE WOBBLING SYSTEM ===
+              
+              float bassIntensity = audioBass * effectIntensity;
+              float midIntensity = audioMid * effectIntensity;
+              float trebleIntensity = audioTreble * effectIntensity;
+              
+              // === CLEAN GRID - NO VERTEX DISPLACEMENT ===
+              
+              // Keep the grid perfectly geometric - all wobbling happens at plane level
+              // Store minimal displacement for glow effects only
+              vDisplacement = (bassIntensity + midIntensity + trebleIntensity) * 50.0;
+              
               gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
           }
       `,
       fragmentShader: `
           uniform float time;
-          uniform float audioBass; // Use bass for pulsing intensity
+          uniform float audioBass;
+          uniform float audioMid;
+          uniform float audioTreble;
           uniform float effectIntensity;
-          uniform float lineWidth;
-          uniform float glowPower;
           uniform vec3 gridColor;
-
+          uniform float scanlineIntensity;
+          
+          // Visual Mode
+          uniform float visualMode;
+          uniform sampler2D cameraTexture;
+          uniform float cameraActive;
+          
           varying vec2 vUv;
-          varying float vDisplacement; // Use displacement for color variation
-
+          varying float vDisplacement;
+          
+          // Random function
+          float random(vec2 st) {
+              return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+          }
+          
+          // Noise function for smooth distortions
+          float noise(vec2 p) {
+              vec2 i = floor(p);
+              vec2 f = fract(p);
+              f = f * f * (3.0 - 2.0 * f);
+              
+              float a = random(i);
+              float b = random(i + vec2(1.0, 0.0));
+              float c = random(i + vec2(0.0, 1.0));
+              float d = random(i + vec2(1.0, 1.0));
+              
+              return mix(a, b, f.x) + (c - a) * f.y * (1.0 - f.x) + (d - b) * f.x * f.y;
+          }
+          
           void main() {
-              // Calculate distance to the nearest grid line in both x and y
-              vec2 gridPos = fract(vUv * 20.0 * effectIntensity); // Control grid density with intensity
-              vec2 distToLine = min(gridPos, 1.0 - gridPos);
-              float dist = min(distToLine.x, distToLine.y);
-
-              // Calculate grid line intensity with glow
-              float halfLineWidth = lineWidth / 2.0;
-              // Sharper line, intense glow falloff
-              float lineIntensity = smoothstep(halfLineWidth + 0.05, halfLineWidth - 0.05, dist);
-              float glow = pow(smoothstep(halfLineWidth + 0.2, halfLineWidth, dist), glowPower);
-
-              // Combine line and glow, modulate with bass pulse
-              float totalIntensity = (lineIntensity * 0.8 + glow * 0.5) * (0.5 + audioBass * 1.5);
-
-              // Color variation based on displacement
-              vec3 color = mix(gridColor, vec3(1.0, 0.0, 1.0), smoothstep(0.0, 50.0, vDisplacement)); // Cyan to Magenta
-
-              gl_FragColor = vec4(color * totalIntensity, totalIntensity); // Use intensity for alpha for additive blending
+              vec2 uv = vUv;
+              
+              // === CLEAN GRID WITH DRAMATIC EFFECTS ===
+              
+              float bassIntensity = audioBass * effectIntensity;
+              float midIntensity = audioMid * effectIntensity;
+              float trebleIntensity = audioTreble * effectIntensity;
+              
+              // === SIMPLE BUT POWERFUL GRID DISTORTIONS ===
+              
+              // === CLEAN GRID LINES - NO DISTORTION ===
+              
+              // Keep grid lines perfectly straight!
+              // Only camera mode 1 gets slight distortion
+              if (abs(visualMode - 1.0) < 0.1 && cameraActive > 0.5) {
+                  vec3 camColor = texture2D(cameraTexture, uv).rgb;
+                  uv += (camColor.rg - 0.5) * 0.02 * effectIntensity; // Very subtle
+              }
+              
+                        // === BEAUTIFUL STIFF GRID SYSTEM ===
+          // Grid stays perfectly geometric and rigid while the paper plane tumbles in wind
+          
+          // Dynamic grid scale - users instantly see this changing!
+          float gridScale = 16.0 + bassIntensity * 15.0 + sin(time * 1.0) * midIntensity * 6.0;
+          
+          // Clean, rigid grid pattern - no distortion to maintain paper-like stiffness
+          vec2 grid = abs(fract(uv * gridScale) - 0.5);
+          
+          // Audio-reactive line width - thicker lines = more bass!
+          float lineWidth = 0.05 + bassIntensity * 0.06 + trebleIntensity * 0.02;
+          
+          // Create perfectly straight grid lines - paper may tumble but grid stays geometric
+          float lines = smoothstep(lineWidth, lineWidth * 0.3, min(grid.x, grid.y));
+              
+              // === INSTANT VISUAL FEEDBACK ===
+              
+              // CRT scanlines that pulse with music
+              float scanlines = sin(uv.y * 200.0 + time * 5.0) * scanlineIntensity * 0.3;
+              lines += scanlines;
+              
+              // Grid brightness varies across surface
+              float gridBrightness = 1.0 + sin(uv.x * gridScale * 0.5 + time * 2.0) * midIntensity * 0.4;
+              gridBrightness += cos(uv.y * gridScale * 0.7 + time * 1.5) * trebleIntensity * 0.3;
+              
+              // === CLEAN BRIGHTNESS SYSTEM ===
+              
+              // Base brightness from displacement - shows the wobble!
+              float brightness = 1.0 + (vDisplacement / 300.0) * 2.0;
+              
+              // Grid brightness modulation
+              brightness *= gridBrightness;
+              
+              // Audio brightness boost - users see immediate response!
+              float lineBrightness = brightness * (0.7 + bassIntensity * 0.8 + midIntensity * 0.5 + trebleIntensity * 0.3);
+              
+              // === CONSISTENT RED GRID COLOR ===
+              
+              // Pure red grid color that stays consistent
+              vec3 gridColor = vec3(1.0, 0.0, 0.0); // Pure red
+              
+              vec3 finalColor = gridColor * lineBrightness;
+              
+              // === FINAL AUDIO EFFECTS ===
+              
+              // Beat pulsing - users immediately see this!
+              float beatPulse = 1.0 + bassIntensity * sin(time * 6.0) * 0.4;
+              finalColor *= beatPulse;
+              
+              // Add some digital glitch texture
+              if (trebleIntensity > 0.2) {
+                  float digitalNoise = (noise(uv * 40.0 + time * 0.1) - 0.5) * trebleIntensity * 0.15;
+                  finalColor += digitalNoise;
+              }
+              
+              // === VISUAL MODE BLENDING ===
+              if (cameraActive > 0.5 && abs(visualMode - 2.0) < 0.1) {
+                  // Mode 2: Grid overlay on camera
+                  vec3 cameraColor = texture2D(cameraTexture, vUv).rgb;
+                  finalColor = cameraColor * 0.7 + finalColor * lines * 0.6;
+              } else if (cameraActive > 0.5 && abs(visualMode - 3.0) < 0.1) {
+                  // Mode 3: Camera modulates grid brightness
+                  vec3 cameraColor = texture2D(cameraTexture, vUv).rgb;
+                  float camBrightness = dot(cameraColor, vec3(0.333));
+                  finalColor *= (0.5 + camBrightness * 1.5);
+              }
+              
+              gl_FragColor = vec4(finalColor * lines, lines);
           }
       `,
       transparent: true,
-      blending: THREE.AdditiveBlending, // Glow effect works well with additive
+      blending: THREE.AdditiveBlending,
       depthWrite: false,
-      side: THREE.DoubleSide // See grid from below if camera moves
+      side: THREE.DoubleSide
   });
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'NeonGridEffect';
-  mesh.rotation.x = -Math.PI / 2.5; // Tilt the grid for perspective
-  mesh.position.y = -100; // Lower the grid slightly
+  mesh.rotation.x = -Math.PI / 2.8; // Slight perspective like classic CRT displays
+  mesh.position.y = -100;
   mesh.userData.baseEffectIntensity = 1.0;
+  mesh.userData.visualMode = 0.0;
+  
+  // Store initial transform for glitch calculations
+  mesh.userData.originalPosition = mesh.position.clone();
+  mesh.userData.originalRotation = mesh.rotation.clone();
+  mesh.userData.originalScale = mesh.scale.clone();
+  
   scene.add(mesh);
   visualElements.push(mesh);
 
-   // Custom update functions
+  // Custom update functions with plane wobbling/glitching
   mesh.userData.customAnimateInitial = function() {
       const mat = this.material;
       const time = performance.now() * 0.001;
@@ -3711,6 +3830,23 @@ function createNeonGridEffect() {
       mat.uniforms.audioMid.value = 0.0;
       mat.uniforms.audioTreble.value = 0.0;
       mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 1.0;
+      mat.uniforms.visualMode.value = this.userData.visualMode;
+      
+      // Very gentle idle wobble - just barely moving
+      this.position.x = this.userData.originalPosition.x + Math.sin(time * 0.3) * 1;
+      this.position.y = this.userData.originalPosition.y + Math.sin(time * 0.2) * 0.8;
+      this.position.z = this.userData.originalPosition.z + Math.cos(time * 0.4) * 1.2;
+      this.rotation.x = this.userData.originalRotation.x + Math.sin(time * 0.2) * 0.005;
+      this.rotation.y = this.userData.originalRotation.y + Math.cos(time * 0.15) * 0.003;
+      this.rotation.z = this.userData.originalRotation.z + Math.sin(time * 0.25) * 0.008;
+      
+      // Update camera texture if available
+      if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
+          mat.uniforms.cameraTexture.value = window.userCameraTexture;
+          mat.uniforms.cameraActive.value = 1.0;
+      } else {
+          mat.uniforms.cameraActive.value = 0.0;
+      }
   }.bind(mesh);
 
   mesh.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
@@ -3721,13 +3857,449 @@ function createNeonGridEffect() {
       mat.uniforms.audioMid.value = midAvg;
       mat.uniforms.audioTreble.value = trebleAvg;
       mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 1.0;
+      mat.uniforms.visualMode.value = this.userData.visualMode;
+      
+      // PAPER IN THE WIND SYSTEM - Audio creates wind gusts and air currents
+      let windIntensity = this.userData.baseEffectIntensity || 1.0;
+      let windMultiplier = this.userData.wobbleMultiplier || 1.0;
+      const totalAudio = (bassAvg + midAvg + trebleAvg) / 3.0;
+      
+      // === AUGMENTATION MODE - EXTREME CHAOS OVERRIDE ===
+      const isAugmented = augmentInterval !== null; // Check if X button is held
+      if (isAugmented) {
+          windIntensity *= 4.0; // Massive intensity boost
+          windMultiplier *= 3.5; // Extra wobble multiplier
+          bassAvg = Math.max(bassAvg, 0.9); // Force extreme bass for storm effects
+          midAvg = Math.max(midAvg, 0.9); // Force extreme mids for vortex effects  
+          trebleAvg = Math.max(trebleAvg, 0.9); // Force extreme treble for flutter
+          console.log("🌪️ AUGMENT MODE: EXTREME WIND CHAOS ACTIVATED!");
+      }
+      
+      // === NATURAL WIND SIMULATION ===
+      
+      // Base gentle wind (always present) - paper never completely still
+      const baseWindTime = time * 0.5;
+      const baseWindStrength = 0.15 * windIntensity;
+      const baseWindX = Math.sin(baseWindTime * 0.6 + 1.2) * baseWindStrength +
+                        Math.cos(baseWindTime * 0.9 + 2.8) * (baseWindStrength * 0.7);
+      const baseWindY = Math.cos(baseWindTime * 0.7 + 0.5) * (baseWindStrength * 0.8) +
+                        Math.sin(baseWindTime * 1.1 + 3.2) * (baseWindStrength * 0.5);
+      const baseWindZ = Math.sin(baseWindTime * 0.8 + 1.8) * (baseWindStrength * 0.6) +
+                        Math.cos(baseWindTime * 1.3 + 2.1) * (baseWindStrength * 0.4);
+      
+      // 1. BASS WIND GUSTS - Strong air currents that push the paper around
+      const bassGustStrength = bassAvg * windIntensity * windMultiplier * 18.0; // Much stronger
+      const bassGustX = bassAvg > 0.2 ? Math.sin(time * 1.3 + bassAvg * 5.0) * bassGustStrength +
+                                        Math.cos(time * 0.9 + bassAvg * 3.0) * (bassGustStrength * 0.7) : 0;
+      const bassGustY = bassAvg > 0.2 ? Math.cos(time * 1.1 + bassAvg * 4.5) * (bassGustStrength * 0.8) +
+                                        Math.sin(time * 0.7 + bassAvg * 6.0) * (bassGustStrength * 0.5) : 0;
+      const bassGustZ = bassAvg > 0.2 ? Math.sin(time * 1.6 + bassAvg * 5.5) * (bassGustStrength * 0.6) : 0;
+      
+                          // 2. WIND-DRIVEN ROTATION SYSTEM - Paper fluttering and turning in air currents
+        
+      // Base paper flutter (always present) - gentle rotation like paper in breeze
+      const flutterTime = time * 0.4;
+      const baseFlutterStrength = 0.12 * windIntensity;
+      const baseFlutterX = Math.sin(flutterTime * 0.8 + 0.7) * baseFlutterStrength +
+                          Math.cos(flutterTime * 1.2 + 2.1) * (baseFlutterStrength * 0.6) +
+                          Math.sin(flutterTime * 0.5 + 3.5) * (baseFlutterStrength * 0.3);
+      const baseFlutterY = Math.cos(flutterTime * 0.9 + 1.3) * (baseFlutterStrength * 0.8) +
+                          Math.sin(flutterTime * 1.4 + 0.2) * (baseFlutterStrength * 0.5) +
+                          Math.cos(flutterTime * 0.6 + 2.8) * (baseFlutterStrength * 0.4);
+      const baseFlutterZ = Math.sin(flutterTime * 1.1 + 1.8) * (baseFlutterStrength * 0.7) +
+                          Math.cos(flutterTime * 0.7 + 3.1) * (baseFlutterStrength * 0.4) +
+                          Math.sin(flutterTime * 1.3 + 0.9) * (baseFlutterStrength * 0.2);
+      
+      // Audio-driven wind rotations - dramatic paper tumbling and spinning
+      const windRotationSensitivity = windIntensity * windMultiplier * 0.35; // Much more active
+      
+      // Bass creates progressive tumbling motion (like paper caught in downdraft)
+      const bassTumbleX = bassAvg > 0.15 ? 
+          bassAvg * windRotationSensitivity * Math.PI * (bassAvg < 0.45 ? 0.4 : 0.7) + // Gentle start, stronger later
+          Math.sin(time * 1.2 + bassAvg * 6.0) * bassAvg * (bassAvg < 0.45 ? 0.2 : 0.4) : 0;
+      
+      // Mids create progressive swirling motion (like paper in circular wind)  
+      const midSwirlingY = midAvg > 0.15 ? 
+          midAvg * windRotationSensitivity * Math.PI * (midAvg < 0.45 ? 0.5 : 0.9) + // Gentle start, stronger later
+          Math.cos(time * 1.0 + midAvg * 4.5) * midAvg * (midAvg < 0.45 ? 0.15 : 0.3) : 0;
+      
+      // Treble creates progressive flutter (like paper shaking in gusty wind)
+      const trebleFlutterZ = trebleAvg > 0.15 ? 
+          trebleAvg * windRotationSensitivity * Math.PI * (trebleAvg < 0.4 ? 0.3 : 0.5) + // Gentle start, stronger later
+          Math.sin(time * 2.2 + trebleAvg * 7.0) * trebleAvg * (trebleAvg < 0.4 ? 0.1 : 0.2) : 0;
+      
+      // === WIND STORM MODE - Wild spinning for very strong audio ===
+      let stormRotationX = 0, stormRotationY = 0, stormRotationZ = 0;
+      
+      const stormThreshold = isAugmented ? 0.1 : 0.65; // Much lower threshold during augmentation
+      const stormMultiplier = isAugmented ? 2.5 : 1.0; // Extra storm intensity during augmentation
+      
+      if (bassAvg > stormThreshold) { 
+          const stormIntensity = isAugmented ? bassAvg : Math.pow((bassAvg - 0.65) / 0.35, 1.5); // Skip progressive scaling in augment mode
+          stormRotationX = time * bassAvg * 0.6 * stormIntensity * stormMultiplier + Math.sin(time * 2.8 + bassAvg * 8.0) * bassAvg * 0.4 * stormIntensity * stormMultiplier;
+      }
+      if (midAvg > stormThreshold) {
+          const stormIntensity = isAugmented ? midAvg : Math.pow((midAvg - 0.65) / 0.35, 1.5); // Skip progressive scaling in augment mode
+          stormRotationY = time * midAvg * 0.4 * stormIntensity * stormMultiplier + Math.cos(time * 2.0 + midAvg * 6.0) * midAvg * 0.3 * stormIntensity * stormMultiplier;
+      }
+      if (trebleAvg > stormThreshold) {
+          const stormIntensity = isAugmented ? trebleAvg : Math.pow((trebleAvg - 0.65) / 0.35, 1.5); // Skip progressive scaling in augment mode
+          stormRotationZ = time * trebleAvg * 0.7 * stormIntensity * stormMultiplier + Math.sin(time * 3.5 + trebleAvg * 10.0) * trebleAvg * 0.25 * stormIntensity * stormMultiplier;
+      }
+      
+      // === COMBINED WIND ROTATION VALUES ===
+      const finalRotationX = baseFlutterX + bassTumbleX + stormRotationX;
+      const finalRotationY = baseFlutterY + midSwirlingY + stormRotationY;
+      const finalRotationZ = baseFlutterZ + trebleFlutterZ + stormRotationZ;
+      
+             // 3. MID-FREQUENCY SWIRLING WINDS - Progressive circular air currents
+       const midSwirlingStrength = midAvg < 0.5 ? midAvg * windIntensity * windMultiplier * 8.0 : // Gentle for <0.5
+                                  midAvg * windIntensity * windMultiplier * 12.0; // Full strength for >0.5
+      const swirlingTime = time * (0.8 + midAvg * 0.6); // Progressive speed increase
+      const swirlingComplexity = midAvg < 0.5 ? 1.0 : 1.0 + (midAvg - 0.5) * 1.5; // Add layers gradually
+      
+             let swirlingX = midAvg > 0.2 ? Math.sin(swirlingTime + midAvg * 4.5) * midSwirlingStrength : 0;
+       if (midAvg > 0.5) { // Add complexity only for stronger mids
+           swirlingX += Math.cos(swirlingTime * 1.3 + midAvg * 6.0) * (midSwirlingStrength * 0.6);
+       }
+       
+       let swirlingY = midAvg > 0.2 ? Math.cos(swirlingTime * 0.8 + midAvg * 5.0) * (midSwirlingStrength * 0.8) : 0;
+       if (midAvg > 0.5) { // Add complexity only for stronger mids
+           swirlingY += Math.sin(swirlingTime * 1.1 + midAvg * 3.5) * (midSwirlingStrength * 0.5);
+       }
+      
+      const swirlingZ = midAvg > 0.2 ? Math.sin(swirlingTime * 1.4 + midAvg * 7.0) * (midSwirlingStrength * 0.4) : 0;
+      
+      // 4. TREBLE MICRO-FLUTTER - Progressive paper edge trembling
+      const trebleFlutterStrength = trebleAvg < 0.45 ? trebleAvg * windIntensity * windMultiplier * 4.0 : // Gentle for <0.45
+                                    trebleAvg * windIntensity * windMultiplier * 6.0; // Full flutter for >0.45
+      const flutterFreq = time * (3.5 + trebleAvg * 4.0); // Progressive frequency increase
+      
+             let microFlutterX = trebleAvg > 0.25 ? Math.sin(flutterFreq + trebleAvg * 12.0) * trebleFlutterStrength : 0;
+       if (trebleAvg > 0.45) { // Add second layer only for stronger treble
+           microFlutterX += Math.cos(flutterFreq * 1.4 + trebleAvg * 10.0) * (trebleFlutterStrength * 0.7);
+       }
+       
+       let microFlutterY = trebleAvg > 0.25 ? Math.cos(flutterFreq * 1.3 + trebleAvg * 14.0) * (trebleFlutterStrength * 0.6) : 0;
+       if (trebleAvg > 0.45) { // Add second layer only for stronger treble
+           microFlutterY += Math.sin(flutterFreq * 0.9 + trebleAvg * 11.0) * (trebleFlutterStrength * 0.4);
+       }
+      
+      const microFlutterZ = trebleAvg > 0.25 ? Math.sin(flutterFreq * 1.6 + trebleAvg * 13.0) * (trebleFlutterStrength * 0.5) : 0;
+      
+      // === SUDDEN WIND GUST SYSTEM ===
+      
+      // 5. RANDOM WIND GUSTS - Sudden powerful air currents
+      const gustTime = Math.floor(time * 8.0); // Medium frequency gusts
+      const random1 = Math.abs(Math.sin(gustTime * 12.9898 + totalAudio * 100.0));
+      const random2 = Math.abs(Math.sin(gustTime * 78.233 + totalAudio * 150.0));
+      const random3 = Math.abs(Math.sin(gustTime * 37.719 + totalAudio * 200.0));
+      const random4 = Math.abs(Math.sin(gustTime * 93.177 + totalAudio * 175.0));
+      
+      let gustX = 0, gustY = 0, gustZ = 0;
+      let gustRotX = 0, gustRotY = 0, gustRotZ = 0;
+      let gustScale = 1.0;
+      
+      // Sudden position gusts - progressive scaling for bigger gusts (AUGMENT OVERRIDE)
+      const gustThreshold = isAugmented ? 0.1 : 0.4; // Much lower threshold during augmentation
+      if (totalAudio > gustThreshold) { 
+          let gustChance = Math.min(totalAudio * 1.2, 1.0); // Scale chance with audio
+          let gustStrength = totalAudio < 0.6 ? totalAudio * 15.0 : // Moderate gusts for <0.6
+                              totalAudio * 22.0; // Full strength for >0.6
+          
+          if (isAugmented) {
+              gustChance = 1.0; // 100% chance during augmentation
+              gustStrength *= 2.8; // Much stronger gusts
+          }
+          
+          if (random1 > (0.85 - gustChance * 0.08)) { // More likely with stronger audio
+              gustX = (random2 - 0.5) * gustStrength * windIntensity * windMultiplier;
+          }
+          if (random2 > (0.87 - gustChance * 0.08)) {  
+              gustY = (random3 - 0.5) * gustStrength * 0.9 * windIntensity * windMultiplier;
+          }
+          if (random3 > (0.89 - gustChance * 0.08)) {
+              gustZ = (random4 - 0.5) * gustStrength * 0.8 * windIntensity * windMultiplier;
+          }
+      }
+      
+      // Sudden rotation gusts - progressive scaling for tumbling (AUGMENT OVERRIDE)
+      const rotThreshold = isAugmented ? 0.1 : 0.3; // Much lower threshold during augmentation
+      if (midAvg > rotThreshold) { 
+          let rotStrength = midAvg < 0.55 ? midAvg * 0.6 : // Gentle for <0.55
+                             midAvg * 1.0; // Full strength for >0.55
+          let rotChance = Math.min(midAvg * 1.3, 1.0);
+          
+          if (isAugmented) {
+              rotStrength *= 3.2; // Much stronger rotation during augmentation
+              rotChance = 1.0; // 100% chance during augmentation
+          }
+          
+          if (random1 > (0.82 - rotChance * 0.06)) { // Progressive chance
+              gustRotX = (random2 - 0.5) * rotStrength * windIntensity * Math.PI;
+          }
+          if (random3 > (0.84 - rotChance * 0.06)) {
+              gustRotY = (random4 - 0.5) * rotStrength * 0.8 * windIntensity * Math.PI;
+          }
+      }
+      
+      const flutterThreshold = isAugmented ? 0.1 : 0.3; // Much lower threshold during augmentation
+      if (trebleAvg > flutterThreshold) { // Progressive flutter effects (AUGMENT OVERRIDE)
+          let flutterStrength = trebleAvg < 0.5 ? trebleAvg * 0.4 : // Light flutter for <0.5
+                                 trebleAvg * 0.6; // Stronger flutter for >0.5
+          let flutterChance = Math.min(trebleAvg * 1.4, 1.0);
+          
+          if (isAugmented) {
+              flutterStrength *= 4.0; // Extreme flutter during augmentation
+              flutterChance = 1.0; // 100% chance during augmentation
+          }
+          
+          if (random2 > (0.78 - flutterChance * 0.08)) { // Progressive flutter chance
+              gustRotZ = (random1 - 0.5) * flutterStrength * windIntensity * Math.PI;
+          }
+          if (random4 > (0.85 - flutterChance * 0.05)) {
+              let scaleAmount = trebleAvg < 0.5 ? 0.15 : 0.3; // Progressive scale changes
+              if (isAugmented) scaleAmount *= 2.5; // Extreme scaling during augmentation
+              gustScale = 1.0 + (random3 - 0.5) * trebleAvg * windIntensity * scaleAmount;
+          }
+      }
+      
+      const bassTumbleThreshold = isAugmented ? 0.1 : 0.4; // Much lower threshold during augmentation
+      if (bassAvg > bassTumbleThreshold) { // Progressive bass tumbling (AUGMENT OVERRIDE)
+          let bassStrength = bassAvg < 0.6 ? bassAvg * 0.5 : // Gentle for <0.6
+                               bassAvg * 0.7; // Stronger for >0.6
+          let bassChance = Math.min(bassAvg * 1.2, 1.0);
+          
+          if (isAugmented) {
+              bassStrength *= 3.8; // Extreme bass tumbling during augmentation
+              bassChance = 1.0; // 100% chance during augmentation
+          }
+          
+          if (random3 > (0.78 - bassChance * 0.05)) {
+              gustRotX += (random1 - 0.5) * bassStrength * windIntensity * Math.PI;
+          }
+      }
+      
+      // 6. WIND TURBULENCE - Progressive chaotic air currents
+      let turbulenceX = 0, turbulenceY = 0;
+      if (bassAvg > 0.3) { // Start with gentle turbulence
+          const turbulenceStrength = bassAvg < 0.55 ? bassAvg * 6.0 : // Gentle for <0.55
+                                    bassAvg * 10.0; // Full chaos for >0.55
+          const turbulenceComplexity = bassAvg < 0.55 ? 1.0 : 1.0 + (bassAvg - 0.55) * 2.0; // Add complexity gradually
+          
+          // Horizontal turbulence like crosswinds
+          turbulenceX = Math.sin(time * 3.5 * turbulenceComplexity + bassAvg * 7.0) * turbulenceStrength * windIntensity;
+          if (bassAvg > 0.55) { // Add second layer only for stronger bass
+              turbulenceX += Math.cos(time * 5.8 + bassAvg * 5.5) * bassAvg * windIntensity * 7.0;
+          }
+          
+          // Vertical turbulence like updrafts/downdrafts  
+          turbulenceY = Math.cos(time * 3.2 * turbulenceComplexity + bassAvg * 6.5) * turbulenceStrength * 0.85 * windIntensity;
+          if (bassAvg > 0.55) { // Add second layer only for stronger bass
+              turbulenceY += Math.sin(time * 4.8 + bassAvg * 8.0) * bassAvg * windIntensity * 5.5;
+          }
+      }
+      
+      // 7. ATMOSPHERIC PRESSURE WAVES - Progressive gentle overall movement
+      const waveStrength = totalAudio < 0.5 ? totalAudio * 5.0 : totalAudio * 7.0; // Progressive strength
+      const atmosphericWaves1 = totalAudio > 0.2 ? Math.sin(time * 0.7 + totalAudio * 1.8) * waveStrength * windIntensity : 0;
+      const atmosphericWaves2 = totalAudio > 0.2 ? Math.sin(time * 0.9 + totalAudio * 2.2) * waveStrength * 0.8 * windIntensity : 0;
+      const atmosphericWaves3 = totalAudio > 0.2 ? Math.cos(time * 0.8 + totalAudio * 2.8) * waveStrength * 0.65 * windIntensity : 0;
+      
+      // === COMBINE ALL WIND EFFECTS ===
+      
+      // Position transformations - Paper floating and being blown around
+      this.position.x = this.userData.originalPosition.x + 
+                       baseWindX + bassGustX + swirlingX + microFlutterX + gustX + turbulenceX + atmosphericWaves1;
+      
+      this.position.y = this.userData.originalPosition.y + 
+                       baseWindY + bassGustY + swirlingY + microFlutterY + gustY + turbulenceY + atmosphericWaves2;
+      
+      this.position.z = this.userData.originalPosition.z + 
+                       baseWindZ + bassGustZ + swirlingZ + microFlutterZ + gustZ + atmosphericWaves3;
+      
+      // Rotation transformations - Paper tumbling and fluttering in wind!
+      this.rotation.x = this.userData.originalRotation.x + 
+                       finalRotationX + gustRotX;
+      
+      this.rotation.y = this.userData.originalRotation.y + 
+                       finalRotationY + gustRotY;
+      
+      this.rotation.z = this.userData.originalRotation.z + 
+                       finalRotationZ + gustRotZ;
+      
+      // Scale transformations - Paper expanding/contracting in air pressure
+      this.scale.setScalar(gustScale);
+      
+      // 8. WIND DRIFT BOUNDARIES (Prevent paper from blowing away completely)
+      const maxWindDrift = 150.0; // Allow more movement for natural paper-like motion
+      if (this.position.length() > maxWindDrift) {
+          // Gentle drift back like paper caught by lighter wind
+          this.position.lerp(this.userData.originalPosition, 0.08);
+      }
+      
+      // 9. ROTATION FLOW CONTROL (Keep paper tumbling naturally)
+      // Allow more wild rotations for authentic paper-in-wind behavior
+      const maxTumbling = Math.PI * 6.0; // Allow up to 1080 degrees (3 full tumbles)
+      if (Math.abs(this.rotation.x) > maxTumbling) {
+          this.rotation.x = this.rotation.x % (Math.PI * 2.0);
+      }
+      if (Math.abs(this.rotation.y) > maxTumbling) {
+          this.rotation.y = this.rotation.y % (Math.PI * 2.0);
+      }
+      if (Math.abs(this.rotation.z) > maxTumbling) {
+          this.rotation.z = this.rotation.z % (Math.PI * 2.0);
+      }
+      
+      // Update camera texture if available
+      if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
+          mat.uniforms.cameraTexture.value = window.userCameraTexture;
+          mat.uniforms.cameraActive.value = 1.0;
+      } else {
+          mat.uniforms.cameraActive.value = 0.0;
+      }
   }.bind(mesh);
 
   mesh.userData.customAdjustIntensity = function(intensityLevel) {
-      this.userData.baseEffectIntensity = 0.5 + intensityLevel * 0.1; // Controls grid density, wave amplitude
-      this.material.uniforms.lineWidth.value = 0.02 + intensityLevel * 0.005; // Thicker lines with intensity
-      this.material.uniforms.glowPower.value = 2.0 + intensityLevel * 0.3; // More intense glow
+      // Clamp intensity between 0 and 1
+      const clampedLevel = Math.max(0.0, Math.min(1.0, intensityLevel));
+      
+      // Wind intensity scaling - from gentle breeze to hurricane
+      this.userData.baseEffectIntensity = 0.6 + clampedLevel * 1.0; // Range 0.6 to 1.6 for natural movement
+      this.material.uniforms.scanlineIntensity.value = 0.1 + clampedLevel * 0.3;
+      
+      // Wind force multiplier - gentle breeze to powerful storm
+      this.userData.wobbleMultiplier = 0.8 + clampedLevel * 2.2; // 0.8x to 3x for dramatic paper movement
+      
+      // Update all relevant uniforms
+      this.material.uniforms.effectIntensity.value = this.userData.baseEffectIntensity;
+      this.material.uniforms.audioBass.value = this.material.uniforms.audioBass.value || 0.0;
+      this.material.uniforms.audioMid.value = this.material.uniforms.audioMid.value || 0.0;
+      this.material.uniforms.audioTreble.value = this.material.uniforms.audioTreble.value || 0.0;
+      
+      // Display feedback message
+      showActionMessage(`Paper Wind: ${(clampedLevel * 100).toFixed(0)}% (${this.userData.wobbleMultiplier.toFixed(1)}x force)`);
   }.bind(mesh);
+
+  // Visual mode toggling for this effect
+  mesh.userData.toggleVisualMode = function() {
+      // Simple toggle: 0 -> 1 -> 2 -> 0 (3 modes)
+      this.userData.visualMode = ((this.userData.visualMode + 1.0) % 3.0);
+      
+      const mode = this.userData.visualMode;
+      if (mode === 0.0) {
+          showActionMessage("Paper Grid: Pure Wind Mode");
+          if (window.isCameraMode) toggleCameraBackground();
+      } else if (mode === 1.0) {
+          showActionMessage("Paper Grid: Camera Wind Distortion");
+          if (!window.isCameraMode) toggleCameraBackground();
+      } else if (mode === 2.0) {
+          showActionMessage("Paper Grid: Wind Over Camera");
+          // Ensure camera is active for overlay mode
+          if (!window.isCameraMode) toggleCameraBackground();
+      }
+      
+      // Update the uniform immediately
+      if (this.material && this.material.uniforms.visualMode) {
+          this.material.uniforms.visualMode.value = this.userData.visualMode;
+      }
+      
+      // Update camera texture reference for all visual modes
+      if (window.userCameraTexture) {
+          this.material.uniforms.cameraTexture.value = window.userCameraTexture;
+          this.material.uniforms.cameraActive.value = (mode > 0.5) ? 1.0 : 0.0;
+      }
+  }.bind(mesh);
+  
+  // Add a function to manually set visual intensity
+  mesh.userData.setVisualIntensity = function(intensity) {
+      // Clamp intensity between 0.1 and 2.0
+      const clampedIntensity = Math.max(0.1, Math.min(2.0, intensity));
+      this.userData.baseEffectIntensity = clampedIntensity;
+      
+      // Update corresponding wind multiplier based on intensity
+      this.userData.wobbleMultiplier = 0.8 + (clampedIntensity - 0.1) / 1.9 * 2.2; // Scale to wobble range
+      
+      // Update the material uniform
+      if (this.material && this.material.uniforms.effectIntensity) {
+          this.material.uniforms.effectIntensity.value = clampedIntensity;
+      }
+      
+      showActionMessage(`Paper Wind Intensity: ${clampedIntensity.toFixed(1)} (${this.userData.wobbleMultiplier.toFixed(1)}x force)`);
+  }.bind(mesh);
+  
+  // Add missing customAnimateInitial function for idle animation
+  mesh.userData.customAnimateInitial = function() {
+      const time = performance.now() * 0.001;
+      this.material.uniforms.time.value = time;
+      this.material.uniforms.audioBass.value = 0.0;
+      this.material.uniforms.audioMid.value = 0.0;
+      this.material.uniforms.audioTreble.value = 0.0;
+      
+      // Apply the gentle paper-in-wind idle animation
+      if (this.userData.originalRotation && this.userData.originalPosition) {
+          // Realistic paper-in-wind simulation
+          const windTime = time * 0.4;
+          const gentleBreeze = 0.12;
+          const paperDrift = 8.0;
+          
+          // Paper rotation - gentle tumbling and turning
+          const windRotX = Math.sin(windTime * 0.6) * gentleBreeze + 
+                           Math.sin(windTime * 1.1 + 1.5) * (gentleBreeze * 0.7) +
+                           Math.cos(windTime * 0.35 + 2.8) * (gentleBreeze * 0.4);
+                           
+          const windRotY = Math.cos(windTime * 0.7 + 0.8) * (gentleBreeze * 0.9) + 
+                           Math.sin(windTime * 0.9 + 2.1) * (gentleBreeze * 0.5) +
+                           Math.cos(windTime * 0.45 + 3.7) * (gentleBreeze * 0.3);
+                           
+          const windRotZ = Math.sin(windTime * 0.8 + 1.2) * (gentleBreeze * 0.8) + 
+                           Math.cos(windTime * 1.2 + 3.2) * (gentleBreeze * 0.6) +
+                           Math.sin(windTime * 0.55 + 4.5) * (gentleBreeze * 0.25);
+          
+          // Paper position - floating and drifting through air
+          const windPosX = Math.sin(windTime * 0.3 + 0.5) * paperDrift + 
+                           Math.cos(windTime * 0.8 + 1.8) * (paperDrift * 0.7) +
+                           Math.sin(windTime * 0.15 + 3.2) * (paperDrift * 0.4);
+                           
+          const windPosY = Math.cos(windTime * 0.25 + 1.1) * (paperDrift * 0.6) + 
+                           Math.sin(windTime * 0.7 + 2.5) * (paperDrift * 0.8) +
+                           Math.cos(windTime * 0.12 + 4.1) * (paperDrift * 0.3);
+                           
+          const windPosZ = Math.sin(windTime * 0.4 + 1.7) * (paperDrift * 0.5) + 
+                           Math.cos(windTime * 0.9 + 0.3) * (paperDrift * 0.4) +
+                           Math.sin(windTime * 0.18 + 2.9) * (paperDrift * 0.2);
+          
+          // Apply wind effects
+          this.rotation.x = this.userData.originalRotation.x + windRotX;
+          this.rotation.y = this.userData.originalRotation.y + windRotY;
+          this.rotation.z = this.userData.originalRotation.z + windRotZ;
+          
+          this.position.x = this.userData.originalPosition.x + windPosX;
+          this.position.y = this.userData.originalPosition.y + windPosY;
+          this.position.z = this.userData.originalPosition.z + windPosZ;
+      }
+  }.bind(mesh);
+
+  // Add intensity adjustment function
+  mesh.userData.customAdjustIntensity = function(level) {
+      const clampedLevel = Math.max(0.8, Math.min(3.0, level)); // Wind force between 0.8x and 3x
+      this.userData.wobbleMultiplier = clampedLevel;
+      if (this.material && this.material.uniforms && this.material.uniforms.effectIntensity) {
+          this.material.uniforms.effectIntensity.value = this.userData.baseEffectIntensity * clampedLevel;
+      }
+      console.log(`NeonGrid wind force adjusted to ${clampedLevel}x`);
+  }.bind(mesh);
+
+  // Ensure proper initialization of all wind parameters
+  mesh.userData.baseEffectIntensity = mesh.userData.baseEffectIntensity || 1.0;
+  mesh.userData.visualMode = mesh.userData.visualMode || 0.0;
+  mesh.userData.wobbleMultiplier = mesh.userData.wobbleMultiplier || 1.0;
+  
+  // Initialize material uniforms
+  if (mesh.material && mesh.material.uniforms) {
+      mesh.material.uniforms.effectIntensity.value = mesh.userData.baseEffectIntensity;
+      mesh.material.uniforms.visualMode.value = mesh.userData.visualMode;
+  }
 }
 
 function createQuantumArchitectEffect() {
@@ -6684,6 +7256,15 @@ if (neonGridIdle && neonGridIdle.material.uniforms) {
   neonGridIdle.material.uniforms.time.value = time;
   neonGridIdle.material.uniforms.audioBass.value = 0.0;
   neonGridIdle.material.uniforms.audioMid.value = 0.0;
+  
+  // Call the proper idle animation function
+  if (neonGridIdle.userData && neonGridIdle.userData.customAnimateInitial) {
+    try {
+      neonGridIdle.userData.customAnimateInitial();
+    } catch (err) {
+      console.error("Error in NeonGridEffect customAnimateInitial:", err);
+    }
+  }
 }
 
     // --- QuantumFoldEffect (Advanced Future-tech Effect - Idle) ---
@@ -7047,6 +7628,15 @@ if (neonGridReact && neonGridReact.material.uniforms) {
   neonGridReact.material.uniforms.audioBass.value = bassAvg;
   neonGridReact.material.uniforms.audioMid.value = midAvg;
   neonGridReact.material.uniforms.audioTreble.value = trebleAvg;
+  
+  // Call the 3D rotation system!
+  if (neonGridReact.userData && neonGridReact.userData.customAnimateReactive) {
+    try {
+      neonGridReact.userData.customAnimateReactive(bassAvg, midAvg, trebleAvg);
+    } catch (err) {
+      console.error("Error in NeonGridEffect customAnimateReactive:", err);
+    }
+  }
 }
 
     // --- QuantumFoldEffect (Advanced Future-tech Effect - Reactive) ---
@@ -7455,7 +8045,7 @@ case 'ArrowUp': {
   const activeMaterial = activeEffect.material; // Convenience variable
 
   // Check if the effect supports multiple visual styles
-  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "WaterPool" || activeEffect.name === "StarfieldWarpEffect" || activeEffect.name === "LiquidCrystalEffect" || activeEffect.name === "PixelSortEffect" || activeEffect.name === "PopArtEffect" || activeEffect.name === "GeometricPulseEffect");
+  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "WaterPool" || activeEffect.name === "StarfieldWarpEffect" || activeEffect.name === "LiquidCrystalEffect" || activeEffect.name === "PixelSortEffect" || activeEffect.name === "PopArtEffect" || activeEffect.name === "GeometricPulseEffect" || activeEffect.name === "NeonGridEffect");
   const isOrange = (activeEffect.name === "Orange");
   const isParticles = (activeEffect.name === "CameraParticles");
   const isWaves = (activeEffect.name === "Waves");
@@ -7472,6 +8062,7 @@ case 'ArrowUp': {
   const isPixelSort = (activeEffect.name === "PixelSortEffect");
   const isPopArt = (activeEffect.name === "PopArtEffect");
   const isGeometricPulse = (activeEffect.name === "GeometricPulseEffect");
+  const isNeonGrid = (activeEffect.name === "NeonGridEffect");
 
   if (supportsMultiVisual && activeMaterial.uniforms && "visualMode" in activeMaterial.uniforms) {
     let currentState = Math.round(activeMaterial.uniforms.visualMode.value); // Use Math.round for robustness
@@ -7746,6 +8337,23 @@ case 'ArrowUp': {
         activeMaterial.uniforms.visualMode.value = 0.0;
         showActionMessage("pipes visual: off");
       }
+    } else if (isNeonGrid) {
+      // --- NeonGridEffect Logic (3 modes: 0, 1, 2, 3) ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("neon grid visual: style 1 (camera wind)");
+      } else if (currentState === 1) {
+        activeMaterial.uniforms.visualMode.value = 2.0;
+        showActionMessage("neon grid visual: style 2 (reactive plasma)");
+      } else if (currentState === 2) {
+        activeMaterial.uniforms.visualMode.value = 3.0;
+        showActionMessage("neon grid visual: style 3 (ethereal blend)");
+      } else { // currentState is 3
+        toggleCameraBackground();
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("neon grid visual: off");
+      }
     } else {
        // Generic toggle for other effects
        toggleCameraBackground();
@@ -7951,6 +8559,12 @@ if (apple1Effect && apple1Effect.material && apple1Effect.material.uniforms) {
   apple1Effect.userData.baseEffectIntensity = 0.5 + intensityLevel * 0.11;
   apple1Effect.material.uniforms.effectIntensity.value = apple1Effect.userData.baseEffectIntensity;
   console.log('Updated Apple1Effect intensity to', apple1Effect.userData.baseEffectIntensity);
+}
+
+// NeonGridEffect intensity adjustment
+const neonGridEffect = visualElements.find(elem => elem.name === 'NeonGridEffect');
+if (neonGridEffect && neonGridEffect.userData && neonGridEffect.userData.customAdjustIntensity) {
+  neonGridEffect.userData.customAdjustIntensity(intensityLevel);
 }
 
   
