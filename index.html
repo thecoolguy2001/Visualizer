@@ -417,6 +417,8 @@ body.authorized .restricted {
   }
 }
 </style>
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9997029061875488"
+     crossorigin="anonymous"></script>
 </head>
 <body>
   <div id="passwordOverlay">
@@ -458,9 +460,7 @@ body.authorized .restricted {
          data-ad-slot="1234567890"
          data-ad-format="auto"
          data-full-width-responsive="true"></ins>
-    <script>
-      (adsbygoogle = window.adsbygoogle || []).push({});
-    </script>
+    
   </div>
   
   <div id="dspOverlay">
@@ -10188,6 +10188,11 @@ function togglePlayPause() {
     setTimeout(() => {
       helpOverlay.classList.add('show');
       if (adBanner) adBanner.classList.add('show');
+      // load the ad once, the first time it’s shown
+    if (!adBanner.dataset.loaded) {
+      (adsbygoogle = window.adsbygoogle || []).push({});
+      adBanner.dataset.loaded = 'true';
+    }
     }, 20); // Small delay to allow the browser to register display change
   }
     }
