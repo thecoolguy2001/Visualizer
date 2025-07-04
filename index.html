@@ -3110,13 +3110,19 @@ function createGlitchEffect() {
   const geometry = new THREE.PlaneBufferGeometry(2, 2); // Fullscreen quad
   const material = new THREE.ShaderMaterial({
     uniforms: {
-      tDiffuse: { value: null }, // Placeholder for scene texture (if doing post-processing)
       time: { value: 0.0 },
       audioBass: { value: 0.0 },
       audioMid: { value: 0.0 },
       audioTreble: { value: 0.0 },
       effectIntensity: { value: 1.0 },
-      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      glitchMode: { value: 0.0 }, // Different glitch styles
+      noiseStrength: { value: 1.0 },
+      // Visual mode uniforms
+      visualMode: { value: 0.0 },
+      cameraTexture: { value: null },
+      cameraActive: { value: 0.0 },
+      edgeThreshold: { value: 0.3 }
     },
     vertexShader: `
       varying vec2 vUv;
@@ -3127,119 +3133,295 @@ function createGlitchEffect() {
     `,
     fragmentShader: `
       precision highp float;
-      uniform sampler2D tDiffuse; // Not used in this procedural version, but kept for potential future use
       uniform float time;
       uniform float audioBass;
       uniform float audioMid;
       uniform float audioTreble;
       uniform float effectIntensity;
       uniform vec2 resolution;
+      uniform float glitchMode;
+      uniform float noiseStrength;
+      uniform float visualMode;
+      uniform sampler2D cameraTexture;
+      uniform float cameraActive;
+      uniform float edgeThreshold;
       varying vec2 vUv;
 
-      // Random function
-      float rand(vec2 co){
-        return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+      // Enhanced random function with seed
+      float rand(vec2 co, float seed) {
+        return fract(sin(dot(co.xy + seed, vec2(12.9898,78.233))) * 43758.5453);
       }
 
-      // Function to generate random vibrant colors
-      vec3 randomColor(float seed) {
-          float r = rand(vec2(seed * 0.1, seed * 0.2));
-          float g = rand(vec2(seed * 0.3, seed * 0.4));
-          float b = rand(vec2(seed * 0.5, seed * 0.6));
-          // Bias towards brighter, more saturated colors found in the image
-          return normalize(vec3(r, g, b)) * 0.8 + 0.2; // Ensure minimum brightness
+      float rand(vec2 co) {
+        return rand(co, 0.0);
+      }
+
+      // Noise function for more organic glitches
+      float noise(vec2 uv) {
+        vec2 i = floor(uv);
+        vec2 f = fract(uv);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(rand(i), rand(i + vec2(1,0)), f.x),
+                   mix(rand(i + vec2(0,1)), rand(i + vec2(1,1)), f.x), f.y);
+      }
+
+      // Generate TV static pattern
+      float tvStatic(vec2 uv, float time, float intensity) {
+        vec2 staticUv = uv * (40.0 + intensity * 60.0);
+        float staticPattern = rand(floor(staticUv) + floor(time * 30.0));
+        return staticPattern;
+      }
+
+      // Digital block corruption
+      vec3 blockCorruption(vec2 uv, float time, float bassLevel, float midLevel) {
+        float blockTime = floor(time * (15.0 + bassLevel * 20.0));
+        vec2 blockSize = vec2(0.05 + bassLevel * 0.1, 0.02 + bassLevel * 0.05);
+        vec2 blockUv = floor(uv / blockSize) * blockSize;
+        
+        float blockSeed = rand(blockUv, blockTime);
+        float corruptionChance = 0.1 + bassLevel * 0.4;
+        
+        if (blockSeed < corruptionChance) {
+          // Color corruption based on seed
+          float colorSeed = rand(blockUv, blockTime + 1.0);
+          if (colorSeed < 0.33) return vec3(1.0, 0.0, 0.2); // Red corruption
+          else if (colorSeed < 0.66) return vec3(0.0, 1.0, 0.3); // Green corruption
+          else return vec3(0.2, 0.0, 1.0); // Blue corruption
+        }
+        return vec3(0.0);
+      }
+
+      // Horizontal scan line distortion
+      vec3 scanlineDistortion(vec2 uv, float time, float trebleLevel) {
+        float lineCount = 200.0 + trebleLevel * 300.0;
+        float lineIndex = floor(uv.y * lineCount);
+        float lineTime = floor(time * (10.0 + trebleLevel * 15.0));
+        
+        float lineSeed = rand(vec2(lineIndex, lineTime));
+        float distortionChance = 0.05 + trebleLevel * 0.3;
+        
+        if (lineSeed < distortionChance) {
+          float colorShift = (rand(vec2(lineIndex, lineTime + 1.0)) - 0.5) * 0.5;
+          vec2 shiftedUv = uv + vec2(colorShift * trebleLevel, 0.0);
+          
+          // Create horizontal color bands
+          float r = tvStatic(shiftedUv + vec2(0.01, 0.0), time, trebleLevel);
+          float g = tvStatic(shiftedUv, time, trebleLevel);
+          float b = tvStatic(shiftedUv - vec2(0.01, 0.0), time, trebleLevel);
+          
+          return vec3(r, g, b) * (0.3 + trebleLevel * 0.7);
+        }
+        return vec3(0.0);
+      }
+
+      // Vertical color bleeding
+      vec3 verticalBleeding(vec2 uv, float time, float midLevel) {
+        float columnCount = 150.0 + midLevel * 200.0;
+        float columnIndex = floor(uv.x * columnCount);
+        float columnTime = floor(time * (8.0 + midLevel * 12.0));
+        
+        float columnSeed = rand(vec2(columnIndex, columnTime));
+        float bleedChance = 0.08 + midLevel * 0.25;
+        
+        if (columnSeed < bleedChance) {
+          float bleedHeight = 0.1 + midLevel * 0.3;
+          float bleedPos = rand(vec2(columnIndex, columnTime + 1.0));
+          
+          if (abs(uv.y - bleedPos) < bleedHeight) {
+            float colorType = rand(vec2(columnIndex, columnTime + 2.0));
+            if (colorType < 0.33) return vec3(1.0, 0.0, 0.5) * midLevel;
+            else if (colorType < 0.66) return vec3(0.0, 1.0, 0.8) * midLevel;
+            else return vec3(0.5, 0.0, 1.0) * midLevel;
+          }
+        }
+        return vec3(0.0);
+      }
+
+      // Digital noise with chromatic aberration
+      vec3 digitalNoise(vec2 uv, float time, float intensity) {
+        float noiseScale = 100.0 + intensity * 200.0;
+        float timeScale = time * (20.0 + intensity * 30.0);
+        
+        vec2 noiseUv = uv * noiseScale + timeScale;
+        float noiseVal = noise(noiseUv);
+        
+        // Chromatic aberration on noise
+        float offset = intensity * 0.005;
+        float r = noise(noiseUv + vec2(offset, 0.0));
+        float g = noiseVal;
+        float b = noise(noiseUv - vec2(offset, 0.0));
+        
+        return vec3(r, g, b) * (0.15 + intensity * 0.25);
+      }
+
+      // TV signal interference patterns
+      vec3 signalInterference(vec2 uv, float time, float bassLevel, float trebleLevel) {
+        // Rolling bars
+        float barFreq = 3.0 + bassLevel * 8.0;
+        float barPhase = time * (2.0 + trebleLevel * 5.0);
+        float barPattern = sin(uv.y * barFreq + barPhase);
+        
+        // Signal dropout
+        float dropoutChance = 0.02 + bassLevel * 0.1;
+        float dropoutSeed = rand(floor(uv * 50.0) + floor(time * 10.0));
+        
+        vec3 interference = vec3(0.0);
+        
+        if (dropoutSeed < dropoutChance) {
+          interference += vec3(0.8, 0.9, 1.0) * bassLevel;
+        }
+        
+        if (barPattern > 0.8) {
+          interference += vec3(1.0, 0.8, 0.6) * trebleLevel * 0.3;
+        }
+        
+        return interference;
+      }
+
+      // Sobel edge detection for camera mode
+      float luminance(vec3 color) {
+        return dot(color, vec3(0.299, 0.587, 0.114));
+      }
+
+      float sobel(sampler2D tex, vec2 uv, vec2 texelSize) {
+        float tl = luminance(texture2D(tex, uv + vec2(-texelSize.x, -texelSize.y)).rgb);
+        float tm = luminance(texture2D(tex, uv + vec2(0.0, -texelSize.y)).rgb);
+        float tr = luminance(texture2D(tex, uv + vec2(texelSize.x, -texelSize.y)).rgb);
+        float ml = luminance(texture2D(tex, uv + vec2(-texelSize.x, 0.0)).rgb);
+        float mm = luminance(texture2D(tex, uv).rgb);
+        float mr = luminance(texture2D(tex, uv + vec2(texelSize.x, 0.0)).rgb);
+        float bl = luminance(texture2D(tex, uv + vec2(-texelSize.x, texelSize.y)).rgb);
+        float bm = luminance(texture2D(tex, uv + vec2(0.0, texelSize.y)).rgb);
+        float br = luminance(texture2D(tex, uv + vec2(texelSize.x, texelSize.y)).rgb);
+        
+        float gx = -1.0 * tl + 1.0 * tr + -2.0 * ml + 2.0 * mr + -1.0 * bl + 1.0 * br;
+        float gy = -1.0 * tl + -2.0 * tm + -1.0 * tr + 1.0 * bl + 2.0 * bm + 1.0 * br;
+        
+        return sqrt(gx * gx + gy * gy);
       }
 
       void main() {
         vec2 uv = vUv;
-          vec3 finalColor = vec3(0.0); // Start with black
+        vec3 finalColor = vec3(0.0);
 
-          // --- Glitch Parameters (more aggressive) ---
-          float timeScaled = time * (1.0 + audioMid * 2.0); // Time scaled by mid freq
-          float intensity = effectIntensity * (1.0 + audioBass * 1.5); // Intensity boosted by bass
+        // Audio-reactive parameters
+        float intensity = effectIntensity * noiseStrength;
+        float totalAudio = (audioBass + audioMid + audioTreble) / 3.0;
+        
+        // Dynamic glitch mode selection based on audio
+        float dynamicMode = mod(floor(time * (0.5 + totalAudio * 2.0)), 6.0);
+        float currentMode = mix(glitchMode, dynamicMode, totalAudio * 0.7);
 
-          // 1. Block Displacement & Color Glitch
-          float blockSize = mix(50.0, 5.0, pow(audioBass, 2.0) * intensity); // Smaller blocks with more bass
-          vec2 blockUv = floor(uv * blockSize) / blockSize;
-          float blockSeed = rand(blockUv + floor(timeScaled * 5.0));
-          vec2 blockOffset = vec2(rand(blockUv + 1.0) - 0.5, rand(blockUv + 2.0) - 0.5) * 0.1 * pow(audioMid, 2.0) * intensity;
-          vec3 blockColor = randomColor(blockSeed * 10.0) * step(0.3, rand(blockUv + 3.0 + floor(timeScaled * 2.0))); // Random blocks of color appear/disappear
+        // Base TV static
+        float staticBase = tvStatic(uv, time, intensity);
+        vec3 staticColor = vec3(staticBase) * (0.2 + totalAudio * 0.3);
+        
+        // Apply different glitch modes
+        vec3 glitchColor = vec3(0.0);
+        
+        if (currentMode < 1.0) {
+          // Mode 0: Block corruption dominant
+          glitchColor = blockCorruption(uv, time, audioBass, audioMid);
+          glitchColor += digitalNoise(uv, time, intensity) * 0.5;
+        }
+        else if (currentMode < 2.0) {
+          // Mode 1: Scanline distortion dominant
+          glitchColor = scanlineDistortion(uv, time, audioTreble);
+          glitchColor += signalInterference(uv, time, audioBass, audioTreble) * 0.6;
+        }
+        else if (currentMode < 3.0) {
+          // Mode 2: Vertical bleeding dominant
+          glitchColor = verticalBleeding(uv, time, audioMid);
+          glitchColor += blockCorruption(uv, time, audioBass, audioMid) * 0.4;
+        }
+        else if (currentMode < 4.0) {
+          // Mode 3: Heavy interference
+          glitchColor = signalInterference(uv, time, audioBass, audioTreble);
+          glitchColor += scanlineDistortion(uv, time, audioTreble) * 0.7;
+        }
+        else if (currentMode < 5.0) {
+          // Mode 4: Digital noise storm
+          glitchColor = digitalNoise(uv, time, intensity * 2.0);
+          glitchColor += verticalBleeding(uv, time, audioMid) * 0.5;
+        }
+        else {
+          // Mode 5: Combined chaos mode
+          glitchColor = blockCorruption(uv, time, audioBass, audioMid) * 0.6;
+          glitchColor += scanlineDistortion(uv, time, audioTreble) * 0.8;
+          glitchColor += verticalBleeding(uv, time, audioMid) * 0.4;
+          glitchColor += digitalNoise(uv, time, intensity) * 0.3;
+        }
+        
+        // Combine static and glitches
+        finalColor = staticColor + glitchColor;
 
-          // 2. Horizontal Line Tearing & Color Shift
-          float lineFreq = mix(200.0, 50.0, pow(audioMid, 1.5) * intensity);
-          float lineBlock = floor(uv.y * lineFreq);
-          float lineSeed = rand(vec2(lineBlock, floor(timeScaled * 15.0)));
-          float lineShiftAmount = (lineSeed - 0.5) * 0.2 * pow(audioTreble, 2.0) * intensity;
-          vec2 lineShiftUv = uv + vec2(lineShiftAmount, 0.0);
-          vec3 lineShiftColor = randomColor(lineSeed * 20.0) * smoothstep(0.6, 0.65, rand(vec2(lineBlock, floor(timeScaled * 8.0 + 1.0)))); // Horizontal color streaks
-
-          // 3. Vertical Streaks / Scanlines
-          float vertFreq = mix(300.0, 80.0, pow(audioTreble, 1.5) * intensity);
-          float vertLine = floor(uv.x * vertFreq);
-          float vertSeed = rand(vec2(vertLine, floor(timeScaled * 12.0)));
-          float vertLineIntensity = smoothstep(0.8, 0.85, vertSeed) * 0.8; // Thin vertical lines
-          vec3 vertLineColor = vec3(vertLineIntensity * (0.5 + rand(vec2(vertLine + 1.0)) * 0.5)); // Grayscale vertical lines
-
-          // 4. Chromatic Aberration (applied to a base noise pattern)
-          float noiseFreq = 5.0 + audioTreble * 15.0 * intensity;
-          float baseNoise = rand(uv * noiseFreq + timeScaled * 0.5); // Simple base noise pattern
-          float caOffset = pow(audioTreble, 1.5) * 0.02 * intensity;
-          float r = rand((uv + vec2(caOffset, 0.0)) * noiseFreq + timeScaled * 0.5);
-          float g = baseNoise;
-          float b = rand((uv - vec2(caOffset, 0.0)) * noiseFreq + timeScaled * 0.5);
-          vec3 noisyColor = vec3(r, g, b);
-
-          // 5. High-Frequency Noise Overlay
-          float fineNoise = (rand(uv * 500.0 + timeScaled * 50.0) - 0.5) * 0.15 * intensity;
-
-          // --- Combine Layers ---
-          // Start with the noisy, color-aberrated base
-          finalColor = noisyColor;
-
-          // Add block color displacement (affecting UV for subsequent layers too)
-          vec2 displacedUv = lineShiftUv + blockOffset;
-          float displaceFactor = step(0.5, blockSeed); // Only apply displacement for some blocks
-          finalColor = mix(finalColor, blockColor, displaceFactor * 0.6); // Mix in block colors
-
-          // Add horizontal line shift colors (using potentially displaced UVs)
-          finalColor = mix(finalColor, lineShiftColor, lineShiftColor.r * 0.7); // Mix based on line visibility
-
-          // Add vertical lines
-          finalColor += vertLineColor * 0.5;
-
-          // Add fine noise
-          finalColor += fineNoise;
-
-          // Final clamping
-          gl_FragColor = vec4(clamp(finalColor, 0.0, 1.0), 1.0);
+        // Visual mode integration
+        if (visualMode > 0.5 && cameraActive > 0.5) {
+          vec4 cameraColor = texture2D(cameraTexture, uv);
+          vec2 texelSize = 1.0 / resolution;
+          float edges = sobel(cameraTexture, uv, texelSize);
+          
+          if (visualMode < 1.5) {
+            // Mode 1: Edge-based glitch overlay
+            if (edges > edgeThreshold) {
+              finalColor = mix(finalColor, cameraColor.rgb, 0.3);
+              finalColor += glitchColor * 1.5; // Enhance glitch on edges
+            } else {
+              finalColor *= 0.6; // Dim glitch in non-edge areas
+            }
+          } else if (visualMode < 2.5) {
+            // Mode 2: Camera-driven glitch intensity
+            float camLuminance = luminance(cameraColor.rgb);
+            finalColor *= (0.3 + camLuminance * 1.2);
+            if (camLuminance < 0.3) {
+              finalColor += glitchColor * 0.8; // More glitch in dark areas
+            }
+          } else {
+            // Mode 3: Full camera integration with selective glitching
+            finalColor = mix(cameraColor.rgb, finalColor, 0.7);
+            if (edges > edgeThreshold * 0.5) {
+              finalColor += glitchColor * 2.0;
+            }
+          }
+        }
+        
+        // Enhance brightness and contrast
+        finalColor = pow(finalColor, vec3(0.8));
+        finalColor = clamp(finalColor, 0.0, 1.0);
+        
+        gl_FragColor = vec4(finalColor, 1.0);
       }
     `,
-    // This effect might work better as a post-processing pass,
-    // but for simplicity, we'll make it a fullscreen quad for now.
-    // If using as post-processing, set depthTest and depthWrite to false.
     depthTest: false,
     depthWrite: false,
-    transparent: true, // Can be true if layered
+    transparent: false,
     blending: THREE.NormalBlending
   });
 
   const mesh = new THREE.Mesh(geometry, material);
   mesh.name = 'GlitchEffect';
-  // Ensure it renders last if transparent or on top
   mesh.renderOrder = 999;
-  mesh.userData.baseEffectIntensity = 1.0; // Base intensity
+  mesh.userData.baseEffectIntensity = 1.0;
+  mesh.userData.visualMode = 0.0;
   scene.add(mesh);
   visualElements.push(mesh);
 
-  // Custom update functions (optional, but good practice)
+  // Custom update functions
   mesh.userData.customAnimateInitial = function() {
     const mat = this.material;
     const time = performance.now() * 0.001;
     mat.uniforms.time.value = time;
-    mat.uniforms.audioBass.value = 0.05; // Small baseline activity
-    mat.uniforms.audioMid.value = 0.05;
-    mat.uniforms.audioTreble.value = 0.05;
+    mat.uniforms.audioBass.value = 0.02;
+    mat.uniforms.audioMid.value = 0.02;
+    mat.uniforms.audioTreble.value = 0.02;
     mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 1.0;
+    mat.uniforms.noiseStrength.value = 0.6;
+    mat.uniforms.glitchMode.value = Math.floor(time * 0.1) % 6;
+    mat.uniforms.visualMode.value = this.userData.visualMode;
+    mat.uniforms.cameraActive.value = window.userCameraTexture ? 1.0 : 0.0;
+    if (window.userCameraTexture) {
+      mat.uniforms.cameraTexture.value = window.userCameraTexture;
+    }
   }.bind(mesh);
 
   mesh.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
@@ -3250,10 +3432,35 @@ function createGlitchEffect() {
     mat.uniforms.audioMid.value = midAvg;
     mat.uniforms.audioTreble.value = trebleAvg;
     mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 1.0;
+    
+    // Dynamic noise strength based on total audio
+    const totalAudio = (bassAvg + midAvg + trebleAvg) / 3.0;
+    mat.uniforms.noiseStrength.value = 0.8 + totalAudio * 1.2;
+    
+    // Glitch mode changes with audio intensity
+    mat.uniforms.glitchMode.value = Math.floor(totalAudio * 6.0);
+    mat.uniforms.visualMode.value = this.userData.visualMode;
+    mat.uniforms.cameraActive.value = window.userCameraTexture ? 1.0 : 0.0;
+    if (window.userCameraTexture) {
+      mat.uniforms.cameraTexture.value = window.userCameraTexture;
+    }
   }.bind(mesh);
 
   mesh.userData.customAdjustIntensity = function(intensityLevel) {
-    this.userData.baseEffectIntensity = 0.5 + intensityLevel * 0.2; // Map 1-9 -> 0.7 to 2.3
+    this.userData.baseEffectIntensity = 0.4 + intensityLevel * 0.15;
+  }.bind(mesh);
+
+  // Visual mode toggle function
+  mesh.userData.toggleVisualMode = function() {
+    this.userData.visualMode = (this.userData.visualMode + 1.0) % 4.0;
+    const modes = ["Off", "Edge Detection", "Luminance-based", "Full Integration"];
+    showActionMessage("Glitch Visual Mode: " + modes[Math.floor(this.userData.visualMode)]);
+    
+    if (this.userData.visualMode > 0.5) {
+      if (!window.isCameraMode) {
+        toggleCameraBackground();
+      }
+    }
   }.bind(mesh);
 }
 
@@ -8023,6 +8230,7 @@ function createWaterPoolEffect() {
   createBlobEffect();
   createAuroraEffect();
   createPortal();
+  createGlitchEffect();
   createWaterPoolEffect();
   createLiquidCrystalEffect();
   //createApple1Effect();
@@ -8285,12 +8493,12 @@ if (orangeEffect && orangeEffect.material.uniforms) {
 }
 
 const glitchIdle = visualElements.find(e => e.name === 'GlitchEffect');
-if (glitchIdle && glitchIdle.material.uniforms) {
-  glitchIdle.material.uniforms.time.value = time;
-  glitchIdle.material.uniforms.audioBass.value = 0.05; // Minimal baseline activity
-  glitchIdle.material.uniforms.audioMid.value = 0.05;
-  glitchIdle.material.uniforms.audioTreble.value = 0.05;
-  glitchIdle.material.uniforms.effectIntensity.value = glitchIdle.userData.baseEffectIntensity || 1.0;
+if (glitchIdle && glitchIdle.userData && glitchIdle.userData.customAnimateInitial) {
+  try {
+    glitchIdle.userData.customAnimateInitial();
+  } catch (err) {
+    console.error("Error in GlitchEffect customAnimateInitial:", err);
+  }
 }
 
 const blobIdle = visualElements.find(e => e.name === 'BlobEffect');
@@ -8654,13 +8862,12 @@ if (orangeEffect && orangeEffect.material.uniforms) {
 }
 
 const glitchReact = visualElements.find(e => e.name === 'GlitchEffect');
-if (glitchReact && glitchReact.material.uniforms) {
-  glitchReact.material.uniforms.time.value = time;
-  glitchReact.material.uniforms.audioBass.value = bassAvg;
-  glitchReact.material.uniforms.audioMid.value = midAvg;
-  glitchReact.material.uniforms.audioTreble.value = trebleAvg;
-  // Use base intensity set by user slider
-  glitchReact.material.uniforms.effectIntensity.value = glitchReact.userData.baseEffectIntensity || 1.0;
+if (glitchReact && glitchReact.userData && glitchReact.userData.customAnimateReactive) {
+  try {
+    glitchReact.userData.customAnimateReactive(bassAvg, midAvg, trebleAvg);
+  } catch (err) {
+    console.error("Error in GlitchEffect customAnimateReactive:", err);
+  }
 }
 
 const blobReact = visualElements.find(e => e.name === 'BlobEffect');
@@ -9109,7 +9316,7 @@ case 'ArrowUp': {
   const activeMaterial = activeEffect.material; // Convenience variable
 
   // Check if the effect supports multiple visual styles
-  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "WaterPool" || activeEffect.name === "StarfieldWarpEffect" || activeEffect.name === "LiquidCrystalEffect" || activeEffect.name === "PixelSortEffect" || activeEffect.name === "PopArtEffect" || activeEffect.name === "GeometricPulseEffect" || activeEffect.name === "NeonGridEffect");
+  const supportsMultiVisual = (activeEffect.name === "Orange" || activeEffect.name === "CameraParticles" || activeEffect.name === "Waves" || activeEffect.name === "Scribble" || activeEffect.name === "AuroraEffect" || activeEffect.name === "3DWaves" || activeEffect.name === "SpaceshipEffect" || activeEffect.name === "OceanEffect" || activeEffect.name === "BlobEffect" || activeEffect.name === "Portal" || activeEffect.name === "WaterPool" || activeEffect.name === "StarfieldWarpEffect" || activeEffect.name === "LiquidCrystalEffect" || activeEffect.name === "PixelSortEffect" || activeEffect.name === "PopArtEffect" || activeEffect.name === "GeometricPulseEffect" || activeEffect.name === "NeonGridEffect" || activeEffect.name === "GlitchEffect");
   const isOrange = (activeEffect.name === "Orange");
   const isParticles = (activeEffect.name === "CameraParticles");
   const isWaves = (activeEffect.name === "Waves");
@@ -9127,6 +9334,7 @@ case 'ArrowUp': {
   const isPopArt = (activeEffect.name === "PopArtEffect");
   const isGeometricPulse = (activeEffect.name === "GeometricPulseEffect");
   const isNeonGrid = (activeEffect.name === "NeonGridEffect");
+  const isGlitch = (activeEffect.name === "GlitchEffect");
 
   if (supportsMultiVisual && activeMaterial.uniforms && "visualMode" in activeMaterial.uniforms) {
     let currentState = Math.round(activeMaterial.uniforms.visualMode.value); // Use Math.round for robustness
@@ -9429,6 +9637,27 @@ case 'ArrowUp': {
         activeMaterial.uniforms.visualMode.value = 0.0;
         showActionMessage("neon grid visual: off");
       }
+    } else if (isGlitch) {
+      // --- GlitchEffect Logic (4 modes: 0, 1, 2, 3) ---
+      if (currentState === 0) {
+        toggleCameraBackground();
+        activeEffect.userData.visualMode = 1.0;
+        activeMaterial.uniforms.visualMode.value = 1.0;
+        showActionMessage("glitch visual: style 1 (edge detection)");
+      } else if (currentState === 1) {
+        activeEffect.userData.visualMode = 2.0;
+        activeMaterial.uniforms.visualMode.value = 2.0;
+        showActionMessage("glitch visual: style 2 (luminance-based)");
+      } else if (currentState === 2) {
+        activeEffect.userData.visualMode = 3.0;
+        activeMaterial.uniforms.visualMode.value = 3.0;
+        showActionMessage("glitch visual: style 3 (full integration)");
+      } else { // currentState is 3
+        toggleCameraBackground();
+        activeEffect.userData.visualMode = 0.0;
+        activeMaterial.uniforms.visualMode.value = 0.0;
+        showActionMessage("glitch visual: off");
+      }
     } else {
        // Generic toggle for other effects
        toggleCameraBackground();
@@ -9646,6 +9875,12 @@ if (neonGridEffect && neonGridEffect.userData && neonGridEffect.userData.customA
 const pixelSortEffect = visualElements.find(elem => elem.name === 'PixelSortEffect');
 if (pixelSortEffect && pixelSortEffect.userData && pixelSortEffect.userData.customAdjustIntensity) {
   pixelSortEffect.userData.customAdjustIntensity(intensityLevel);
+}
+
+// GlitchEffect intensity adjustment
+const glitchEffect = visualElements.find(elem => elem.name === 'GlitchEffect');
+if (glitchEffect && glitchEffect.userData && glitchEffect.userData.customAdjustIntensity) {
+  glitchEffect.userData.customAdjustIntensity(intensityLevel);
 }
 
   
