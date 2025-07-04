@@ -190,10 +190,9 @@ body.authorized .restricted {
   
   /* Help overlay: sleek Apple Vision Pro style, matching password menu */
   #helpOverlay {
-    position: absolute;
+    position: fixed;
     top: 50%;
     left: 50%;
-    /* start slightly lower for animation */
     transform: translate(-50%, -40%);
     width: 280px;
     max-width: 90%;
@@ -208,8 +207,8 @@ body.authorized .restricted {
     display: none;
     opacity: 0;
     transition: opacity 0.5s ease, transform 0.5s ease;
-    z-index: 10000;
-    pointer-events: auto;
+    z-index: 10001; /* Increased to ensure link stays clickable */
+    pointer-events: auto; /* Ensure overlay and children are clickable */
   }
   #helpOverlay a {
     pointer-events: auto;
