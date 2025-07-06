@@ -6006,7 +6006,11 @@ function createGeometricPulseEffect() {
    // Add minimal material with visualMode uniform for compatibility with global toggle
    const dummyMaterial = new THREE.ShaderMaterial({
      uniforms: {
-       visualMode: { value: 0.0 }
+       visualMode: { value: 0.0 },
+       time: { value: 0.0 },
+       resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+       cameraTexture: { value: null },
+       cameraActive: { value: 0.0 }
      },
      vertexShader: `void main() { gl_Position = vec4(0.0); }`,
      fragmentShader: `void main() { gl_FragColor = vec4(0.0); }`,
@@ -8616,6 +8620,22 @@ if (apple1Effect && apple1Effect.material.uniforms) {
 visualElements.forEach(effect => {
     if (effect.userData.customAnimateInitial) {
       try {
+        // Ensure the effect has the required uniforms if it has a material
+        if (effect.material && effect.material.uniforms) {
+          // Add missing uniforms if they don't exist
+          if (!effect.material.uniforms.time) {
+            effect.material.uniforms.time = { value: 0.0 };
+          }
+          if (!effect.material.uniforms.resolution) {
+            effect.material.uniforms.resolution = { value: new THREE.Vector2(window.innerWidth, window.innerHeight) };
+          }
+          if (!effect.material.uniforms.cameraTexture) {
+            effect.material.uniforms.cameraTexture = { value: null };
+          }
+          if (!effect.material.uniforms.cameraActive) {
+            effect.material.uniforms.cameraActive = { value: 0.0 };
+          }
+        }
         effect.userData.customAnimateInitial();
       } catch (e) {
         console.error("Error in custom animateInitial:", e);
