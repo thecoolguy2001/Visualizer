@@ -1865,580 +1865,327 @@ function create3DWaves() {
 }
         
 function createTrippyColors() {
-  // Classic iTunes Visualizer Effect - Complete Reimplementation
-  const itunesGroup = new THREE.Group();
-  itunesGroup.name = "TrippyColors"; // Keep same name for compatibility
+  // Northern Lights Aurora Effect
+  const auroraGroup = new THREE.Group();
+  auroraGroup.name = "TrippyColors"; // Keep same name for compatibility
 
-  // Calculate proper fullscreen size
-  const distance = camera.position.z;
-  const fovInRadians = (camera.fov * Math.PI) / 180.0;
-  const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
-  const planeWidth = planeHeight * camera.aspect;
-
-  // Grid parameters for flowing terrain
-  const gridSizeX = 128; // Higher resolution for smooth flow
-  const gridSizeZ = 64; // Depth segments
-  const terrainWidth = planeWidth * 1.5;
-  const terrainDepth = planeHeight * 2.0;
-
-  // Create flowing terrain geometry
-  const geometry = new THREE.PlaneBufferGeometry(
-    terrainWidth, terrainDepth, 
-    gridSizeX - 1, gridSizeZ - 1
-  );
+  // Create fullscreen background plane for aurora
+  const planeWidth = window.innerWidth * 2;
+  const planeHeight = window.innerHeight * 2;
   
-  // Rotate to horizontal orientation for terrain view
-  geometry.rotateX(-Math.PI / 2);
-
-  // Dynamic iTunes visualizer shader with multiple effect types
-  const material = new THREE.ShaderMaterial({
-    uniforms: {
-      uTime: { value: 0.0 },
-      uFlowSpeed: { value: 2.0 },
-      uAudioData: { value: new Array(128).fill(0.0) }, // Higher resolution FFT
-      uEffectIntensity: { value: 1.0 },
-      uEffectType: { value: 0.0 }, // Current effect type (0-7 for variety)
-      uColorScheme: { value: 0.0 }, // Color scheme (0-5)
-      uMorphAmount: { value: 0.0 }, // For smooth effect transitions
-      uBassLevel: { value: 0.0 },
-      uMidLevel: { value: 0.0 },
-      uTrebleLevel: { value: 0.0 },
-      uWaveform: { value: new Array(256).fill(0.0) }, // Waveform data
-      uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-      // Visual Mode Uniforms (for camera integration)
-      visualMode: { value: 0.0 },
-      cameraTexture: { value: null },
-      cameraActive: { value: 0.0 }
-    },
-    vertexShader: `
-      uniform float uTime;
-      uniform float uFlowSpeed;
-      uniform float uAudioData[128];
-      uniform float uWaveform[256];
-      uniform float uEffectIntensity;
-      uniform float uEffectType;
-      uniform float uMorphAmount;
-      uniform float uBassLevel;
-      uniform float uMidLevel;
-      uniform float uTrebleLevel;
+  // Create multiple layers for depth and realistic aurora curtains
+  const numLayers = 4;
+  
+  for (let i = 0; i < numLayers; i++) {
+    const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight, 128, 64);
+    
+    const material = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0.0 },
+        uLayerIndex: { value: i },
+        uAudioLevel: { value: 0.0 },
+        uBassLevel: { value: 0.0 },
+        uMidLevel: { value: 0.0 },
+        uTrebleLevel: { value: 0.0 },
+        uEffectIntensity: { value: 1.0 },
+        uResolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+        
+        // Visual mode uniforms
+        visualMode: { value: 0.0 },
+        cameraTexture: { value: null },
+        cameraActive: { value: 0.0 }
+      },
       
-      varying vec3 vPosition;
-      varying float vHeight;
-      varying vec2 vUv;
-      varying vec3 vNormal;
-      varying float vAudioIntensity;
-      
-      // Noise functions for organic movement
-      vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-      vec2 mod289(vec2 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
-      vec3 permute(vec3 x) { return mod289(((x*34.0)+1.0)*x); }
-      
-      float snoise(vec2 v) {
-        const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-        vec2 i  = floor(v + dot(v, C.yy));
-        vec2 x0 = v - i + dot(i, C.xx);
-        vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-        vec4 x12 = x0.xyxy + C.xxzz;
-        x12.xy -= i1;
-        i = mod289(i);
-        vec3 p = permute(permute(i.y + vec3(0.0, i1.y, 1.0)) + i.x + vec3(0.0, i1.x, 1.0));
-        vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
-        m = m*m; m = m*m;
-        vec3 x = 2.0 * fract(p * C.www) - 1.0;
-        vec3 h = abs(x) - 0.5;
-        vec3 ox = floor(x + 0.5);
-        vec3 a0 = x - ox;
-        m *= 1.79284291400159 - 0.85373472095314 * (a0*a0 + h*h);
-        vec3 g;
-        g.x  = a0.x  * x0.x  + h.x  * x0.y;
-        g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-        return 130.0 * dot(m, g);
-      }
-      
-      void main() {
-        vUv = uv;
-        vec3 pos = position;
+      vertexShader: `
+        uniform float uTime;
+        uniform float uLayerIndex;
+        uniform float uAudioLevel;
+        uniform float uBassLevel;
+        uniform float uMidLevel;
+        uniform float uTrebleLevel;
+        uniform float uEffectIntensity;
         
-        // Flow the terrain by offsetting Z coordinate
-        float flowOffset = uTime * uFlowSpeed;
-        pos.z += flowOffset;
+        varying vec2 vUv;
+        varying vec3 vWorldPosition;
+        varying float vAudioMix;
+        varying float vLayerDepth;
         
-        // Get frequency data based on position
-        float xNorm = (uv.x);
-        int freqIndex = int(xNorm * 127.0);
-        float audioValue = uAudioData[freqIndex];
-        
-        // Calculate height based on effect type
-        float height = 0.0;
-        float effectMix = uMorphAmount;
-        
-        // Effect Type 0: Classic frequency spectrum bars
-        if (uEffectType < 0.5 || effectMix > 0.0) {
-          float barHeight = audioValue * 50.0 * uEffectIntensity;
-          // Add depth fade
-          float depthFade = 1.0 - pow(abs(uv.y - 0.5) * 2.0, 2.0);
-          height += barHeight * depthFade * (1.0 - effectMix);
+        // Simplex noise
+        vec3 mod289(vec3 x) {
+          return x - floor(x * (1.0 / 289.0)) * 289.0;
         }
         
-        // Effect Type 1: Flowing waves
-        if ((uEffectType >= 0.5 && uEffectType < 1.5) || effectMix > 0.0) {
-          float wave = sin(pos.x * 0.1 + flowOffset) * cos(pos.z * 0.05);
-          wave += snoise(vec2(pos.x * 0.02, pos.z * 0.02 - flowOffset * 0.5)) * 10.0;
-          float waveHeight = wave * audioValue * 30.0 * uEffectIntensity;
-          float mixFactor = (uEffectType < 1.5) ? effectMix : (1.0 - effectMix);
-          height += waveHeight * mixFactor;
+        vec2 mod289(vec2 x) {
+          return x - floor(x * (1.0 / 289.0)) * 289.0;
         }
         
-        // Effect Type 2: Circular ripples
-        if ((uEffectType >= 1.5 && uEffectType < 2.5) || effectMix > 0.0) {
-          float dist = length(vec2(pos.x, pos.z - flowOffset));
-          float ripple = sin(dist * 0.2 - uTime * 3.0) * audioValue;
-          ripple += sin(dist * 0.1 - uTime * 2.0 + uBassLevel * 10.0) * uBassLevel;
-          float rippleHeight = ripple * 40.0 * uEffectIntensity;
-          float mixFactor = (uEffectType < 2.5) ? effectMix : (1.0 - effectMix);
-          height += rippleHeight * mixFactor;
+        vec3 permute(vec3 x) {
+          return mod289(((x*34.0)+1.0)*x);
         }
         
-        // Effect Type 3: Waveform visualization
-        if ((uEffectType >= 2.5 && uEffectType < 3.5) || effectMix > 0.0) {
-          int waveIndex = int(xNorm * 255.0);
-          float waveValue = uWaveform[waveIndex];
-          float waveHeight = waveValue * 60.0 * uEffectIntensity;
-          // Create oscilloscope-like ridges
-          float ridge = 1.0 - abs(uv.y - 0.5) * 4.0;
-          ridge = max(0.0, ridge);
-          float mixFactor = (uEffectType < 3.5) ? effectMix : (1.0 - effectMix);
-          height += waveHeight * ridge * mixFactor;
+        float snoise(vec2 v) {
+          const vec4 C = vec4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
+          vec2 i = floor(v + dot(v, C.yy));
+          vec2 x0 = v - i + dot(i, C.xx);
+          vec2 i1 = (x0.x > x0.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
+          vec4 x12 = x0.xyxy + C.xxzz;
+          x12.xy -= i1;
+          i = mod289(i);
+          vec3 p = permute( permute( i.y + vec3(0.0, i1.y, 1.0 )) + i.x + vec3(0.0, i1.x, 1.0 ));
+          vec3 m = max(0.5 - vec3(dot(x0,x0), dot(x12.xy,x12.xy), dot(x12.zw,x12.zw)), 0.0);
+          m = m*m;
+          m = m*m;
+          vec3 x = 2.0 * fract(p * C.www) - 1.0;
+          vec3 h = abs(x) - 0.5;
+          vec3 ox = floor(x + 0.5);
+          vec3 a0 = x - ox;
+          m *= 1.79284291400159 - 0.85373472095314 * ( a0*a0 + h*h );
+          vec3 g;
+          g.x  = a0.x  * x0.x  + h.x  * x0.y;
+          g.yz = a0.yz * x12.xz + h.yz * x12.yw;
+          return 130.0 * dot(m, g);
         }
         
-        // Effect Type 4: Fractal terrain
-        if ((uEffectType >= 3.5 && uEffectType < 4.5) || effectMix > 0.0) {
-          float n1 = snoise(vec2(pos.x * 0.01, pos.z * 0.01)) * 20.0;
-          float n2 = snoise(vec2(pos.x * 0.05, pos.z * 0.05 - flowOffset)) * 10.0;
-          float n3 = snoise(vec2(pos.x * 0.1, pos.z * 0.1 + flowOffset * 0.5)) * 5.0;
-          float fractal = (n1 + n2 + n3) * audioValue * uEffectIntensity;
-          float mixFactor = (uEffectType < 4.5) ? effectMix : (1.0 - effectMix);
-          height += fractal * mixFactor;
-        }
-        
-        // Effect Type 5: Star field / particle field simulation
-        if ((uEffectType >= 4.5 && uEffectType < 5.5) || effectMix > 0.0) {
-          float star = pow(snoise(vec2(pos.x * 0.5, pos.z * 0.5 - flowOffset * 2.0)), 4.0);
-          star *= 100.0 * audioValue * uEffectIntensity;
-          float mixFactor = (uEffectType < 5.5) ? effectMix : (1.0 - effectMix);
-          height += star * mixFactor;
-        }
-        
-        // Effect Type 6: DNA helix
-        if ((uEffectType >= 5.5 && uEffectType < 6.5) || effectMix > 0.0) {
-          float helix1 = sin(pos.z * 0.2 - flowOffset + pos.x * 0.1) * 20.0;
-          float helix2 = sin(pos.z * 0.2 - flowOffset - pos.x * 0.1 + 3.14159) * 20.0;
-          float helixDist1 = abs(pos.x - helix1 * 0.02);
-          float helixDist2 = abs(pos.x + helix2 * 0.02);
-          float helixHeight = 0.0;
-          if (helixDist1 < 0.1) helixHeight = (1.0 - helixDist1 * 10.0) * audioValue * 50.0;
-          if (helixDist2 < 0.1) helixHeight = max(helixHeight, (1.0 - helixDist2 * 10.0) * audioValue * 50.0);
-          float mixFactor = (uEffectType < 6.5) ? effectMix : (1.0 - effectMix);
-          height += helixHeight * uEffectIntensity * mixFactor;
-        }
-        
-        // Effect Type 7: Tunnel/vortex
-        if (uEffectType >= 6.5 || effectMix > 0.0) {
-          float tunnelRadius = 30.0 + audioValue * 20.0;
-          float angle = atan(pos.x, pos.z - flowOffset);
-          float tunnelDist = abs(length(vec2(pos.x, 0.0)) - tunnelRadius);
-          float spiral = sin(angle * 8.0 + (pos.z - flowOffset) * 0.1 - uTime * 2.0);
-          float tunnelHeight = 0.0;
-          if (tunnelDist < 10.0) {
-            tunnelHeight = (1.0 - tunnelDist / 10.0) * spiral * 30.0 * uEffectIntensity;
+        // Fractal noise
+        float fbm(vec2 p) {
+          float total = 0.0;
+          float amplitude = 0.5;
+          for(int i = 0; i < 6; i++) {
+            total += amplitude * snoise(p);
+            p *= 2.0;
+            amplitude *= 0.5;
           }
-          float mixFactor = effectMix;
-          height += tunnelHeight * mixFactor;
+          return total;
         }
         
-        // Add some base movement when idle
-        if (audioValue < 0.01) {
-          height += sin(pos.x * 0.05 + uTime) * cos(pos.z * 0.05 + uTime * 0.7) * 2.0;
-        }
-        
-        // Apply height
-        pos.y += height;
-        
-        // Calculate normal for lighting
-        vec2 offset = vec2(0.01, 0.0);
-        float hL = snoise(vec2(pos.x - offset.x, pos.z)) * audioValue;
-        float hR = snoise(vec2(pos.x + offset.x, pos.z)) * audioValue;
-        float hD = snoise(vec2(pos.x, pos.z - offset.x)) * audioValue;
-        float hU = snoise(vec2(pos.x, pos.z + offset.x)) * audioValue;
-        vNormal = normalize(vec3(hL - hR, 2.0, hD - hU));
-        
-        vPosition = pos;
-        vHeight = height;
-        vAudioIntensity = audioValue;
-        
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform float uTime;
-      uniform float uEffectIntensity;
-      uniform float uColorScheme;
-      uniform float uBassLevel;
-      uniform float uMidLevel;
-      uniform float uTrebleLevel;
-      uniform vec2 uResolution;
-      // Visual Mode Uniforms
-      uniform float visualMode;
-      uniform sampler2D cameraTexture;
-      uniform float cameraActive;
-      
-      varying vec3 vPosition;
-      varying float vHeight;
-      varying vec2 vUv;
-      varying vec3 vNormal;
-      varying float vAudioIntensity;
-      
-      vec3 hsv2rgb(vec3 c) {
-        vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-        vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-        return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-      }
-      
-      void main() {
-        vec3 finalColor;
-        float heightNorm = clamp(vHeight / 50.0, 0.0, 1.0);
-        
-        // Color scheme selection (cycles automatically)
-        if (uColorScheme < 0.5) {
-          // Classic iTunes green
-          vec3 darkGreen = vec3(0.0, 0.2, 0.05);
-          vec3 brightGreen = vec3(0.0, 1.0, 0.3);
-          vec3 neonGreen = vec3(0.5, 1.0, 0.7);
-          if (heightNorm < 0.5) {
-            finalColor = mix(darkGreen, brightGreen, heightNorm * 2.0);
-          } else {
-            finalColor = mix(brightGreen, neonGreen, (heightNorm - 0.5) * 2.0);
-          }
-        } else if (uColorScheme < 1.5) {
-          // Fire colors
-          vec3 black = vec3(0.0, 0.0, 0.0);
-          vec3 red = vec3(0.8, 0.0, 0.0);
-          vec3 orange = vec3(1.0, 0.5, 0.0);
-          vec3 yellow = vec3(1.0, 1.0, 0.3);
-          if (heightNorm < 0.33) {
-            finalColor = mix(black, red, heightNorm * 3.0);
-          } else if (heightNorm < 0.66) {
-            finalColor = mix(red, orange, (heightNorm - 0.33) * 3.0);
-          } else {
-            finalColor = mix(orange, yellow, (heightNorm - 0.66) * 3.0);
-          }
-        } else if (uColorScheme < 2.5) {
-          // Ocean blues
-          vec3 deepBlue = vec3(0.0, 0.05, 0.2);
-          vec3 blue = vec3(0.0, 0.3, 0.8);
-          vec3 cyan = vec3(0.0, 0.8, 1.0);
-          vec3 white = vec3(0.9, 0.95, 1.0);
-          if (heightNorm < 0.4) {
-            finalColor = mix(deepBlue, blue, heightNorm * 2.5);
-          } else if (heightNorm < 0.7) {
-            finalColor = mix(blue, cyan, (heightNorm - 0.4) * 3.33);
-          } else {
-            finalColor = mix(cyan, white, (heightNorm - 0.7) * 3.33);
-          }
-        } else if (uColorScheme < 3.5) {
-          // Rainbow HSV
-          float hue = heightNorm + uTime * 0.1;
-          finalColor = hsv2rgb(vec3(hue, 0.8, 0.9));
-        } else if (uColorScheme < 4.5) {
-          // Purple/Pink vapor
-          vec3 purple = vec3(0.4, 0.0, 0.6);
-          vec3 pink = vec3(1.0, 0.3, 0.7);
-          vec3 white = vec3(1.0, 0.9, 1.0);
-          if (heightNorm < 0.5) {
-            finalColor = mix(purple, pink, heightNorm * 2.0);
-          } else {
-            finalColor = mix(pink, white, (heightNorm - 0.5) * 2.0);
-          }
-        } else {
-          // Monochrome with color accents
-          float gray = heightNorm * 0.8;
-          finalColor = vec3(gray);
-          // Add color accents based on frequency
-          finalColor.r += uBassLevel * 0.5;
-          finalColor.g += uMidLevel * 0.5;
-          finalColor.b += uTrebleLevel * 0.5;
-        }
-        
-        // Add lighting based on normal
-        vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
-        float lighting = dot(vNormal, lightDir) * 0.5 + 0.5;
-        finalColor *= lighting;
-        
-        // Add glow for high values
-        if (heightNorm > 0.7) {
-          float glow = pow((heightNorm - 0.7) * 3.33, 2.0);
-          finalColor += vec3(glow * 0.5);
-        }
-        
-        // Add subtle grid lines for retro feel
-        float gridX = abs(fract(vPosition.x * 0.1) - 0.5) * 2.0;
-        float gridZ = abs(fract(vPosition.z * 0.1) - 0.5) * 2.0;
-        float grid = min(gridX, gridZ);
-        if (grid > 0.98) {
-          finalColor *= 1.2;
-        }
-        
-        // Fog effect for depth
-        float fogDistance = length(vPosition.xz) / 100.0;
-        float fog = exp(-fogDistance * 0.5);
-        finalColor = mix(vec3(0.0), finalColor, fog);
-        
-        // === VISUAL MODE INTEGRATION (Camera Feed) ===
-        if (cameraActive > 0.5) {
-          vec2 screenUV = gl_FragCoord.xy / uResolution;
-          vec3 cameraColor = texture2D(cameraTexture, screenUV).rgb;
+        void main() {
+          vUv = uv;
+          vec3 pos = position;
           
-          if (abs(visualMode - 1.0) < 0.1) {
-            // Mode 1: Height-driven camera blend
-            finalColor = mix(finalColor, cameraColor, heightNorm * 0.7);
-          } else if (abs(visualMode - 2.0) < 0.1) {
-            // Mode 2: Camera with terrain overlay
-            finalColor = cameraColor * 0.6 + finalColor * vAudioIntensity;
-          } else if (abs(visualMode - 3.0) < 0.1) {
-            // Mode 3: Camera as texture on peaks
-            if (heightNorm > 0.3) {
-              finalColor = mix(finalColor, cameraColor, (heightNorm - 0.3) * 1.43);
+          // Layer-specific parameters
+          float layerSpeed = 0.2 + uLayerIndex * 0.1;
+          float layerScale = 0.8 + uLayerIndex * 0.3;
+          
+          // Create aurora curtain movement
+          vec2 noiseCoord = vec2(pos.x * 0.001, pos.y * 0.0008) * layerScale;
+          float timeOffset = uTime * layerSpeed + uLayerIndex * 10.0;
+          
+          // Primary horizontal flowing motion (like real aurora)
+          float horizontalFlow = fbm(noiseCoord + vec2(timeOffset, 0.0)) * 60.0;
+          
+          // Secondary vertical undulation
+          float verticalFlow = snoise(vec2(pos.x * 0.002 + timeOffset * 0.5, uLayerIndex)) * 30.0;
+          
+          // Audio-reactive movement
+          float audioFlow = 0.0;
+          audioFlow += sin(pos.x * 0.003 + uTime * 3.0) * uBassLevel * 40.0;
+          audioFlow += cos(pos.y * 0.002 + uTime * 2.0) * uMidLevel * 25.0;
+          audioFlow += sin((pos.x + pos.y) * 0.001 + uTime * 4.0) * uTrebleLevel * 15.0;
+          
+          // Apply movement to create aurora curtains
+          pos.z += (horizontalFlow + verticalFlow + audioFlow) * uEffectIntensity;
+          pos.y += verticalFlow * 0.3 * uEffectIntensity;
+          
+          vWorldPosition = pos;
+          vAudioMix = (uBassLevel + uMidLevel + uTrebleLevel) / 3.0;
+          vLayerDepth = uLayerIndex / float(${numLayers - 1});
+          
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        }
+      `,
+      
+      fragmentShader: `
+        uniform float uTime;
+        uniform float uLayerIndex;
+        uniform float uAudioLevel;
+        uniform float uBassLevel;
+        uniform float uMidLevel;
+        uniform float uTrebleLevel;
+        uniform vec2 uResolution;
+        
+        // Visual mode uniforms
+        uniform float visualMode;
+        uniform sampler2D cameraTexture;
+        uniform float cameraActive;
+        
+        varying vec2 vUv;
+        varying vec3 vWorldPosition;
+        varying float vAudioMix;
+        varying float vLayerDepth;
+        
+        // Noise function for color variation
+        float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        }
+        
+        float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+                     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+        }
+        
+        void main() {
+          // Create aurora intensity based on vertical position and wave movement
+          float intensity = smoothstep(0.1, 0.4, vUv.y) * smoothstep(0.9, 0.6, vUv.y);
+          
+          // Add wave-based intensity modulation
+          float waveIntensity = sin(vWorldPosition.z * 0.02 + uTime) * 0.5 + 0.5;
+          intensity *= waveIntensity;
+          
+          // Audio reactivity boosts intensity
+          intensity += vAudioMix * 0.4;
+          intensity = clamp(intensity, 0.0, 1.0);
+          
+          // Aurora color palette - green dominant with other colors
+          vec3 auroraGreen = vec3(0.1, 0.8, 0.2);
+          vec3 auroraPink = vec3(0.8, 0.2, 0.6);
+          vec3 auroraBlue = vec3(0.1, 0.3, 0.9);
+          vec3 auroraPurple = vec3(0.5, 0.1, 0.8);
+          vec3 auroraYellow = vec3(0.9, 0.8, 0.1);
+          
+          // Layer-specific coloring
+          vec3 baseColor = auroraGreen; // Start with dominant green
+          
+          if (uLayerIndex < 1.0) {
+            // Front layer - green with bass-reactive pink
+            baseColor = mix(auroraGreen, auroraPink, uBassLevel * 0.8);
+          } else if (uLayerIndex < 2.0) {
+            // Second layer - blue-green mix
+            baseColor = mix(auroraGreen, auroraBlue, 0.4);
+            baseColor = mix(baseColor, auroraPurple, uMidLevel * 0.6);
+          } else {
+            // Back layers - purple/blue with treble-reactive yellow
+            baseColor = mix(auroraBlue, auroraPurple, 0.7);
+            baseColor = mix(baseColor, auroraYellow, uTrebleLevel * 0.5);
+          }
+          
+          // Add color variation across the aurora
+          float colorNoise = noise(vUv * 4.0 + uTime * 0.1);
+          baseColor += colorNoise * 0.1;
+          
+          // Create aurora glow effect
+          float glow = pow(intensity, 0.6);
+          vec3 finalColor = baseColor * (0.8 + glow * 1.2);
+          
+          // Add bright aurora rays
+          float rayIntensity = pow(intensity, 2.0) * (1.0 + vAudioMix);
+          finalColor += vec3(0.9, 0.9, 0.7) * rayIntensity * 0.2;
+          
+          // Layer opacity decreases with depth
+          float opacity = (0.9 - vLayerDepth * 0.3) * intensity;
+          
+          // Visual mode integration
+          if (cameraActive > 0.5 && visualMode > 0.5) {
+            vec2 screenUV = gl_FragCoord.xy / uResolution;
+            vec3 cameraColor = texture2D(cameraTexture, screenUV).rgb;
+            
+            if (abs(visualMode - 1.0) < 0.1) {
+              // Mode 1: Aurora modulates camera
+              float luminance = dot(cameraColor, vec3(0.299, 0.587, 0.114));
+              finalColor = mix(finalColor, cameraColor * finalColor, luminance * 0.5);
+            } else if (abs(visualMode - 2.0) < 0.1) {
+              // Mode 2: Blend with camera
+              finalColor = mix(cameraColor * 0.4, finalColor, intensity * 0.7);
+            } else if (abs(visualMode - 3.0) < 0.1) {
+              // Mode 3: Overlay on camera
+              finalColor = mix(cameraColor, finalColor, intensity * 0.8);
+              opacity = 1.0;
             }
           }
+          
+          gl_FragColor = vec4(finalColor, opacity);
         }
-        
-        // Overall intensity control
-        finalColor *= uEffectIntensity;
-        
-        gl_FragColor = vec4(finalColor, 1.0);
-      }
-    `,
-    transparent: false,
-    side: THREE.DoubleSide
-  });
+      `,
+      
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    
+    const auroraLayer = new THREE.Mesh(geometry, material);
+    
+    // Position layers at different depths
+    auroraLayer.position.z = -300 - (i * 200);
+    auroraLayer.position.y = Math.sin(i) * 50;
+    
+    // Scale layers for perspective
+    const scale = 1.0 + i * 0.15;
+    auroraLayer.scale.setScalar(scale);
+    
+    auroraGroup.add(auroraLayer);
+  }
 
-  const terrainMesh = new THREE.Mesh(geometry, material);
-  terrainMesh.position.set(0, -50, -100); // Position below camera
-  itunesGroup.add(terrainMesh);
-
-  // Store all the effect state
-  itunesGroup.userData = {
-    material: material,
-    mesh: terrainMesh,
-    // Effect cycling
-    currentEffectType: 0,
-    effectTypes: 8, // Total number of effects
-    lastEffectChange: 0,
-    effectChangeInterval: 8.0, // Change effect every 8 seconds
-    morphDuration: 2.0, // 2 second morph between effects
-    morphStartTime: 0,
-    isMorphing: false,
-    previousEffect: 0,
-    // Color cycling
-    currentColorScheme: 0,
-    colorSchemes: 6,
-    lastColorChange: 0,
-    colorChangeInterval: 12.0, // Change colors every 12 seconds
-    // Visual mode for camera
-    visualMode: 0.0,
-    // Audio data storage
-    audioData: new Array(128).fill(0.0),
-    smoothedData: new Array(128).fill(0.0),
-    waveformData: new Array(256).fill(0.0),
-    // Animation state
-    flowOffset: 0
+  // Store layers and animation data
+  auroraGroup.userData = {
+    layers: auroraGroup.children,
+    visualMode: 0.0
   };
 
-  // Custom animation functions
-  itunesGroup.userData.customAnimateInitial = function() {
+  // Idle animation function
+  auroraGroup.userData.customAnimateInitial = function() {
     const time = performance.now() * 0.001;
-    const uniforms = this.userData.material.uniforms;
     
-    // Update time
-    uniforms.uTime.value = time;
-    
-    // Generate gentle idle animation data
-    for (let i = 0; i < 128; i++) {
-      // Create subtle wave pattern
-      const wave = Math.sin(i * 0.1 + time * 2.0) * 0.1 + 0.05;
-      this.userData.smoothedData[i] = THREE.MathUtils.lerp(
-        this.userData.smoothedData[i],
-        wave,
-        0.05
-      );
-    }
-    
-    // Gentle waveform for idle
-    for (let i = 0; i < 256; i++) {
-      this.userData.waveformData[i] = Math.sin(i * 0.05 + time) * 0.2;
-    }
-    
-    // Check effect cycling
-    if (time - this.userData.lastEffectChange > this.userData.effectChangeInterval) {
-      this.userData.previousEffect = this.userData.currentEffectType;
-      this.userData.currentEffectType = (this.userData.currentEffectType + 1) % this.userData.effectTypes;
-      this.userData.lastEffectChange = time;
-      this.userData.morphStartTime = time;
-      this.userData.isMorphing = true;
-    }
-    
-    // Handle morphing between effects
-    if (this.userData.isMorphing) {
-      const morphProgress = (time - this.userData.morphStartTime) / this.userData.morphDuration;
-      if (morphProgress >= 1.0) {
-        this.userData.isMorphing = false;
-        uniforms.uMorphAmount.value = 0.0;
-      } else {
-        uniforms.uMorphAmount.value = morphProgress;
+    this.userData.layers.forEach((layer) => {
+      if (layer.material && layer.material.uniforms) {
+        layer.material.uniforms.uTime.value = time;
+        layer.material.uniforms.uAudioLevel.value = 0.05; // Gentle movement
+        layer.material.uniforms.uBassLevel.value = 0.0;
+        layer.material.uniforms.uMidLevel.value = 0.0;
+        layer.material.uniforms.uTrebleLevel.value = 0.0;
+        
+        // Camera integration
+        if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
+          layer.material.uniforms.cameraTexture.value = window.userCameraTexture;
+          layer.material.uniforms.cameraActive.value = 1.0;
+        } else {
+          layer.material.uniforms.cameraActive.value = 0.0;
+        }
+        layer.material.uniforms.visualMode.value = this.userData.visualMode;
       }
-    }
-    
-    // Check color cycling
-    if (time - this.userData.lastColorChange > this.userData.colorChangeInterval) {
-      this.userData.currentColorScheme = (this.userData.currentColorScheme + 1) % this.userData.colorSchemes;
-      this.userData.lastColorChange = time;
-    }
-    
-    // Update uniforms
-    uniforms.uAudioData.value = this.userData.smoothedData;
-    uniforms.uWaveform.value = this.userData.waveformData;
-    uniforms.uEffectType.value = this.userData.currentEffectType;
-    uniforms.uColorScheme.value = this.userData.currentColorScheme;
-    uniforms.uBassLevel.value = 0.0;
-    uniforms.uMidLevel.value = 0.0;
-    uniforms.uTrebleLevel.value = 0.0;
-    
-    // Update camera texture
-    if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
-      uniforms.cameraTexture.value = window.userCameraTexture;
-      uniforms.cameraActive.value = 1.0;
-    } else {
-      uniforms.cameraActive.value = 0.0;
-    }
-    uniforms.visualMode.value = this.userData.visualMode;
-  }.bind(itunesGroup);
+    });
+  }.bind(auroraGroup);
 
-  itunesGroup.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
+  // Audio-reactive animation function
+  auroraGroup.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
     const time = performance.now() * 0.001;
-    const uniforms = this.userData.material.uniforms;
     
-    // Update time
-    uniforms.uTime.value = time;
-    
-    // Generate detailed frequency spectrum from bass/mid/treble
-    for (let i = 0; i < 128; i++) {
-      let amplitude = 0;
-      const norm = i / 128;
-      
-      if (norm < 0.2) {
-        // Bass frequencies (0-20%)
-        amplitude = bassAvg * (1.0 - norm * 5.0) + Math.random() * 0.05;
-      } else if (norm < 0.6) {
-        // Mid frequencies (20-60%)
-        const midNorm = (norm - 0.2) / 0.4;
-        amplitude = midAvg * (1.0 - Math.abs(midNorm - 0.5) * 2.0) + Math.random() * 0.05;
-      } else {
-        // Treble frequencies (60-100%)
-        const trebleNorm = (norm - 0.6) / 0.4;
-        amplitude = trebleAvg * (1.0 - trebleNorm) + Math.random() * 0.05;
+    this.userData.layers.forEach((layer) => {
+      if (layer.material && layer.material.uniforms) {
+        const uniforms = layer.material.uniforms;
+        
+        uniforms.uTime.value = time;
+        uniforms.uAudioLevel.value = (bassAvg + midAvg + trebleAvg) / 3.0;
+        uniforms.uBassLevel.value = bassAvg;
+        uniforms.uMidLevel.value = midAvg;
+        uniforms.uTrebleLevel.value = trebleAvg;
+        
+        // Camera integration
+        if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
+          uniforms.cameraTexture.value = window.userCameraTexture;
+          uniforms.cameraActive.value = 1.0;
+        } else {
+          uniforms.cameraActive.value = 0.0;
+        }
+        uniforms.visualMode.value = this.userData.visualMode;
       }
-      
-      // Add some variation between adjacent frequencies
-      if (i > 0) {
-        amplitude = amplitude * 0.7 + this.userData.audioData[i-1] * 0.3;
-      }
-      
-      // Smooth the data
-      this.userData.smoothedData[i] = THREE.MathUtils.lerp(
-        this.userData.smoothedData[i], 
-        amplitude, 
-        0.3
-      );
-    }
-    
-    // Generate waveform data (simulate time-domain audio)
-    const wavePhase = time * 10.0;
-    for (let i = 0; i < 256; i++) {
-      const t = i / 256.0;
-      let wave = 0;
-      // Bass component
-      wave += Math.sin(t * Math.PI * 4 + wavePhase) * bassAvg;
-      // Mid component
-      wave += Math.sin(t * Math.PI * 16 + wavePhase * 2) * midAvg * 0.5;
-      // Treble component
-      wave += Math.sin(t * Math.PI * 64 + wavePhase * 4) * trebleAvg * 0.25;
-      // Add some noise
-      wave += (Math.random() - 0.5) * 0.1;
-      
-      this.userData.waveformData[i] = wave;
-    }
-    
-    // Auto-cycle effects based on audio energy
-    const totalEnergy = bassAvg + midAvg + trebleAvg;
-    const effectChangeRate = this.userData.effectChangeInterval * (1.0 - totalEnergy * 0.3); // Faster changes with more energy
-    
-    if (time - this.userData.lastEffectChange > effectChangeRate) {
-      this.userData.previousEffect = this.userData.currentEffectType;
-      this.userData.currentEffectType = (this.userData.currentEffectType + 1) % this.userData.effectTypes;
-      this.userData.lastEffectChange = time;
-      this.userData.morphStartTime = time;
-      this.userData.isMorphing = true;
-    }
-    
-    // Handle morphing between effects
-    if (this.userData.isMorphing) {
-      const morphProgress = (time - this.userData.morphStartTime) / this.userData.morphDuration;
-      if (morphProgress >= 1.0) {
-        this.userData.isMorphing = false;
-        uniforms.uMorphAmount.value = 0.0;
-      } else {
-        // Smooth easing function
-        const eased = morphProgress < 0.5 
-          ? 2 * morphProgress * morphProgress 
-          : 1 - Math.pow(-2 * morphProgress + 2, 2) / 2;
-        uniforms.uMorphAmount.value = eased;
-      }
-    }
-    
-    // Color cycling influenced by audio
-    const colorChangeRate = this.userData.colorChangeInterval * (1.0 - midAvg * 0.5);
-    if (time - this.userData.lastColorChange > colorChangeRate) {
-      this.userData.currentColorScheme = (this.userData.currentColorScheme + 1) % this.userData.colorSchemes;
-      this.userData.lastColorChange = time;
-    }
-    
-    // Update uniforms
-    uniforms.uAudioData.value = this.userData.smoothedData;
-    uniforms.uWaveform.value = this.userData.waveformData;
-    uniforms.uEffectType.value = this.userData.currentEffectType;
-    uniforms.uColorScheme.value = this.userData.currentColorScheme;
-    uniforms.uBassLevel.value = bassAvg;
-    uniforms.uMidLevel.value = midAvg;
-    uniforms.uTrebleLevel.value = trebleAvg;
-    uniforms.uFlowSpeed.value = 2.0 + totalEnergy * 3.0; // Speed up flow with audio
-    
-    // Update camera texture
-    if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
-      uniforms.cameraTexture.value = window.userCameraTexture;
-      uniforms.cameraActive.value = 1.0;
-    } else {
-      uniforms.cameraActive.value = 0.0;
-    }
-    uniforms.visualMode.value = this.userData.visualMode;
-  }.bind(itunesGroup);
+    });
+  }.bind(auroraGroup);
 
-  itunesGroup.userData.customAdjustIntensity = function(level) {
+  // Intensity adjustment function
+  auroraGroup.userData.customAdjustIntensity = function(level) {
     const intensity = Math.max(0.1, Math.min(3.0, level));
-    this.userData.material.uniforms.uEffectIntensity.value = intensity;
-  }.bind(itunesGroup);
+    this.userData.layers.forEach((layer) => {
+      if (layer.material && layer.material.uniforms) {
+        layer.material.uniforms.uEffectIntensity.value = intensity;
+      }
+    });
+  }.bind(auroraGroup);
 
-  scene.add(itunesGroup);
-  visualElements.push(itunesGroup);
+  scene.add(auroraGroup);
+  visualElements.push(auroraGroup);
 }
 
         
@@ -8904,6 +8651,7 @@ function createWaterPoolEffect() {
   createAuroraEffect();
   createWaterPoolEffect();
   createPortal();
+  createTrippyColors();
   createLiquidCrystalEffect();
   //createApple1Effect();
   //createApple2Effect();
@@ -9057,7 +8805,7 @@ function updateVisibility() {
       const delta = clock.getDelta();
       const time = performance.now() * 0.001;
         
-      // iTunes Visualizer (TrippyColors)
+      // Aurora Northern Lights (TrippyColors)
       const trippyGroup = visualElements.find(e => e.name === "TrippyColors");
       if (trippyGroup && trippyGroup.userData && trippyGroup.userData.customAnimateInitial) {
         try {
@@ -9426,7 +9174,7 @@ if (wave3DEffect && wave3DEffect.material.uniforms) {
   wave3DEffect.geometry.attributes.position.needsUpdate = true;
 }
       
-      // iTunes Visualizer (TrippyColors) Audio Reactive
+      // Aurora Northern Lights (TrippyColors) Audio Reactive
       const trippyGroup = visualElements.find(e => e.name === "TrippyColors");
       if (trippyGroup && trippyGroup.userData && trippyGroup.userData.customAnimateReactive) {
         try {
@@ -10412,6 +10160,9 @@ case 'ArrowUp': {
         break;
         case 'c':
           event.preventDefault();
+          if (!isAuthorized) {
+            return;
+          }
           toggleCreatorMode();
         break;
         
@@ -10435,6 +10186,9 @@ case 'ArrowUp': {
 break;
 case 'p':
   if (currentMode === 'fileSelect') {
+    if (!isAuthorized) {
+      return;
+    }
     if (!userPlaylistActive) {
       // Activate the user playlist and add the *current* file once
       userPlaylistActive = true;
@@ -10501,7 +10255,7 @@ if (wave3DEffect && wave3DEffect.material && wave3DEffect.material.uniforms) {
   wave3DEffect.userData.baseSpeed = 1.0 + intensityLevel * 0.1;
 }
       
-      // iTunes Visualizer (TrippyColors) Intensity Adjustment
+      // Aurora Northern Lights (TrippyColors) Intensity Adjustment
       const trippyGroup = visualElements.find(e => e.name === "TrippyColors");
       if (trippyGroup && trippyGroup.userData && trippyGroup.userData.customAdjustIntensity) {
         trippyGroup.userData.customAdjustIntensity(intensityLevel);
