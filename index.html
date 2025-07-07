@@ -4163,200 +4163,344 @@ function createBlobEffect() {
 }
 
 function createPopArtEffect() {
-  const geometry = new THREE.PlaneBufferGeometry(2, 2); // Fullscreen quad
+  // Create render targets for multi-pass rendering
+  const renderTarget1 = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    type: THREE.UnsignedByteType
+  });
+  const renderTarget2 = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+    minFilter: THREE.LinearFilter,
+    magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat,
+    type: THREE.UnsignedByteType
+  });
+  
+  // Main starburst geometry - fan of triangles from center
+  const rayCount = 64;
+  const geometry = new THREE.BufferGeometry();
+  const vertices = [];
+  const uvs = [];
+  const angles = [];
+  
+  // Create center vertex
+  vertices.push(0, 0, 0);
+  uvs.push(0.5, 0.5);
+  angles.push(0);
+  
+  // Create ray vertices in a circle (scaled to be visible)
+  for (let i = 0; i <= rayCount; i++) {
+    const angle = (i / rayCount) * Math.PI * 2;
+    const radius = 200; // Make it larger to ensure visibility
+    vertices.push(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
+    uvs.push(0.5 + Math.cos(angle) * 0.5, 0.5 + Math.sin(angle) * 0.5);
+    angles.push(angle);
+  }
+  
+  // Create triangle indices for triangle fan
+  const indices = [];
+  for (let i = 0; i < rayCount; i++) {
+    indices.push(0, i + 1, i + 2);
+  }
+  
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setAttribute('angle', new THREE.Float32BufferAttribute(angles, 1));
+  geometry.setIndex(indices);
+
   const material = new THREE.ShaderMaterial({
-      uniforms: {
-          time: { value: 0.0 },
-          audioBass: { value: 0.0 },
-          audioMid: { value: 0.0 },
-          audioTreble: { value: 0.0 },
-          effectIntensity: { value: 1.0 },
-          resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-          cameraTexture: { value: null }, // For optional camera input
-          visualMode: { value: 0.0 } // 0: Procedural, 1: Camera
-      },
-      vertexShader: `
-          varying vec2 vUv;
-          void main() {
-              vUv = uv;
-              gl_Position = vec4(position, 1.0);
-          }
-      `,
-      fragmentShader: `
-          precision highp float;
-          uniform float time;
-          uniform float audioBass;
-          uniform float audioMid;
-          uniform float audioTreble;
-          uniform float effectIntensity;
-          uniform vec2 resolution;
-          uniform sampler2D cameraTexture;
-          uniform float visualMode; // 0 or 1
-          varying vec2 vUv;
+    uniforms: {
+      time: { value: 0.0 },
+      audioBass: { value: 0.0 },
+      audioMid: { value: 0.0 },
+      audioTreble: { value: 0.0 },
+      effectIntensity: { value: 1.0 },
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      cameraTexture: { value: null },
+      visualMode: { value: 0.0 },
+      // FFT spectrum - 64 frequency bands
+      uFFT: { value: new Float32Array(64) },
+      baseRadius: { value: 0.1 },
+      maxRadius: { value: 0.8 },
+      paletteOffset: { value: 0.0 },
+      // Frame feedback
+      previousFrame: { value: null },
+      feedbackAmount: { value: 0.85 }
+    },
+    vertexShader: `
+      attribute float angle;
+      uniform float time;
+      uniform float uFFT[64];
+      uniform float baseRadius;
+      uniform float maxRadius;
+      uniform float effectIntensity;
+      varying vec2 vUv;
+      varying float vAngle;
+      varying float vAmplitude;
+      varying float vRadius;
+      
+      void main() {
+        vUv = uv;
+        vAngle = angle;
+        
+        // Get FFT band for this angle
+        int bandIndex = int(mod(angle / (3.14159 * 2.0) * 64.0, 64.0));
+        float amplitude = uFFT[bandIndex];
+        vAmplitude = amplitude;
+        
+        // Calculate dynamic radius based on amplitude
+        float dynamicRadius = baseRadius + amplitude * maxRadius * effectIntensity;
+        vRadius = dynamicRadius;
+        
+        vec3 pos = position;
+        
+        // Scale radial vertices by amplitude (ensure minimum visibility)
+        if (length(position.xy) > 10.0) {
+          float scaleFactor = max(dynamicRadius, 0.5); // Ensure minimum size
+          pos.xy *= scaleFactor;
+          
+          // Add fuzzy jitter perpendicular to ray direction with time-based variation
+          vec2 perpendicular = vec2(-sin(angle), cos(angle));
+          float baseJitter = 0.02 + sin(time * 0.2) * 0.01; // Varies between 0.01-0.03
+          float jitterAmount = amplitude * baseJitter * effectIntensity;
+          float jitterFreq = 10.0 + sin(time * 0.1) * 3.0; // Varies jitter frequency
+          pos.xy += perpendicular * sin(time * jitterFreq + angle * 5.0) * jitterAmount;
+        }
+        
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform float time;
+      uniform float paletteOffset;
+      uniform float visualMode;
+      uniform sampler2D cameraTexture;
+      uniform vec2 resolution;
+      varying vec2 vUv;
+      varying float vAngle;
+      varying float vAmplitude;
+      varying float vRadius;
+      
+      // Bold posterized palette
+      vec3 getPaletteColor(float index) {
+        vec3 colors[6];
+        colors[0] = vec3(0.0, 1.0, 1.0);  // Cyan
+        colors[1] = vec3(1.0, 0.0, 1.0);  // Magenta  
+        colors[2] = vec3(1.0, 1.0, 0.0);  // Yellow
+        colors[3] = vec3(1.0, 0.3, 0.0);  // Orange
+        colors[4] = vec3(0.3, 1.0, 0.0);  // Lime
+        colors[5] = vec3(0.0, 0.0, 0.0);  // Black
+        
+        int paletteIndex = int(mod(index + paletteOffset, 6.0));
+        return colors[paletteIndex];
+      }
+      
+      // Posterize amplitude to palette entries
+      float posterizeAmplitude(float amp) {
+        return floor(amp * 6.0) / 6.0;
+      }
+      
+      void main() {
+        // Posterize the amplitude
+        float posterizedAmp = posterizeAmplitude(vAmplitude);
+        
+        // Get color from palette based on posterized amplitude
+        vec3 color = getPaletteColor(posterizedAmp * 6.0);
+        
+                 // Camera integration for visual mode 1
+         if (visualMode > 0.5) {
+           vec3 camColor = texture2D(cameraTexture, vUv).rgb;
+           float camLuminance = dot(camColor, vec3(0.299, 0.587, 0.114));
+           color = mix(color, camColor, camLuminance * 0.3);
+         }
+        
+        // Distance-based alpha for smooth edges (more generous)
+        float distFromCenter = length(vUv - 0.5) * 2.0;
+        float alpha = smoothstep(vRadius + 0.2, vRadius - 0.2, distFromCenter);
+        
+        // Intensity based on amplitude (ensure minimum visibility)
+        float intensity = max(vAmplitude * 2.0, 0.5);
+        color *= intensity;
+        
+        // Ensure sufficient alpha for visibility
+        float finalAlpha = max(alpha * intensity, 0.3);
+        
+        gl_FragColor = vec4(color, finalAlpha);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide
+  });
 
-          // Posterization function
-          vec3 posterize(vec3 color, float numColors) {
-              return floor(color * numColors) / numColors;
-          }
-
-          // Halftone pattern function (simple dots)
-          float halftone(vec2 uv, float frequency, float angle, float dotSize) {
-              float s = sin(angle);
-              float c = cos(angle);
-              mat2 rotationMatrix = mat2(c, -s, s, c);
-              vec2 rotatedUv = rotationMatrix * uv * frequency;
-              vec2 cell = fract(rotatedUv);
-              float distToCenter = length(cell - 0.5) * 2.0; // 0 to 1
-              return smoothstep(dotSize + 0.05, dotSize - 0.05, distToCenter); // Anti-aliased dot
-          }
-
-          // HSV to RGB conversion
-          vec3 hsv2rgb(vec3 c) {
-              vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-              vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-              return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
-          }
-
-          // Simple noise
-          float rand(vec2 co){ return fract(sin(dot(co ,vec2(12.9898,78.233))) * 43758.5453); }
-
-          void main() {
-              vec2 uv = vUv;
-              vec3 finalColor = vec3(0.0);
-
-              // --- Color Palette ---
-              // Dynamic palette based on time and audio
-              float hueShift = time * 0.1 + audioMid * 0.5;
-              vec3 color1 = hsv2rgb(vec3(fract(0.1 + hueShift), 0.9, 0.9)); // Bright Color 1
-              vec3 color2 = hsv2rgb(vec3(fract(0.4 + hueShift), 0.9, 0.8)); // Bright Color 2
-              vec3 color3 = hsv2rgb(vec3(fract(0.7 + hueShift), 0.8, 0.7)); // Bright Color 3
-              vec3 bgColor = hsv2rgb(vec3(fract(0.9 + hueShift), 0.5, 0.6)); // Background Color
-
-              // --- Determine Base Image (Procedural or Camera) ---
-              vec3 baseImageColor;
-              float baseLuminance;
-
-              if (visualMode > 0.5 && texture2D(cameraTexture, vec2(0.5)).a > 0.0) { // Check if camera texture is valid
-                  baseImageColor = texture2D(cameraTexture, uv).rgb;
-                  baseLuminance = dot(baseImageColor, vec3(0.299, 0.587, 0.114));
-              } else {
-                  // Procedural pattern (e.g., swirling noise)
-                  float noiseVal = rand(uv * (2.0 + audioBass * 5.0) + time * 0.2);
-                  noiseVal += sin(uv.x * 10.0 + time + audioMid * 10.0) * cos(uv.y * 10.0 - time + audioTreble * 10.0) * 0.5;
-                  baseLuminance = smoothstep(0.3, 0.7, noiseVal);
-                  baseImageColor = vec3(baseLuminance); // Use luminance for procedural pattern coloring
-              }
-
-              // --- Apply Effects ---
-              // 1. Posterization
-              float numPosterColors = floor(3.0 + audioBass * 5.0 * effectIntensity); // 3 to 8 colors based on bass
-              vec3 posterizedColor = posterize(baseImageColor, numPosterColors);
-              float posterizedLuminance = dot(posterizedColor, vec3(0.299, 0.587, 0.114));
-
-              // 2. Color Mapping based on Luminance Thresholds
-              float thresh1 = 0.3;
-              float thresh2 = 0.7;
-              if (posterizedLuminance < thresh1) {
-                  finalColor = color1;
-              } else if (posterizedLuminance < thresh2) {
-                  finalColor = color2;
-              } else {
-                  finalColor = color3;
-              }
-
-              // 3. Optional Halftone Overlay (driven by treble)
-              float halftoneFreq = 50.0 + audioTreble * 150.0 * effectIntensity;
-              float halftoneAngle = time * 0.5;
-              float halftoneDotSize = 0.5 + audioMid * 0.4; // Mid affects dot size
-              float halftoneMask = halftone(uv, halftoneFreq, halftoneAngle, halftoneDotSize);
-
-              // Blend halftone with the mapped color (e.g., darken based on halftone)
-              // Only apply halftone to brighter areas maybe?
-              if (posterizedLuminance >= thresh1) {
-                  finalColor = mix(finalColor, bgColor, halftoneMask * 0.6 * pow(audioTreble, 2.0) * effectIntensity); // Mix with bg based on treble intensity
-              }
-
-
-              gl_FragColor = vec4(finalColor, 1.0);
-          }
-      `,
-      depthTest: false,
-      depthWrite: false,
-      transparent: true,
-      blending: THREE.NormalBlending
+  // Create fullscreen quad for post-processing
+  const postGeometry = new THREE.PlaneBufferGeometry(2, 2);
+  const postMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      currentFrame: { value: null },
+      previousFrame: { value: null },
+      time: { value: 0.0 },
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      feedbackAmount: { value: 0.85 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform sampler2D currentFrame;
+      uniform sampler2D previousFrame;
+      uniform float time;
+      uniform vec2 resolution;
+      uniform float feedbackAmount;
+      varying vec2 vUv;
+      
+      // Simple noise for UV wobble
+      float noise(vec2 p) {
+        return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+      }
+      
+      // Radial blur function
+      vec3 radialBlur(sampler2D tex, vec2 uv, float strength) {
+        vec2 center = vec2(0.5);
+        vec2 direction = normalize(uv - center);
+        vec3 color = vec3(0.0);
+        float total = 0.0;
+        
+        for (int i = 0; i < 8; i++) {
+          float offset = float(i) / 8.0 * strength;
+          vec2 sampleUV = uv - direction * offset;
+          color += texture2D(tex, sampleUV).rgb;
+          total += 1.0;
+        }
+        
+        return color / total;
+      }
+      
+      void main() {
+        // Add subtle UV wobble
+        vec2 wobbleUV = vUv + sin(time * 2.0 + vUv * 10.0) * 0.002;
+        
+        // Sample current frame with radial blur
+        vec3 current = radialBlur(currentFrame, wobbleUV, 0.02);
+        
+        // Sample previous frame for feedback
+        vec3 previous = texture2D(previousFrame, wobbleUV).rgb;
+        
+               // Dynamic feedback based on time and audio
+       float dynamicFeedback = feedbackAmount + sin(time * 0.3) * 0.1;
+       
+       // Blend with feedback
+       vec3 final = current + previous * dynamicFeedback;
+       
+       // Dynamic posterization levels
+       float posterLevels = 6.0 + sin(time * 0.5) * 2.0;
+       final = floor(final * posterLevels) / posterLevels;
+        
+        gl_FragColor = vec4(final, 1.0);
+      }
+    `,
+    transparent: false
   });
 
   const mesh = new THREE.Mesh(geometry, material);
+  const postMesh = new THREE.Mesh(postGeometry, postMaterial);
+  
   mesh.name = 'PopArtEffect';
-  mesh.renderOrder = 998; // Render before glitch maybe
+  mesh.renderOrder = 998;
   mesh.userData.baseEffectIntensity = 1.0;
-  mesh.userData.visualMode = 0.0; // Start with procedural
+  mesh.userData.visualMode = 0.0;
+  mesh.userData.renderTarget1 = renderTarget1;
+  mesh.userData.renderTarget2 = renderTarget2;
+  mesh.userData.postMesh = postMesh;
+  mesh.userData.isStarburstEffect = true; // Flag for special rendering
+  
   scene.add(mesh);
   visualElements.push(mesh);
 
-  // Custom update functions
+    // Custom update functions
   mesh.userData.customAnimateInitial = function() {
-      const mat = this.material;
-      const time = performance.now() * 0.001;
-      mat.uniforms.time.value = time;
-      mat.uniforms.audioBass.value = 0.0;
-      mat.uniforms.audioMid.value = 0.0;
-      mat.uniforms.audioTreble.value = 0.0;
-      mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 1.0;
-      mat.uniforms.visualMode.value = this.userData.visualMode; // Use stored visual mode
-      // Check if camera texture should be applied
-      if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
-          mat.uniforms.cameraTexture.value = window.userCameraTexture;
-      } else {
-          mat.uniforms.cameraTexture.value = null;
-      }
+    const mat = this.material;
+    const postMat = this.userData.postMesh.material;
+    const time = performance.now() * 0.001;
+    
+    mat.uniforms.time.value = time;
+    mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 1.0;
+    mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    mat.uniforms.visualMode.value = this.userData.visualMode || 0.0;
+    
+    // Update post-processing uniforms
+    postMat.uniforms.time.value = time;
+    postMat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    
+    // Dynamic palette cycling with natural variation
+    const baseCycleSpeed = 0.15 + Math.sin(time * 0.05) * 0.1; // Varies between 0.05-0.25
+    mat.uniforms.paletteOffset.value = Math.floor(time * baseCycleSpeed) % 6;
+    
+    // Simulate FFT data when no audio
+    for (let i = 0; i < 64; i++) {
+      mat.uniforms.uFFT.value[i] = 0.2 + 0.8 * Math.sin(time * 1.5 + i * 0.1);
+    }
+    
+    if (window.userCameraTexture) {
+      mat.uniforms.cameraTexture.value = window.userCameraTexture;
+    }
   }.bind(mesh);
-
+  
   mesh.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
-      const mat = this.material;
-      const time = performance.now() * 0.001;
-      mat.uniforms.time.value = time;
-      mat.uniforms.audioBass.value = bassAvg;
-      mat.uniforms.audioMid.value = midAvg;
-      mat.uniforms.audioTreble.value = trebleAvg;
-      mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 1.0;
-      mat.uniforms.visualMode.value = this.userData.visualMode;
-      // Check if camera texture should be applied
-      if (this.userData.visualMode > 0.5 && window.userCameraTexture) {
-          mat.uniforms.cameraTexture.value = window.userCameraTexture;
+    const mat = this.material;
+    const postMat = this.userData.postMesh.material;
+    const time = performance.now() * 0.001;
+    
+    mat.uniforms.time.value = time;
+    mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 1.0;
+    mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    mat.uniforms.visualMode.value = this.userData.visualMode || 0.0;
+    
+    // Audio-reactive feedback amount for trails/ghosting
+    const audioFeedback = 0.85 + bassAvg * 0.1 + Math.sin(time * 0.15) * 0.05;
+    postMat.uniforms.feedbackAmount.value = audioFeedback;
+    postMat.uniforms.time.value = time;
+    postMat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    
+    // Audio-reactive palette cycling with bass response
+    const audioCycleSpeed = 0.3 + bassAvg * 1.2 + Math.sin(time * 0.1) * 0.2;
+    mat.uniforms.paletteOffset.value = Math.floor(time * audioCycleSpeed) % 6;
+    
+    // Map audio to FFT bands
+    for (let i = 0; i < 64; i++) {
+      let amplitude = 0.1;
+      if (i < 16) {
+        // Bass frequencies
+        amplitude = bassAvg * (0.8 + Math.random() * 0.4);
+      } else if (i < 32) {
+        // Mid frequencies  
+        amplitude = midAvg * (0.6 + Math.random() * 0.6);
       } else {
-          mat.uniforms.cameraTexture.value = null;
+        // High frequencies
+        amplitude = trebleAvg * (0.4 + Math.random() * 0.8);
       }
+      mat.uniforms.uFFT.value[i] = amplitude;
+    }
+    
+    if (window.userCameraTexture) {
+      mat.uniforms.cameraTexture.value = window.userCameraTexture;
+    }
   }.bind(mesh);
-
-  mesh.userData.customAdjustIntensity = function(intensityLevel) {
-      this.userData.baseEffectIntensity = 0.5 + intensityLevel * 0.15; // Map 1-9 -> 0.65 to 1.7
-  }.bind(mesh);
-
-  // Override visual mode toggling for this effect
-  mesh.userData.toggleVisualMode = function() {
-      this.userData.visualMode = 1.0 - this.userData.visualMode; // Toggle 0 and 1
-      showActionMessage("Pop Art Mode: " + (this.userData.visualMode > 0.5 ? "Camera Input" : "Procedural"));
-      // Immediately update the uniform for the next frame
-      if (this.material) {
-          this.material.uniforms.visualMode.value = this.userData.visualMode;
-           // Apply/remove camera texture based on the new mode
-           if (this.userData.visualMode > 0.5) {
-               // Start camera feed if it is not already active
-               if (!window.isCameraMode) {
-                   toggleCameraBackground();
-               }
-               if (window.userCameraTexture) {
-                   this.material.uniforms.cameraTexture.value = window.userCameraTexture;
-               }
-           } else {
-               // Turn off camera for this effect; if no other effect uses camera, disable it globally
-               this.material.uniforms.cameraTexture.value = null;
-               if (window.isCameraMode && !isAnyEffectUsingCamera()) {
-                   toggleCameraBackground();
-               }
-           }
-      }
+  
+  mesh.userData.customAdjustIntensity = function(level) {
+    const clampedLevel = Math.max(0.5, Math.min(3.0, level));
+    this.userData.baseEffectIntensity = clampedLevel;
+    if (this.material && this.material.uniforms && this.material.uniforms.effectIntensity) {
+      this.material.uniforms.effectIntensity.value = clampedLevel;
+    }
+    console.log(`Radial Starburst intensity adjusted to ${clampedLevel}`);
   }.bind(mesh);
 }
 
@@ -8858,8 +9002,55 @@ function updateVisibility() {
   if (augmentInterval) {
     smoothAugmentationStep();
   }
-            
+
+      // Handle special multi-pass rendering for starburst effects
+      const currentEffect = visualElements[currentStyleIndex];
+      if (currentEffect && currentEffect.userData.isStarburstEffect && currentEffect.visible) {
+        handleStarburstRendering(currentEffect);
+      } else {
         renderer.render(scene, camera);
+      }
+    }
+
+    function handleStarburstRendering(starburstEffect) {
+      // Multi-pass rendering for starburst effects
+      const renderTarget1 = starburstEffect.userData.renderTarget1;
+      const renderTarget2 = starburstEffect.userData.renderTarget2;
+      const postMesh = starburstEffect.userData.postMesh;
+      
+      // Initialize render targets if this is the first frame
+      if (!starburstEffect.userData.initialized) {
+        renderer.setRenderTarget(renderTarget2);
+        renderer.clear();
+        starburstEffect.userData.initialized = true;
+      }
+      
+      // First pass: Render main starburst to render target
+      renderer.setRenderTarget(renderTarget1);
+      renderer.clear();
+      
+      // Temporarily hide post mesh and render only the starburst
+      postMesh.visible = false;
+      renderer.render(scene, camera);
+      postMesh.visible = true;
+      
+      // Second pass: Apply post-processing with feedback
+      renderer.setRenderTarget(null); // Render to screen
+      
+      // Set up post-processing uniforms
+      postMesh.material.uniforms.currentFrame.value = renderTarget1.texture;
+      postMesh.material.uniforms.previousFrame.value = renderTarget2.texture;
+      
+      // Hide the main starburst and render the post-processing quad
+      starburstEffect.visible = false;
+      scene.add(postMesh);
+      renderer.render(scene, camera);
+      scene.remove(postMesh);
+      starburstEffect.visible = true;
+      
+      // Swap render targets for next frame feedback
+      starburstEffect.userData.renderTarget1 = renderTarget2;
+      starburstEffect.userData.renderTarget2 = renderTarget1;
     }
         
     function animateInitialEffects() {
@@ -9033,10 +9224,12 @@ const blobIdle = visualElements.find(e => e.name === 'BlobEffect');
   }
 
 const popArtIdle = visualElements.find(e => e.name === 'PopArtEffect');
-if (popArtIdle && popArtIdle.material.uniforms) {
-  popArtIdle.material.uniforms.time.value = time;
-  popArtIdle.material.uniforms.audioBass.value = 0.0;
-  popArtIdle.material.uniforms.audioMid.value = 0.0;
+if (popArtIdle && popArtIdle.userData && popArtIdle.userData.customAnimateInitial) {
+  try {
+    popArtIdle.userData.customAnimateInitial();
+  } catch (err) {
+    console.error("Error in PopArt customAnimateInitial:", err);
+  }
 }
 
 const neonGridIdle = visualElements.find(e => e.name === 'NeonGridEffect');
@@ -9411,12 +9604,13 @@ const blobReact = visualElements.find(e => e.name === 'BlobEffect');
   }
 
   const popArtReact = visualElements.find(e => e.name === 'PopArtEffect');
-if (popArtReact && popArtReact.material.uniforms) {
-  popArtReact.material.uniforms.time.value = time;
-  popArtReact.material.uniforms.audioBass.value = bassAvg;
-  popArtReact.material.uniforms.audioMid.value = midAvg;
-  popArtReact.material.uniforms.audioTreble.value = trebleAvg;
+if (popArtReact && popArtReact.userData && popArtReact.userData.customAnimateReactive) {
+  try {
+    popArtReact.userData.customAnimateReactive(bassAvg, midAvg, trebleAvg);
+  } catch (err) {
+    console.error("Error in PopArt customAnimateReactive:", err);
   }
+}
 
   const neonGridReact = visualElements.find(e => e.name === 'NeonGridEffect');
 if (neonGridReact && neonGridReact.material.uniforms) {
@@ -10114,15 +10308,15 @@ case 'ArrowUp': {
         showActionMessage("ascii visual: off");
       }
     } else if (isPopArt) {
-      // --- PopArtEffect Logic (binary: 0, 1) ---
+      // --- Radial Starburst Logic (binary: 0, 1) ---
       if (currentState === 0) {
         toggleCameraBackground();
         activeMaterial.uniforms.visualMode.value = 1.0;
-        showActionMessage("pop art visual: camera input");
+        showActionMessage("starburst visual: camera blend");
       } else { // currentState is 1
         toggleCameraBackground();
         activeMaterial.uniforms.visualMode.value = 0.0;
-        showActionMessage("pop art visual: procedural");
+        showActionMessage("starburst visual: pure spectrum");
       }
     } else if (isGeometricPulse) {
       // --- GeometricPulseEffect Logic (binary: 0, 1) ---
