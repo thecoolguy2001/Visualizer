@@ -2938,6 +2938,9 @@ function createOceanEffect() {
     uniforms: {
       time: { value: 0.0 },
       audioIntensity: { value: 0.0 },
+      bassLevel: { value: 0.0 },
+      midLevel: { value: 0.0 },
+      trebleLevel: { value: 0.0 },
       effectIntensity: { value: 1.0 },
       resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
       cameraTexture: { value: null },
@@ -2952,9 +2955,12 @@ function createOceanEffect() {
       }
     `,
     fragmentShader: `
-      // (Same aurora-smoke shader logic you already have)
+      precision highp float;
       uniform float time;
       uniform float audioIntensity;
+      uniform float bassLevel;
+      uniform float midLevel;
+      uniform float trebleLevel;
       uniform float effectIntensity;
       uniform vec2 resolution;
       varying vec2 vUv;
@@ -2965,6 +2971,7 @@ function createOceanEffect() {
       float hash(vec2 p) {
           return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453123);
       }
+      
       float noise(vec2 p) {
           vec2 i = floor(p), f = fract(p);
           vec2 u = f * f * (3.0 - 2.0 * f);
@@ -2972,85 +2979,108 @@ function createOceanEffect() {
                      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
                      u.y);
       }
+      
       float fbm(vec2 p) {
           float total = 0.0;
           float amplitude = 0.5;
-          for (int i = 0; i < 5; i++) {
+          for (int i = 0; i < 6; i++) {
               total += amplitude * noise(p);
               p *= 2.0;
               amplitude *= 0.5;
           }
           return total;
       }
-      void main() {
-          // Convert vUv to a 'centered' coordinate that accounts for aspect ratio.
-          vec2 centeredUv = (vUv - 0.5) * vec2(resolution.x / resolution.y, 1.0);
+      
+              void main() {
+            vec2 centeredUv = (vUv - 0.5) * vec2(resolution.x / resolution.y, 1.0);
+            
+            // BASS - Powerful wind that blows smoke across screen
+            float windStrength = bassLevel * effectIntensity * 4.0;
+            vec2 windDirection = vec2(sin(time * 0.3 + bassLevel * 8.0), sin(time * 0.2 + bassLevel * 3.0) * 0.3) * windStrength;
+            
+            // TREBLE - Smoke dissipation and new smoke injection
+            float dissipation = 1.0 - trebleLevel * 0.8;  // High treble makes smoke disappear
+            float smokeBurst = smoothstep(0.4, 1.0, trebleLevel) * 3.0;  // Treble creates new smoke bursts
+            
+            // MID - Controls swirling and turbulence intensity
+            float swirlingPower = midLevel * effectIntensity * 5.0;
           
-          // Base noise layer
-          float baseNoise = fbm(centeredUv * 3.0 + time * 0.2);
-          // Audio-driven noise layer
-          float audioNoise = fbm(centeredUv * 10.0 + time * 2.0);
-          float combinedNoise = baseNoise + audioIntensity * effectIntensity * audioNoise;
+                      // Base smoke position with wind offset (bass blows smoke around)
+            vec2 smokePos = centeredUv + windDirection * 0.4;
+            
+            // Multiple smoke layers with different behaviors
+            float baseSmoke = fbm(smokePos * 2.0 + time * 0.2);
+            
+            // MID-FREQUENCY SWIRLING - creates rotating smoke patterns
+            float angle = time * 0.4 + baseSmoke * swirlingPower;
+            mat2 rotation = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+            vec2 swirledPos = rotation * smokePos;
+            
+            // Dynamic smoke density
+            float smokeDensity = fbm(swirledPos * 1.5 + time * 0.15);
+            
+            // TREBLE creates fine turbulence and detail
+            float turbulence = fbm(smokePos * 8.0 + time * (1.0 + trebleLevel * 3.0));
+            smokeDensity += turbulence * trebleLevel * 0.7;
+            
+            // TREBLE bursts create new smoke clouds
+            float burstSmoke = fbm(smokePos * 4.0 + time * 2.5) * smokeBurst;
+            smokeDensity += burstSmoke;
+            
+            // BASS creates flowing smoke trails that move across screen
+            float trails = fbm(smokePos + vec2(time * (0.8 + bassLevel * 1.5), time * 0.2) * (1.0 + bassLevel));
+            smokeDensity = mix(smokeDensity, trails, 0.4);
+            
+            // Apply treble-driven dissipation
+            smokeDensity *= dissipation;
+            
+            // Smooth the final smoke
+            float finalSmoke = smoothstep(0.1, 0.9, smokeDensity);
+            
+            // Overall audio enhances smoke concentration
+            finalSmoke *= (0.5 + audioIntensity * effectIntensity * 1.0);
           
-          // Swirl the UV coords based on the combined noise
-          float angle = time * 0.1 + combinedNoise * 6.2831;
-          mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
-          vec2 swirledUv = rot * centeredUv;
+          // MILKY WHITE SMOKE with subtle variations
+          vec3 milkyBase = vec3(0.9, 0.9, 0.9);      // milky white base
+          vec3 milkyHighlight = vec3(1.0, 1.0, 1.0); // pure white highlights
+          vec3 milkyShadow = vec3(0.7, 0.7, 0.8);    // slightly blue shadows
           
-          // Fine detail noise
-          float detailNoise = fbm(swirledUv * 4.0 + time * 0.5);
-          float smokeValue = mix(combinedNoise, detailNoise, 0.5);
+          // Color variation based on density and movement
+          float colorVar = noise(smokePos * 6.0 + time * 0.4);
+          vec3 smokeColor = mix(milkyShadow, milkyBase, finalSmoke);
+          smokeColor = mix(smokeColor, milkyHighlight, finalSmoke * colorVar);
           
-          // Aurora color gradient
-          vec3 colorA = vec3(0.2, 0.0, 0.3);  // deep purple
-          vec3 colorB = vec3(0.0, 0.6, 0.8);  // cyan
-          vec3 finalColor = mix(colorA, colorB, smoothstep(0.3, 0.7, smokeValue));
+                      // Frequency-specific color effects
+            // Bass adds warmth (slight yellow tint)
+            smokeColor += vec3(0.15, 0.1, 0.0) * bassLevel * finalSmoke;
+            
+            // Mid frequencies add brightness pulses
+            float brightnessPulse = 1.0 + midLevel * 0.4;
+            smokeColor *= brightnessPulse;
+            
+            // Treble adds cool highlights (slight blue tint)
+            smokeColor += vec3(0.0, 0.05, 0.1) * trebleLevel * finalSmoke;
           
-          // Glow in bright areas
-          float glow = smoothstep(0.4, 0.5, smokeValue) * audioIntensity * effectIntensity;
-          finalColor += glow * vec3(0.8, 0.9, 1.0);
-          
-          // Subtle vignette
-          float d = distance(vUv, vec2(0.5));
-          finalColor *= smoothstep(0.8, 0.4, d);
-          
+          // Camera integration
           vec2 screenUV = gl_FragCoord.xy / resolution.xy;
           vec4 cameraColor = texture2D(cameraTexture, screenUV);
           
           if (visualMode == 0.0 || cameraActive < 0.5) {
-            // Off: Normal rendering
-            gl_FragColor = vec4(finalColor, 1.0);
+              // Normal smoke rendering
+              gl_FragColor = vec4(smokeColor, finalSmoke);
           } else if (visualMode == 1.0) {
-            // Style 1: Distort camera feed using aurora's swirl logic
-            // The 'swirledUv' variable holds the UV coordinates distorted by the aurora logic.
-            // We need to map this back to the [0, 1] range for texture sampling.
-            // Inverse of: vec2 centeredUv = (vUv - 0.5) * vec2(resolution.x / resolution.y, 1.0);
-            vec2 distortedScreenUv = (swirledUv / vec2(resolution.x / resolution.y, 1.0)) + 0.5;
-            
-            // Clamp UVs to avoid sampling outside the texture borders
-            distortedScreenUv = clamp(distortedScreenUv, 0.0, 1.0);
-
-            // Sample camera texture using the distorted UVs
-            vec3 distortedCameraColor = texture2D(cameraTexture, distortedScreenUv).rgb;
-
-            // Use the original aurora's alpha/intensity as a mask
-            float effectMask = smoothstep(0.1, 0.6, length(finalColor)); // Reuse alpha estimation from original aurora color calculation
-
-            // Output the distorted camera feed, masked by where the aurora would be
-            // Mix between original camera feed (background) and distorted feed (foreground)
-            vec3 originalCameraColor = texture2D(cameraTexture, vUv).rgb; // Get original camera color at this pixel
-            vec3 outputColor = mix(originalCameraColor, distortedCameraColor, effectMask); 
-
-            gl_FragColor = vec4(outputColor, 1.0); // Output is fully opaque
+              // Smoke distorts camera feed
+              vec2 distortion = (smokePos - centeredUv) * finalSmoke * 0.1;
+              vec2 distortedUV = clamp(screenUV + distortion, 0.0, 1.0);
+              vec3 distortedCamera = texture2D(cameraTexture, distortedUV).rgb;
+              vec3 outputColor = mix(cameraColor.rgb, distortedCamera, finalSmoke * 0.8);
+              gl_FragColor = vec4(outputColor, 1.0);
           } else if (visualMode == 2.0) {
-            // Style 2: Blend original aurora with camera feed
-            // Use smokeValue or estimated alpha for blending factor
-            float blendFactor = smoothstep(0.1, 0.6, length(finalColor)); // Reuse alpha estimation
-            vec3 blendedColor = mix(cameraColor.rgb, finalColor, blendFactor);
-            gl_FragColor = vec4(blendedColor, 1.0);
+              // Smoke blends with camera
+              vec3 blendedColor = mix(cameraColor.rgb, smokeColor, finalSmoke * 0.6);
+              gl_FragColor = vec4(blendedColor, 1.0);
           } else {
-            // Fallback (same as normal)
-            gl_FragColor = vec4(finalColor, 1.0);
+              gl_FragColor = vec4(smokeColor, finalSmoke);
           }
       }
     `,
@@ -3106,8 +3136,8 @@ function createScribbleEffect() {
       audioLevel:      { value: 0.0 },
       effectIntensity: { value: 1.0 },
       loopCount:       { value: 6.0 },
-      baseRadius:      { value: 0.5 },
-      radiusVariation: { value: 0.35 },
+      baseRadius:      { value: 0.28 },
+      radiusVariation: { value: 0.20 },
       lineThickness:   { value: 0.008 },
       glowIntensity:   { value: 0.5 },
       colorA:          { value: new THREE.Color(0x6aff00) },
@@ -3164,23 +3194,29 @@ function createScribbleEffect() {
         for (float i = 0.0; i < loopCount; i += 1.0) {
           float pct = (i + 1.0) / loopCount;
 
-          // fast‑spinning, evolving angle
-          float angle = pct * 6.283185 * (2.0 + pct) + time * (4.0 + pct * 5.0);
+          // Audio-reactive spinning speed (toned down)
+          float audioSpeedMult = 1.0 + audioLevel * 1.5;
+          float angle = pct * 6.283185 * (2.0 + pct) + time * (4.0 + pct * 5.0) * audioSpeedMult;
 
-          // pulsing radius + audio influence
+          // More reactive pulsing radius with audio bursts (controlled)
+          float basePulse = sin(time * (5.0 + pct * 10.0));
+          float audioPulse = sin(time * (15.0 + pct * 20.0)) * audioLevel * 0.8;
           float r = baseRadius 
-                    + radiusVariation * sin(time * (5.0 + pct * 10.0)) 
-                    * (0.5 + audioLevel * 0.5);
+                    + radiusVariation * (basePulse + audioPulse) 
+                    * (0.4 + audioLevel * 0.6);
 
-          // hand‑drawn jitter
-          float jitter = noise(vec2(cos(angle), sin(angle)) * 5.0 + time * 3.0) * 0.1;
+          // Enhanced audio-reactive jitter (reduced)
+          float audioJitter = audioLevel * 0.3;
+          float jitter = noise(vec2(cos(angle), sin(angle)) * 5.0 + time * 3.0) * (0.1 + audioJitter);
 
           // compute center of this loop
           vec2 center = vec2(cos(angle), sin(angle)) * r * effectIntensity;
 
-          // build an oriented, pulsing ellipse ("worm")
-          float longA = r * effectIntensity * (1.0 + 0.3 * sin(time * 20.0 + pct * 6.0));
-          float shortA = r * effectIntensity * 0.3;
+          // Audio-reactive ellipse shape with controlled changes
+          float audioShapeA = 1.0 + audioLevel * 0.4;
+          float audioShapeB = 1.0 + audioLevel * 0.3;
+          float longA = r * effectIntensity * (1.0 + 0.3 * sin(time * 20.0 + pct * 6.0)) * audioShapeA;
+          float shortA = r * effectIntensity * 0.3 * audioShapeB;
           vec2 dir = uv - center;
 
           // rotate dir so ellipse is aligned
@@ -3194,8 +3230,10 @@ function createScribbleEffect() {
           float d = length(vec2(rotDir.x / longA, rotDir.y / shortA))
                     - (1.0 + jitter);
 
-          // edge+glow
-          float glow = smoothstep(lineThickness + glowIntensity, lineThickness, abs(d));
+          // Audio-reactive line thickness and glow (subtle)
+          float audioThickness = lineThickness * (1.0 + audioLevel * 0.25);
+          float audioGlow = glowIntensity * (1.0 + audioLevel * 0.5);
+          float glow = smoothstep(audioThickness + audioGlow, audioThickness, abs(d));
 
           // per‑ring color
           vec3 ringColor = mix(colorA, colorB, pct);
@@ -8909,7 +8947,14 @@ if (spaceshipEffect && spaceshipEffect.material?.uniforms) {
       const aurora = visualElements.find(elem => elem.name === 'AuroraEffect');
 if (aurora && aurora.material.uniforms) {
   aurora.material.uniforms.time.value = performance.now() * 0.001;
-  aurora.material.uniforms.audioIntensity.value = 0.0;
+  
+  // Set frequency bands to zero when idle
+  aurora.material.uniforms.bassLevel.value = 0.0;
+  aurora.material.uniforms.midLevel.value = 0.0;
+  aurora.material.uniforms.trebleLevel.value = 0.0;
+  
+  // Gentle milky smoke drift when idle - soft, natural movement
+  aurora.material.uniforms.audioIntensity.value = 0.15;
   aurora.material.uniforms.effectIntensity.value = aurora.userData?.baseEffectIntensity ?? 1.0;
 }
 
@@ -8921,7 +8966,12 @@ if (scribbleIdle && scribbleIdle.material.uniforms) {
   const t = performance.now() * 0.001;
   mat.uniforms.time.value         = t;
   mat.uniforms.audioLevel.value   = 0.0;
-  mat.uniforms.effectIntensity.value = 1.0;
+  // Use base intensity if available, otherwise default to 1.0
+  const baseIntensity = scribbleIdle.userData?.baseEffectIntensity || 1.0;
+  mat.uniforms.effectIntensity.value = baseIntensity;
+  // Reset to default values when idle
+  mat.uniforms.lineThickness.value = 0.008;
+  mat.uniforms.glowIntensity.value = 0.5;
 }
 
 // --- WaterPool (Idle) - PS1-style Water Animation ---
@@ -9291,10 +9341,19 @@ if (spaceshipEffect && spaceshipEffect.material?.uniforms) {
       const aurora = visualElements.find(elem => elem.name === 'AuroraEffect');
 if (aurora && aurora.material.uniforms) {
   aurora.material.uniforms.time.value = performance.now() * 0.001;
-  // Compute overall audio intensity (tweak the multipliers for stronger effect)
-  let audioIntensity = (bassAvg * 0.5 + midAvg * 0.3 + trebleAvg * 0.2);
-  aurora.material.uniforms.audioIntensity.value = audioIntensity;
-  aurora.material.uniforms.effectIntensity.value = aurora.userData?.baseEffectIntensity ?? 1.0;
+  
+  // Pass individual frequency bands to shader for specific smoke behaviors
+  aurora.material.uniforms.bassLevel.value = bassAvg;
+  aurora.material.uniforms.midLevel.value = midAvg;
+  aurora.material.uniforms.trebleLevel.value = trebleAvg;
+  
+  // Combined audio intensity for overall smoke behavior
+  let totalSmoke = bassAvg * 0.8 + midAvg * 0.7 + trebleAvg * 0.6;
+  aurora.material.uniforms.audioIntensity.value = totalSmoke;
+  
+  // Effect intensity dynamically responds to audio peaks
+  const baseIntensity = aurora.userData?.baseEffectIntensity ?? 1.0;
+  aurora.material.uniforms.effectIntensity.value = baseIntensity * (0.7 + totalSmoke * 0.6);
 }
 
 // --- Scribble (Audio-Reactive) ---
@@ -9304,7 +9363,14 @@ if (scribbleReact && scribbleReact.material.uniforms) {
   const t = performance.now() * 0.001;
   mat.uniforms.time.value         = t;
   mat.uniforms.audioLevel.value   = audioIntensity;
-  mat.uniforms.effectIntensity.value = 1.0 + audioIntensity * 2.0;
+  // Use base intensity if available, otherwise default to 1.0
+  const baseIntensity = scribbleReact.userData?.baseEffectIntensity || 1.0;
+  // Controlled audio reactivity building on base intensity
+  mat.uniforms.effectIntensity.value = baseIntensity + audioIntensity * 1.5;
+  // Make line thickness respond to bass (subtle)
+  mat.uniforms.lineThickness.value = 0.008 + bassAvg * 0.006;
+  // Make glow intensity respond to treble (controlled)
+  mat.uniforms.glowIntensity.value = 0.5 + trebleAvg * 0.4;
 }
 
 analyser.getByteFrequencyData(dataArray);
@@ -10332,7 +10398,10 @@ if (quantumFold && quantumFold.userData.customAdjustIntensity) {
 const scribbleInt = visualElements.find(e => e.name === 'Scribble');
 if (scribbleInt && scribbleInt.material.uniforms) {
   const mat = scribbleInt.material;
-  mat.uniforms.effectIntensity.value = intensityLevel / 5.0;
+  // Store base intensity for audio reactivity
+  scribbleInt.userData = scribbleInt.userData || {};
+  scribbleInt.userData.baseEffectIntensity = intensityLevel / 5.0;
+  mat.uniforms.effectIntensity.value = scribbleInt.userData.baseEffectIntensity;
   mat.uniforms.lineThickness.value   = 0.005 * intensityLevel;
   mat.uniforms.glowIntensity.value   = 1.0 + intensityLevel * 0.5;
 }
