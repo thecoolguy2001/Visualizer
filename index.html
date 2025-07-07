@@ -4372,7 +4372,7 @@ function createNeonGridEffect() {
           audioMid: { value: 0.0 },
           audioTreble: { value: 0.0 },
           effectIntensity: { value: 1.0 },
-          gridColor: { value: new THREE.Color(0xff4400) }, // Classic orange/red like the image
+          gridColor: { value: new THREE.Color(0xff69b4) }, // Hot pink color
           scanlineIntensity: { value: 0.3 },
           // Visual Mode Uniforms
           visualMode: { value: 0.0 },
@@ -4519,10 +4519,10 @@ function createNeonGridEffect() {
               // Audio brightness boost - users see immediate response!
               float lineBrightness = brightness * (0.7 + bassIntensity * 0.8 + midIntensity * 0.5 + trebleIntensity * 0.3);
               
-              // === CONSISTENT RED GRID COLOR ===
+              // === CONSISTENT PINK GRID COLOR ===
               
-              // Pure red grid color that stays consistent
-              vec3 gridColor = vec3(1.0, 0.0, 0.0); // Pure red
+              // Hot pink grid color that stays consistent
+              vec3 gridColor = vec3(1.0, 0.4, 0.7); // Hot pink
               
               vec3 finalColor = gridColor * lineBrightness;
               
