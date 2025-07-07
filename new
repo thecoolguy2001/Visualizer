@@ -1,0 +1,3464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta charset="UTF-8">
+  <title>Visualizer</title>
+  <!-- Standard favicon -->
+  <link rel="icon" type="image/png" href="images/favicon.png">
+    
+  <!-- PNG favicon for browsers that prefer PNG -->
+  <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png">
+    
+  <!-- Apple Touch Icon -->
+  <link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon.png">
+  <script src="https://js-cdn.music.apple.com/musickit/v1/musickit.js"></script>
+  <script src="https://sdk.scdn.co/spotify-player.js"></script>
+  <script src="https://connect.soundcloud.com/sdk/sdk-3.3.2.js"></script>
+  <style>
+  /* Ensure the background is black for iOS Safari */
+  html, body {
+    background-color: black;
+    margin: 0;
+    padding: 0;
+  }
+  
+  #info {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -40%); /* start slightly lower */
+  color: grey;
+  text-align: center;
+  font-family: Arial, sans-serif;
+  opacity: 0;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+/* When you want to show the message, add the "show" class */
+#info.show {
+  transform: translate(-50%, -50%); /* final centered position */
+  opacity: 1;
+}
+
+  #modeIndicator {
+    position: absolute; bottom: 10px; left: 10px;
+    color: grey; text-align: left;
+    font-family: Arial, sans-serif;
+    opacity: 0;
+    transition: opacity 1s;
+  }
+  /* File input now is a 1x1 pixel element, visible (opacity: 0) so it can be clicked on mobile */
+  #fileInput {
+    position: fixed;
+    width: 44px;            /* A standard touch-target size */
+    height: 44px;
+    opacity: 0;             /* Visually hidden */
+    z-index: 10000;
+    top: 10px;
+    left: 10px;
+    pointer-events: auto;   /* Must allow user interaction */
+    /* Do NOT use display:none or transform that removes it from layout */
+  }
+  
+  #loadedMessage {
+    position: absolute; bottom: 10px; left: 10px;
+    color: grey; text-align: left;
+    font-family: Arial, sans-serif; display: none;
+  } 
+  #actionMessage {
+  position: absolute; bottom: 10px; left: 10px;
+  color: grey; text-align: left;
+  font-family: Arial, sans-serif;
+  opacity: 0;
+  transition: opacity 1.5s ease-in-out;
+}
+
+
+  
+  #songInfo {
+    position: absolute; 
+    bottom: 10px; 
+    right: 10px; 
+    color: grey; 
+    text-align: right; 
+    font-family: Arial, sans-serif; 
+    opacity: 0; 
+    transition: opacity 1s;
+  }   
+  
+  #helpOverlay {  
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  /* Initial transform offset: starts 10px lower than centered */
+  transform: translate(-50%, -40%);
+  width: 300px; /* or auto if you prefer */
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-family: Arial, sans-serif;
+  border: 2px solid grey;
+  border-radius: 8px;
+  padding: 20px;
+  opacity: 0;  /* start hidden */
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  z-index: 9999; /* on top of other overlays */
+  display: none;  /* keep hidden by default */
+}
+
+/* When the overlay should be visible, add the "show" class */
+#helpOverlay.show {
+  display: block;   /* ensure it’s in the document flow */
+  opacity: 1;
+  /* Raise up to centered position */
+  transform: translate(-50%, -50%);
+}
+  
+  #helpOverlay h2,
+  #helpOverlay ul {
+    margin: 0;
+    padding: 0;
+  }  
+  
+  #helpOverlay ul {
+    list-style-type: none;
+    margin-top: 10px;
+  }   
+  
+  #helpOverlay li {
+    margin-bottom: 8px;
+  } 
+  #adBanner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 90px; /* You may adjust this height if needed */
+  display: none; /* Hidden by default */
+  text-align: center;
+  z-index: 10000;
+}
+
+#adBanner.show {
+  display: block;
+  opacity: 0;
+  animation: fadeInUp 0.5s forwards;
+}
+/* DSP overlay styling */
+#dspOverlay {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -40%);
+  width: 300px;
+  background-color: rgba(0,0,0,0.9);
+  color: white;
+  font-family: Arial, sans-serif;
+  border: 2px solid grey;
+  border-radius: 8px;
+  padding: 20px;
+  opacity: 0;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+  z-index: 10000;
+  display: none;
+  font-size: 1em;
+}
+#dspOverlay.show {
+  display: block;
+  opacity: 1;
+  transform: translate(-50%, -50%);
+}
+#dspOverlay label {
+  display: block;
+  margin-bottom: 10px;
+}
+#dspOverlay input {
+  width: 100%;
+  padding: 5px;
+  margin-top: 4px;
+  box-sizing: border-box;
+}
+#dspOverlay button {
+    display: block;
+    width: 100%;
+    padding: 10px 20px;
+    margin: 8px 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    border: 2px solid grey;
+    border-radius: 8px;
+    color: white;
+    font-family: Arial, sans-serif;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+/* Creator Modal animation */
+  #creatorModal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(0%, 0%);
+    opacity: 0;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    display: none;
+    z-index: 10000;
+    overflow: auto;
+  }
+  #creatorModal.show {
+    display: block;
+    opacity: 1;
+    transform: translate(0%, -3%);
+  }
+
+
+@keyframes fadeInUp {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+  
+  @media only screen and (max-width: 768px) {
+    #info {
+    font-size: 18px; /* Increase font size for mobile devices */
+  }
+}
+</style>
+</head>
+<body>
+  <div id="info">press spacebar to start</div>
+  <div id="modeIndicator"></div>
+  <audio id="audio" preload="auto"></audio>
+  <div id="loadedMessage">loaded</div>
+  <div id="actionMessage"></div>
+  <div id="songInfo"></div>
+  <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.ogg" onchange="handleFileSelect(event)">
+
+  <div id="helpOverlay">
+    <h2>Controls</h2>
+    <ul>
+      <li><b>Spacebar:</b> Play/Pause</li>
+      <li><b>Arrow Up/Down:</b> Switch Mode</li>
+      <li><b>Arrow Left/Right:</b> Switch Effect Style</li>
+      <li><b>1–9:</b> Set Effect Intensity Level</li>
+      <li><b>N:</b> Next Song</li>
+      <li><b>B:</b> Previous Song</li>
+      <li><b>M:</b> Toggle Mute</li>
+      <li><b>O:</b> Toggle Effect Shuffle Mode</li>
+      <li><b>P:</b> Toggle Player Mode</li>
+      <li><b>V:</b> Toggle Visual Mode</li>
+      <li><b>I:</b> Show Info (Mode & Song Name)</li>
+      <li><b>H:</b> Show/Hide Help</li>
+    </ul>
+  </div>
+  <div id="adBannerPlaceholder">
+    <p style="color: white; margin: 0; line-height: 90px;">Ad Banner Placeholder</p>
+  </div>
+  <div id="adBanner">
+    <!-- Google AdSense code snippet - update the data-ad-client and data-ad-slot values -->
+    <ins class="adsbygoogle"
+         style="display:inline-block;width:728px;height:90px;"
+         data-ad-client="ca-pub-xxxxxxxxxxxxxxxx"
+         data-ad-slot="1234567890"
+         data-ad-format="auto"
+         data-full-width-responsive="true"></ins>
+    <script>
+      (adsbygoogle = window.adsbygoogle || []).push({});
+    </script>
+  </div>
+  <div id="dspOverlay">
+    <h2>Connect Service</h2>
+    <button id="connectApple" type="button">Connect to Apple Music</button>
+    <button id="connectSpotify" type="button">Connect to Spotify</button>
+    <button id="connectSoundCloud" type="button">Connect to SoundCloud</button>
+
+    <div style="text-align:right; margin-top:15px;">
+      <button type="button" id="dspCancel">Cancel</button>
+      
+    </div>
+  </div>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+  // Initialize Apple MusicKit JS
+  async function initAppleMusic() {
+    const token = await fetch('/apple-music-token').then(res => res.text());
+    MusicKit.configure({
+      developerToken: token,
+      app: { name: 'Visualizer Website', build: '1.0.0' }
+    });
+  }
+  initAppleMusic();
+    // Initialize SoundCloud SDK
+    SC.initialize({ client_id: SOUNDCLOUD_CLIENT_ID });
+  
+  // Helper to fetch Spotify access token from backend
+  async function fetchSpotifyToken() {
+    const res = await fetch('/spotify-token');
+    return res.text();
+  }
+  </script>
+  <script>
+    const clock = new THREE.Clock();
+    let audioElement = document.getElementById('audio');
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    let audioSrc;
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 1024;
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+          
+    let camera, scene, renderer, intensityLevel = 1;
+    let currentStyleIndex = Math.floor(Math.random() * 4); // Randomly select an initial style
+    let visualElements = [];
+    let isPlaying = false;
+    let isUsingDefaultAudio = true; // Flag to track audio source status
+    let currentMode = 'playlist'; // Start in playlist mode
+    let isCameraMode = false;
+    let userCameraStream = null;
+    let userCameraVideo = null;
+    let userCameraTexture = null;
+    let shuffleMode = false;
+    let shuffleInterval = null;
+    let fileSelectTriggered = false;
+    let augmentInterval = null;
+    let isCameraFeedInEffects = false;
+    let userPlaylist = [];               // Array of {src, title} objects for user songs
+let userPlaylistActive = false;      // Flag indicating that the user has activated the mode by pressing 'P'
+const MAX_USER_PLAYLIST = 15;        // Maximum songs allowed
+let currentUserSongIndex = 0;       // If true, each effect uses the camera feed as input
+    
+    
+const APPLE_DEVELOPER_TOKEN  = 'YOUR_APPLE_MUSIC_DEVELOPER_TOKEN';
+  const SPOTIFY_CLIENT_ID      = 'YOUR_SPOTIFY_CLIENT_ID';
+  const SPOTIFY_CLIENT_SECRET  = 'YOUR_SPOTIFY_CLIENT_SECRET';
+  const SOUNDCLOUD_CLIENT_ID   = 'YOUR_SOUNDCLOUD_CLIENT_ID';
+    
+        
+    const modes = ['fileSelect', 'audioDevice', 'playlist', 'dsp'];
+    let currentModeIndex = modes.indexOf(currentMode);
+          
+    let selectedFileName = '';
+      let playlist = [
+        'music/aphex twin - xtal.mp3', 
+        'music/daft punk - pheonix.mp3', 
+        'music/future - i serve the base.mp3',
+        'music/nirvana - radio friendly unit shifter.mp3',
+        'music/prince -  i wanna be your lover.mp3',
+      ]; // playlist
+          
+      let currentSongIndex = Math.floor(Math.random() * playlist.length); // Random start
+          
+      function init() {
+        // Determine if the user is on a mobile device
+        const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+            
+        // Initialize the scene, camera, etc.
+        scene = new THREE.Scene(); 
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 500;
+            
+        renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+            
+        attachAudioElementEventListeners();
+        createVisualElements();
+        window.addEventListener('resize', onWindowResize, false);
+        document.body.addEventListener('keydown', onKeyDown, false);
+            
+        // Update the info message text based on whether it's mobile or not
+        const info = document.getElementById('info');
+  if (info) {
+    // Set the starting text based on device.
+    info.textContent = /Mobi|Android/i.test(navigator.userAgent) ? "tap to start" : "press spacebar to start";
+    
+    // Force a reflow and then add the "show" class to trigger the animation.
+    void info.offsetWidth;
+    // Add a slight delay if desired (e.g., 100ms) so it animates after the page renders:
+    setTimeout(() => {
+      info.classList.add('show');
+    }, 500);
+  }
+            
+        // Use mobile-specific info messages in your interval
+        let infoMessages = isMobile 
+        ? ["tap to start", "hold for help"]
+        : ["press spacebar to start", "press h for help"];
+        let currentInfoIndex = 0;
+        setInterval(() => {
+          
+          if (!isPlaying) {
+            currentInfoIndex = (currentInfoIndex + 1) % infoMessages.length;
+            fadeSwapInfoMessage(infoMessages[currentInfoIndex]);
+          }
+            
+        }, 5000);
+        if (currentMode === 'playlist') {
+          shufflePlaylist(); 
+              loadCurrentSong(); 
+            }
+            animate();
+          }
+          
+          function fadeSwapInfoMessage(newText) {
+            const info = document.getElementById('info');
+            if (!info) return;
+            
+            // Step 1: Fade out from current opacity (assumed 1) to 0
+            info.style.opacity = '0';
+            
+            // Step 2: After the fade-out duration, swap text & fade back in
+            // We match the CSS transition duration (1.5s)
+            setTimeout(() => {
+              info.textContent = newText;
+              
+              // Force reflow so setting opacity=1 triggers the fade-in
+              void info.offsetWidth;
+              info.style.opacity = '1';
+            }, 1500); // 1.5s to match our CSS .transition: opacity 1.5s
+          }
+            
+          function shufflePlaylist() {
+            for (let i = playlist.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [playlist[i], playlist[j]] = [playlist[j], playlist[i]];
+            }
+          }
+            
+            async function ensureAudioContextResumed() {
+              if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+        }
+            
+        function loadCurrentSong() {
+          return new Promise((resolve) => {
+            // Set the new song URL and update the displayed song name.
+            audioElement.src = playlist[currentSongIndex];
+            selectedFileName = playlist[currentSongIndex]
+            .replace(/^music\//, "")  // Remove "music/" at the start, if it exists
+            .replace(/\.[^/.]+$/, ""); // Remove the extension (.mp3, etc.)
+            audioElement.load();
+            
+            // This function will build the chain if it hasn't been built yet.
+            function setupChain() {
+              ensureAudioContextResumed().then(() => {
+                // Create the MediaElementSource node only once for this audio element.
+                if (!audioSrc) {
+                  audioSrc = audioContext.createMediaElementSource(audioElement);
+                  const gainNode = audioContext.createGain();
+                  gainNode.gain.value = 2.0; // Adjust gain as needed
+                  
+                  // Build the connection chain: audioElement -> gainNode -> analyser -> destination
+                  audioSrc.connect(gainNode);
+                  gainNode.connect(analyser);
+                  analyser.connect(audioContext.destination);
+                }
+                
+                resolve(); // Resolve once the chain is set up
+              });
+            }
+            
+            // If metadata is already available, set up immediately; otherwise, wait for onloadedmetadata.
+            if (audioElement.readyState >= 1) { // HAVE_METADATA
+            setupChain();
+          } else {
+            
+            audioElement.onloadedmetadata = setupChain;
+          }
+        });
+      }
+            
+      function playNextSongInPlaylist() {
+        currentSongIndex = (currentSongIndex + 1) % playlist.length;
+                
+          loadCurrentSong().then(() => {
+            if (isPlaying) {
+              audioElement.play();
+            }
+          });
+      }
+            
+      function playPreviousSongInPlaylist() {
+        currentSongIndex = (currentSongIndex - 1 + playlist.length) % playlist.length;
+                 
+          loadCurrentSong().then(() => {
+            if (isPlaying) {
+              audioElement.play();
+            }
+          });
+      }
+            
+      function attachAudioElementEventListeners() {
+        // Add the 'ended' event listener
+        audioElement.addEventListener('ended', () => {
+          if (currentMode === 'playlist') {
+            playNextSongInPlaylist();
+          }
+        });
+      }     
+
+      function switchMode(mode) {
+        const dsp = document.getElementById('dspOverlay');
+  if (dsp && mode !== 'dsp') {
+    dsp.classList.remove('show');
+    dsp.style.display = 'none';
+  }
+        
+      if (mode !== 'fileSelect') {
+        userPlaylist = [];
+        userPlaylistActive = false;
+        currentUserSongIndex = 0;
+        console.log('User playlist reset because mode changed to', mode);
+      }
+      currentMode = mode;
+      currentModeIndex = modes.indexOf(mode);
+      displayMode();
+            
+        // Reset any existing audio source connections
+        if (audioSrc) {
+          audioSrc.disconnect();
+          audioSrc = null;
+        }
+            
+        switch (mode) {
+          case 'fileSelect': {
+            if (/Mobi|Android/i.test(navigator.userAgent)) {
+              // On mobile, reset the trigger flag so that one tap will open the file browser.
+              fileSelectTriggered = false;
+              // (You can also optionally show an instruction message here.)
+              } else {
+                // Desktop: use your dynamic file input creation method.
+                let input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'audio/*';
+                input.style.position = 'fixed';
+                input.style.top = '0px';
+                input.style.left = '0px';
+                input.style.width = '44px';
+                input.style.height = '44px';
+                input.style.opacity = '0';
+                input.style.pointerEvents = 'auto';
+                input.style.zIndex = '10000';
+                document.body.appendChild(input);
+                input.addEventListener('change', function(e) {
+                  const file = input.files[0];
+                  if (!file) {
+                    document.body.removeChild(input);
+                    return;
+                  }
+                  
+                  const newAudio = new Audio();
+                  newAudio.src = URL.createObjectURL(file);
+                  newAudio.load();
+                  selectedFileName = file.name.replace(/\.[^/.]+$/, "");
+                  
+                  newAudio.onloadedmetadata = async () => {
+                    if (audioSrc) {
+                      audioSrc.disconnect();
+                      audioSrc = null;
+                    }
+                    
+                    await ensureAudioContextResumed();
+                    audioSrc = audioContext.createMediaElementSource(newAudio);
+                    audioSrc.connect(analyser);
+                    analyser.connect(audioContext.destination);
+                    audioElement.pause();
+                    audioElement = newAudio;
+                    const loadedMessage = document.getElementById('loadedMessage');
+                    if (loadedMessage) {
+                      loadedMessage.style.display = 'block';
+                      setTimeout(() => {
+                        loadedMessage.style.display = 'none';
+                      }, 3000);
+                    }
+                  };
+                  newAudio.onerror = function(e) {
+                    console.error('Error loading audio file:', e);
+                  };
+                  document.body.removeChild(input);
+                });
+                input.click();
+              }
+            }
+            
+          break;
+          
+          case 'audioDevice': {
+            // Disconnect any existing audio source and clear previous connections
+            if (audioSrc) {
+              audioSrc.disconnect();
+              audioSrc = null;
+            }
+            // Pause any currently playing audio (from playlist mode)
+            audioElement.pause();
+            // Mute the audio element to ensure no sound is played
+            audioElement.muted = true;
+            // IMPORTANT: Disconnect the analyser from any destination.
+            // This prevents any previously connected mic/playlist signal from going to the speakers.
+            try {
+              analyser.disconnect();
+            } catch(e) {
+              // Some browsers may throw if nothing is connected
+            }
+            // Request microphone access
+            navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+              // Create a MediaStreamSource from the mic stream
+              audioSrc = audioContext.createMediaStreamSource(stream);
+              // Connect the mic input ONLY to the analyser (do not connect to destination)
+              audioSrc.connect(analyser);
+            })
+            .catch(error => {
+              console.error('Error accessing audio device:', error);
+            });
+            }
+          break;
+          case 'playlist': {
+            // Disconnect any existing audio source.
+            if (audioSrc) {
+              audioSrc.disconnect();
+              audioSrc = null;
+            }
+            // Create a new Audio element for playlist mode.
+            // This ensures any chain from fileSelect mode is discarded.
+            const playlistAudio = new Audio();
+            playlistAudio.volume = 1.0;
+            playlistAudio.muted = false;  // Make sure it's unmuted
+            playlistAudio.src = playlist[currentSongIndex];
+            playlistAudio.load();
+            
+            // Replace the global audioElement with this new one.
+            audioElement.pause();
+            audioElement = playlistAudio;
+            
+            async function setupPlaylistChain() {
+              await ensureAudioContextResumed();
+              // Create the MediaElementSource node from the new audio element.
+              audioSrc = audioContext.createMediaElementSource(audioElement);
+              const gainNode = audioContext.createGain();
+              gainNode.gain.value = 2.0; // Adjust as needed
+              // Build the connection chain: audioElement -> gainNode -> analyser -> destination
+              audioSrc.connect(gainNode);
+              gainNode.connect(analyser);
+              analyser.connect(audioContext.destination);
+              if (isPlaying) {
+                audioElement.play();
+              }
+            }
+            
+            if (audioElement.readyState >= 1) {
+              setupPlaylistChain();
+            } else {
+              audioElement.onloadedmetadata = setupPlaylistChain;
+            }
+          }
+          break;
+          case 'dsp': {
+  // show the DSP overlay
+  const dsp = document.getElementById('dspOverlay');
+  if (dsp) {
+    dsp.style.display = 'block';
+    // trigger reflow so transition runs
+    requestAnimationFrame(() => dsp.classList.add('show'));
+  }
+
+  // pause any existing playback
+  audioElement.pause();
+  if (audioSrc) audioSrc.disconnect();
+
+  // create (or reuse) a hidden <audio> for DSP mode
+  let dspAudio = document.getElementById('dspAudio');
+  if (!dspAudio) {
+    dspAudio = document.createElement('audio');
+    dspAudio.id = 'dspAudio';
+    dspAudio.style.display = 'none';
+    document.body.appendChild(dspAudio);
+  }
+  audioElement = dspAudio;
+
+  // wire up the Connect/Cancel buttons
+  document.getElementById('connectApple').onclick = async () => {
+    try {
+      const music = MusicKit.getInstance();
+      await music.authorize();
+      const audioEl = music.player.audioElement;
+      music.setQueue({ song: 'YOUR_APPLE_MUSIC_SONG_ID' });
+      if (audioSrc) audioSrc.disconnect();
+      audioSrc = audioContext.createMediaElementSource(audioEl);
+      audioSrc.connect(analyser);
+      analyser.connect(audioContext.destination);
+      audioEl.play();
+      dsp.classList.remove('show');
+      isPlaying = true;
+    } catch(err) {
+      console.error('Apple Music authorization failed:', err);
+      dsp.classList.remove('show');
+      isPlaying = true;
+      startVisualizerWithDummyData();
+    }
+  };
+    
+  // Spotify integration
+  document.getElementById('connectSpotify').onclick = async () => {
+    try {
+      const token = await fetchSpotifyToken();
+      window.onSpotifyWebPlaybackSDKReady = () => {
+        const player = new Spotify.Player({
+          name: 'Visualizer Web Playback',
+          getOAuthToken: cb => cb(token)
+        });
+        player.connect().then(success => {
+          if (!success) throw new Error('Failed to connect Spotify player');
+          const audioEl = document.querySelector('audio'); // adjust selector if necessary
+          if (audioEl) {
+            if (audioSrc) audioSrc.disconnect();
+            audioSrc = audioContext.createMediaElementSource(audioEl);
+            audioSrc.connect(analyser);
+            analyser.connect(audioContext.destination);
+            audioEl.play();
+          }
+          dsp.classList.remove('show');
+          isPlaying = true;
+        });
+      };
+    } catch (err) {
+      console.error('Spotify connection failed:', err);
+      dsp.classList.remove('show');
+      isPlaying = true;
+      startVisualizerWithDummyData();
+    }
+  };
+    
+  // SoundCloud integration
+  document.getElementById('connectSoundCloud').onclick = async () => {
+    try {
+      const track = await SC.stream('/tracks/YOUR_SOUNDCLOUD_TRACK_ID');
+      const audioEl = track._player; 
+      if (audioSrc) audioSrc.disconnect();
+      audioSrc = audioContext.createMediaElementSource(audioEl);
+      audioSrc.connect(analyser);
+      analyser.connect(audioContext.destination);
+      audioEl.play();
+      dsp.classList.remove('show');
+      isPlaying = true;
+    } catch (err) {
+      console.error('SoundCloud connection failed:', err);
+      dsp.classList.remove('show');
+      isPlaying = true;
+      startVisualizerWithDummyData();
+    }
+  };
+  document.getElementById('dspCancel').onclick = () => {
+    if (dsp) {
+      dsp.classList.remove('show');
+      // hide after transition
+      dsp.addEventListener('transitionend', function handler() {
+        dsp.style.display = 'none';
+        dsp.removeEventListener('transitionend', handler);
+      }, { once: true });
+    }
+    switchMode('playlist');
+  };
+}
+break;
+          default:
+            console.log('Unknown mode');
+        }
+      }
+      
+      function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        const newAudio = new Audio();
+        newAudio.src = URL.createObjectURL(file);
+        newAudio.load();
+        selectedFileName = file.name.replace(/\.[^/.]+$/, "");
+        
+        newAudio.onloadedmetadata = async () => {
+          if (audioSrc) {
+            audioSrc.disconnect();
+            audioSrc = null;
+          }
+          // Inside handleFileSelect(event), after newAudio is loaded:
+if (currentMode === 'fileSelect' && userPlaylistActive) {
+  if (userPlaylist.length < MAX_USER_PLAYLIST) {
+    // Build an object containing the song’s source and title
+    let userSong = {
+      src: newAudio.src,
+      title: selectedFileName,
+    };
+    userPlaylist.push(userSong);
+    console.log('Song added:', selectedFileName, '(' + userPlaylist.length + '/' + MAX_USER_PLAYLIST + ')');
+
+    // Display "loaded" message (if more than one song, show the count)
+    const loadedMessage = document.getElementById('loadedMessage');
+    if (loadedMessage) {
+      if (userPlaylist.length > 1) {
+        loadedMessage.textContent = `loaded (${userPlaylist.length}/${MAX_USER_PLAYLIST})`;
+      } else {
+        loadedMessage.textContent = 'loaded';
+      }
+      loadedMessage.style.display = 'block';
+      setTimeout(() => {
+        loadedMessage.style.display = 'none';
+      }, 3000);
+    }
+    // Update the current user song index to the latest
+    currentUserSongIndex = userPlaylist.length - 1;
+  } else {
+    console.warn('User playlist is at maximum capacity of 15 songs.');
+  }
+}
+          
+          await ensureAudioContextResumed();
+          audioSrc = audioContext.createMediaElementSource(newAudio);
+          audioSrc.connect(analyser);
+          analyser.connect(audioContext.destination);
+          audioElement.pause();
+          audioElement = newAudio;
+          
+          const loadedMessage = document.getElementById('loadedMessage');
+          if (loadedMessage) {
+            loadedMessage.style.display = 'block';
+            setTimeout(() => {
+              loadedMessage.style.display = 'none';
+            }, 3000);
+          }
+          // Reset our fileSelect flag and switch mode to playlist so that normal gestures work.
+          fileSelectTriggered = false;
+        };
+        
+        audioElement.onerror = function(e) {
+          console.error('Error loading audio file:', e);
+        };
+      }
+      
+      function createParticles() {
+  const particleCount = 5000;
+  const positions = new Float32Array(particleCount * 3);
+  const colors = new Float32Array(particleCount * 3);
+
+  // Fill positions and colors with random data.
+  for (let i = 0; i < particleCount; i++) {
+    positions[i * 3 + 0] = (Math.random() - 0.5) * 1000;
+    positions[i * 3 + 1] = (Math.random() - 0.5) * 1000;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 1000;
+
+    colors[i * 3 + 0] = Math.random();
+    colors[i * 3 + 1] = Math.random();
+    colors[i * 3 + 2] = Math.random();
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  // Full vertex shader code.
+  const vertexShaderCode = `
+    uniform float time;
+    uniform float effectIntensity;
+    uniform float audioIntensity;
+    uniform vec3 objectOffset;
+    attribute vec3 color;
+    varying vec3 vColor;
+    varying float vExplosion;
+
+    // Simple pseudo-random function based on the particle's position.
+    float rand(vec2 co) {
+      return fract(sin(dot(co, vec2(12.9898, 78.233))) * 43758.5453);
+    }
+
+    void main() {
+      vColor = color;
+      
+      // Base oscillatory movement (unchanged from before).
+      float offsetX = sin(time + position.y * 0.01) * 30.0 * effectIntensity;
+      float offsetY = cos(time + position.x * 0.01) * 30.0 * effectIntensity;
+      // Base Z-offset (can be less affected by audioIntensity for stability).
+      float offsetZ = sin(time * 0.5 + position.x * 0.005) * 30.0;
+      vec3 baseOffset = vec3(offsetX, offsetY, offsetZ);
+      
+      // --- Additional random motion for dramatic explosions ---
+      // Apply extra movement only when audioIntensity is above a threshold.
+      float audioThreshold = 0.3;
+      vec3 randomOffset = vec3(0.0);
+      float explosionFactor = 0.0;
+      if (audioIntensity > audioThreshold) {
+        // Normalize the excess audio level to 0..1.
+        explosionFactor = (audioIntensity - audioThreshold) / (1.0 - audioThreshold);
+        float rnd = rand(position.xy);
+        randomOffset = vec3(
+          sin(time + position.x * 0.02 + rnd),
+          cos(time + position.y * 0.02 + rnd),
+          sin(time * 0.5 + position.z * 0.01 + rnd)
+        ) * audioIntensity * 20.0 * explosionFactor;
+      }
+      // Pass the magnitude of the extra offset for potential alpha modulation.
+      vExplosion = length(randomOffset);
+      
+      // Final vertex position is the sum of the base offset, the random extra offset, and any object offset.
+      vec3 displacedPosition = position + baseOffset + randomOffset + objectOffset;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(displacedPosition, 1.0);
+      
+      // Dynamic particle size (base behavior remains unchanged).
+      float dynamicSize = 4.0 + 8.0 * abs(sin(time * 5.0 + position.x * 0.01)) * audioIntensity;
+      gl_PointSize = dynamicSize;
+    }
+  `;
+
+  // Full fragment shader code.
+  const fragmentShaderCode = `
+    uniform sampler2D cameraTexture;
+    uniform vec2 resolution;
+    uniform float time;
+    uniform float effectIntensity;
+    varying vec3 vColor;
+    varying float vExplosion;
+
+    void main() {
+      // Create a circular point by discarding fragments outside a circle.
+      vec2 coord = gl_PointCoord - vec2(0.5);
+      float dist = length(coord);
+      if (dist > 0.5) discard;
+
+      // Default alpha is 1.0 when there is no explosion.
+      float alphaFactor = 1.0;
+      // When the extra offset is large (explosion), fade the particle in/out.
+      // Adjust the range (here 0.0 to 50.0) as needed for your effect.
+      alphaFactor = 1.0 - smoothstep(0.0, 50.0, vExplosion);
+      
+      gl_FragColor = vec4(vColor, alphaFactor);
+    }
+  `;
+
+  const particleMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      cameraTexture: { value: null }, // This will be assigned by toggleCameraBackground()
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      time: { value: 0.0 },
+      effectIntensity: { value: 4.0 },
+      audioIntensity: { value: 0.0 },
+      objectOffset: { value: new THREE.Vector3(0.0, 0.0, 0.0) }
+    },
+    vertexShader: vertexShaderCode,
+    fragmentShader: fragmentShaderCode,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+
+  const particleSystem = new THREE.Points(geometry, particleMaterial);
+  particleSystem.userData.rotationSpeed = 0.005;
+  particleSystem.name = 'CameraParticles';
+  scene.add(particleSystem);
+  visualElements.push(particleSystem);
+}
+        
+function createWaves() {
+  // Create a highly subdivided plane for smooth, detailed ribbons.
+  const geometry = new THREE.PlaneBufferGeometry(window.innerWidth, 400, 400, 200);
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      time:            { value: 0.0 },
+      bass:            { value: 0.0 },
+      mid:             { value: 0.0 },
+      treble:          { value: 0.0 },
+      effectIntensity: { value: 1.0 },
+      lineThickness:   { value: 0.015 }, // repurposed to affect ribbon thickness
+      resolution:      { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    },
+    // Vertex Shader: Minimal displacement for a mostly flat plane;
+    // we're mostly doing our work in the fragment shader.
+    vertexShader: `
+      precision mediump float;
+      
+      uniform float time;
+      uniform float bass;
+      uniform float mid;
+      uniform float treble;
+      uniform float effectIntensity;
+      
+      varying vec2 vUv;
+      varying float vSmallDisp; // small displacement info (if needed)
+      
+      // A simple hash and noise for subtle motion
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(
+          mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+          mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+          u.y
+        );
+      }
+      
+      void main() {
+        vUv = uv;
+        vec3 pos = position;
+        
+        // Optional: a very subtle "breathing" displacement
+        float disp = noise(pos.xy * 0.01 + time * 0.2) * 2.0;
+        disp += (bass + mid + treble) * 2.0 * sin(pos.x * 0.02 + time);
+        pos.z += disp * 0.5;
+        
+        vSmallDisp = disp;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      }
+    `,
+    // Fragment Shader: Draws multiple translucent ribbons (the base ribbons)
+    // plus three additional front ripple layers with improved, complex movement.
+    fragmentShader: `
+      precision mediump float;
+      
+      uniform float time;
+      uniform float bass;
+      uniform float mid;
+      uniform float treble;
+      uniform float effectIntensity;
+      uniform float lineThickness;
+      uniform vec2 resolution;
+      
+      varying vec2 vUv;
+      
+      // Helper: creates a smooth band (ribbon) given a center and half-width.
+      float ribbonAlpha(float y, float centerY, float halfWidth) {
+        float d = abs(y - centerY);
+        return smoothstep(halfWidth, 0.0, d);
+      }
+      
+      // Helper: linear blend between two colors.
+      vec3 blendColors(vec3 colorA, vec3 colorB, float factor) {
+        return mix(colorA, colorB, clamp(factor, 0.0, 1.0));
+      }
+      
+      void main() {
+        vec2 st = vUv;
+        float waveTime = time * (1.0 + mid * 2.0);
+        float thickness = lineThickness * (20.0 + bass * 60.0);
+        
+        vec3 accColor = vec3(0.0);
+        float accAlpha = 0.0;
+        
+        // --- Base Ribbons ---
+        // RIBBON 1: Pink -> Purple
+        {
+          float centerY = 0.3 + 0.1 * sin((st.x * 3.0) + waveTime);
+          centerY += bass * 0.05 * sin(st.x * 10.0 + waveTime * 1.5);
+          
+          float alpha = ribbonAlpha(st.y, centerY, thickness);
+          vec3 c1 = vec3(1.0, 0.2, 0.8);  // neon pink
+          vec3 c2 = vec3(0.6, 0.0, 0.8);  // purple
+          float mixF = 0.5 + 0.5 * sin(waveTime + treble * 3.0);
+          vec3 ribbonColor = blendColors(c1, c2, mixF);
+          
+          accColor += ribbonColor * alpha;
+          accAlpha = max(accAlpha, alpha);
+        }
+        
+        // RIBBON 2: Purple -> Blue
+        {
+          float centerY = 0.5 + 0.1 * sin((st.x * 2.0) + waveTime * 1.2);
+          centerY += mid * 0.05 * sin(st.x * 12.0 + waveTime * 0.7);
+          
+          float alpha = ribbonAlpha(st.y, centerY, thickness * 0.8);
+          vec3 c1 = vec3(0.6, 0.0, 0.8);  // purple
+          vec3 c2 = vec3(0.0, 0.7, 1.0);  // cyan/blue
+          float mixF = 0.5 + 0.5 * cos(waveTime * 0.9 + bass * 2.0);
+          vec3 ribbonColor = blendColors(c1, c2, mixF);
+          
+          accColor += ribbonColor * alpha;
+          accAlpha = max(accAlpha, alpha);
+        }
+        
+        // RIBBON 3: Pink -> Cyan
+        {
+          float centerY = 0.7 + 0.15 * sin((st.x * 4.0) - waveTime * 1.5);
+          centerY += treble * 0.05 * sin(st.x * 15.0 + waveTime * 2.0);
+          
+          float alpha = ribbonAlpha(st.y, centerY, thickness * 0.7);
+          vec3 c1 = vec3(1.0, 0.2, 0.8);  // pink
+          vec3 c2 = vec3(0.0, 1.0, 1.0);  // neon cyan
+          float mixF = 0.5 + 0.5 * sin(waveTime * 1.4 + mid * 3.0);
+          vec3 ribbonColor = blendColors(c1, c2, mixF);
+          
+          accColor += ribbonColor * alpha;
+          accAlpha = max(accAlpha, alpha);
+        }
+        
+        // --- Additional Front Ripples (Improved) ---
+        // Add three extra ripple layers with more dynamic, varied movement.
+        for (int i = 0; i < 3; i++) {
+          float fi = float(i);
+          float phaseOffset = fi * 0.2;
+          // Add a small noise-based modulation for uniqueness.
+          float noiseMod = fract(sin(dot(st * (3.0 + fi) + time * (0.5 + fi * 0.2), vec2(12.9898, 78.233))) * 43758.5453123);
+          
+          // Compute the ripple's vertical center using combined sine and cosine terms.
+          float rippleAmplitude = 0.03 + bass * 0.02 + noiseMod * 0.01;
+          float centerA = rippleAmplitude * sin(st.x * (30.0 + fi * 10.0) + time * (4.0 + fi) + bass * (3.0 + fi * 0.8) + phaseOffset);
+          float centerB = 0.01 * cos(st.x * (15.0 + fi * 5.0) + time * (2.0 + fi) + treble * 2.0);
+          float frontCenter = 0.5 + centerA + centerB;
+          
+          // Use smoothstep to create a crisp, nearly binary band.
+          float frontAlpha = 1.0 - smoothstep(0.003, 0.005, abs(st.y - frontCenter));
+          
+          // Neon color variation per layer.
+          vec3 frontColor = vec3(1.0,
+                                 0.9 - fi * 0.1 + 0.1 * sin(time + treble * 3.0),
+                                 0.4 + fi * 0.1 + 0.1 * cos(time + mid * 2.0));
+          
+          accColor += frontColor * frontAlpha;
+          accAlpha = max(accAlpha, frontAlpha);
+        }
+        
+        accColor *= effectIntensity;
+        float fadeEdges = smoothstep(0.0, 0.03, st.y) * smoothstep(1.0, 0.97, st.y);
+        accColor *= fadeEdges;
+        
+        gl_FragColor = vec4(accColor, 1.0);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending
+  });
+  
+  const waves = new THREE.Mesh(geometry, material);
+  waves.name = "Waves";
+  waves.position.set(0, 0, 0);
+  scene.add(waves);
+  visualElements.push(waves);
+}
+        
+    function create3DWaves() {
+  // Use a highly subdivided plane for high-quality, experimental waves
+  const geometry = new THREE.PlaneBufferGeometry(1200, 1200, 300, 300);
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0.0 },
+      amplitude: { value: 20.0 },
+      frequency: { value: 0.5 },
+      speed: { value: 1.0 }
+    },
+    vertexShader: `
+      uniform float time;
+      uniform float amplitude;
+      uniform float frequency;
+      uniform float speed;
+      varying vec3 vColor;
+      
+      void main() {
+        vec3 pos = position;
+        // Compute three wave patterns with a twist effect for complexity
+        float wave1 = sin(pos.x * frequency + time * speed);
+        float wave2 = cos(pos.y * frequency * 1.2 + time * speed * 1.1);
+        float wave3 = sin((pos.x + pos.y) * frequency * 0.8 + time * speed * 0.8);
+        // Apply a twist based on the y position and time to add a 3D dynamic\n
+        float twist = sin(time + pos.y * 0.05) * 0.5;
+        pos.x += twist;
+        // Combine the waves to get a complex displacement\n
+        float displacement = (wave1 + wave2 + wave3) / 3.0 * amplitude;
+        pos.z += displacement;
+        // Generate a vibrant color based on the displacement\n
+        vColor = vec3(0.5 + 0.5 * sin(displacement * 0.1),
+                      0.5 + 0.5 * cos(displacement * 0.1),
+                      0.5 + 0.5 * sin(displacement * 0.2));
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      void main() {
+        gl_FragColor = vec4(vColor, 1.0);
+      }
+    `,
+    wireframe: false,
+    transparent: true,
+  });
+  
+  const mesh = new THREE.Mesh(geometry, material);
+  // Tilt the plane for a more engaging perspective (angled view instead of flat)
+  mesh.rotation.set(-0.5, 0.3, 0);
+  mesh.name = '3DWaves';
+  scene.add(mesh);
+  visualElements.push(mesh);
+}
+        
+function createTrippyColors() {
+  // Keep the same group name so other code references remain correct
+  const trippyGroup = new THREE.Group();
+  trippyGroup.name = "TrippyColors";
+
+  // Fullscreen plane
+  const geometry = new THREE.PlaneGeometry(window.innerWidth, window.innerHeight, 1, 1);
+
+  // Keep the same uniform structure, so your animate code still applies:
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime:            { value: 0.0 },
+      uAudioLevel:      { value: 0.0 },
+      uEffectIntensity: { value: 1.0 },
+
+      // Seeds for random generation
+      uSeedA: { value: Math.random() * 1000 },
+      uSeedB: { value: Math.random() * 1000 },
+      uSeedC: { value: Math.random() * 1000 },
+      uRandomShift: { value: 0.0 },
+
+      // Screen resolution
+      uResolution: {
+        value: new THREE.Vector2(window.innerWidth, window.innerHeight),
+      },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main(){
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+
+      // Uniforms from your code
+      uniform float uTime;
+      uniform float uAudioLevel;
+      uniform float uEffectIntensity;
+      uniform float uSeedA;
+      uniform float uSeedB;
+      uniform float uSeedC;
+      uniform float uRandomShift;
+      uniform vec2  uResolution;
+
+      varying vec2 vUv;
+
+      // -----------------------------------------
+      // 1) Random & Hash Helpers
+      // -----------------------------------------
+      float hash12(vec2 p) {
+        vec3 p3 = fract(vec3(p.x, p.y, p.x + p.y) * 0.1031);
+        p3 += dot(p3, p3.yzx + 19.19);
+        return fract((p3.x + p3.y) * p3.z);
+      }
+
+      // We define a 1D hash for quick strobe/flicker usage
+      float hash1(float n) {
+        return fract(sin(n) * 43758.5453123);
+      }
+
+      // -----------------------------------------
+      // 2) “Light Beam” bursts
+      // -----------------------------------------
+      // We'll define multiple “stage lights” that appear & vanish,
+      // each with a random color, angle, cone, strobe effect, and random flickers.
+
+      struct StageLight {
+        float startT;
+        float life;
+        vec2  origin;  // in [0..1]^2
+        float angle;
+        float cone;
+        vec3  color;
+        float strobeFreq;
+        bool  flicker;
+      };
+
+      StageLight getLight(int i){
+        float fi = float(i);
+        float seed = fi*83.217 + uSeedA*0.71 + uSeedB*0.33 + uSeedC + uRandomShift;
+
+        // Start time spaced with randomness
+        float st = fi*1.5 + hash12(vec2(seed,1.234))*2.5;
+        // Life from 0.5..2.5
+        float lf = 0.5 + 2.0*hash12(vec2(seed+10.0,2.345));
+
+        // Position
+        float ox = 0.1 + 0.8*hash12(vec2(seed+20.0,3.456));
+        float oy = 0.1 + 0.8*hash12(vec2(seed+30.0,4.567));
+
+        // Angle in [0..2*pi]
+        float ang = 6.283185 * hash12(vec2(seed+40.0,5.678));
+        // Cone in [0.1..0.5]
+        float cn  = 0.1 + 0.4*hash12(vec2(seed+50.0,6.789));
+
+        // Random bright color (HSV style)
+        float hue = fract(hash12(vec2(seed+60.0,7.890)));
+        float sat = 0.9;
+        float val = 0.7 + 0.3*hash12(vec2(seed+70.0,8.123));
+        float h6 = hue*6.0;
+        float iH = floor(h6);
+        float f = fract(h6);
+        float p_ = val*(1.0 - sat);
+        float q = val*(1.0 - f*sat);
+        float t = val*(1.0 - (1.0-f)*sat);
+        vec3 c;
+        if(iH==0.){ c=vec3(val,t,p_);} else
+        if(iH==1.){ c=vec3(q,val,p_);} else
+        if(iH==2.){ c=vec3(p_,val,t);} else
+        if(iH==3.){ c=vec3(p_,q,val);} else
+        if(iH==4.){ c=vec3(t,p_,val);} else { c=vec3(val,p_,q); }
+
+        // strobe freq in [4..10 Hz]
+        float sf = 4.0 + 6.0*hash12(vec2(seed+80.0,9.234));
+
+        // 50% chance to flicker
+        bool flick = (hash12(vec2(seed+90.0,1.111)) > 0.5);
+
+        StageLight L;
+        L.startT   = st;
+        L.life     = lf;
+        L.origin   = vec2(ox,oy);
+        L.angle    = ang;
+        L.cone     = cn;
+        L.color    = c;
+        L.strobeFreq= sf;
+        L.flicker  = flick;
+        return L;
+      }
+
+      float angleDist(float a, float b){
+        float d = abs(a - b);
+        d = mod(d+3.14159, 6.283185) - 3.14159;
+        return abs(d);
+      }
+
+      // Beam shape
+      float beamMask(vec2 uv, vec2 org, float angle, float cone, float rng){
+        vec2 dir = uv - org;
+        float r = length(dir);
+        float th = atan(dir.y, dir.x);
+        float da = angleDist(th, angle);
+        float coneMask = smoothstep(cone, cone*0.8, da);
+        // distance fade
+        float distFade = 1.0 - smoothstep(rng*0.7, rng, r);
+        return coneMask*distFade;
+      }
+
+      // strobe
+      float strobeFunc(float localT, float freq){
+        float s = sin(localT * 6.283185*freq);
+        // we do a half-wave: 0 -> 1
+        float st = 0.5 + 0.5*s;
+        // sharpen
+        float stp = step(0.65, st);
+        return stp;
+      }
+
+      // flicker
+      // we do random on/off pulses
+      float flickerFunc(float localT, float seed){
+        // we jump in intervals of about 0.1s
+        float stepsF = floor(localT*10.0);
+        float h = hash1(seed + stepsF);
+        return (h > 0.3) ? 1.0 : 0.0;
+      }
+
+      // -----------------------------------------
+      // 3) Summation in main()
+      // -----------------------------------------
+      void main(){
+        vec2 uv = vUv;
+        float t  = uTime;
+        float aL = uAudioLevel;
+        float eff = uEffectIntensity;
+
+        // We'll define up to 20 lights
+        const int MAX_LIGHTS = 20;
+
+        vec3 col = vec3(0.0);
+
+        for(int i=0; i<MAX_LIGHTS; i++){
+          StageLight L = getLight(i);
+          float endT = L.startT + L.life;
+
+          if(t >= L.startT && t <= endT){
+            float locT = t - L.startT;  // 0..life
+            float frac = clamp(locT / L.life, 0.0, 1.0);
+
+            // fade in/out
+            float fadeIn  = smoothstep(0.0, 0.2, frac);
+            float fadeOut = 1.0 - smoothstep(0.8, 1.0, frac);
+            float fade = fadeIn*fadeOut;
+
+            // brightness from audio + effect
+            float baseBright = (1.0 + aL*4.0)*eff; 
+            // add an internal pulse
+            float pulse = sin(frac*3.14159);
+            baseBright *= (1.0 + 0.5*pulse);
+
+            // strobe
+            float strobeVal = strobeFunc(locT, L.strobeFreq);
+            // combine
+            float finalBright = baseBright * mix(1.0, 2.0, strobeVal);
+
+            // flicker if needed
+            if(L.flicker){
+              float flickVal = flickerFunc(locT, L.startT*57.1234 + float(i)*17.0);
+              finalBright *= flickVal;
+            }
+
+            finalBright *= fade;
+
+            float coverage = beamMask(uv, L.origin, L.angle, L.cone, 0.9);
+            coverage *= finalBright;
+
+            col += L.color*coverage;
+          }
+        }
+
+        // optional color clamp
+        col = clamp(col, 0.0, 1.0);
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `,
+    transparent: true,
+  });
+
+  const trippyMesh = new THREE.Mesh(geometry, material);
+  trippyMesh.position.set(0, 0, 0);
+  trippyGroup.add(trippyMesh);
+
+  trippyGroup.userData = {
+    mesh: trippyMesh,
+    material: material,
+    lastSeedUpdateTime: 0,
+    nextSeedInterval: 10.0 + Math.random() * 10.0,
+  };
+
+  scene.add(trippyGroup);
+  visualElements.push(trippyGroup);
+}
+
+        
+    function createPortal() {
+  // Compute full-screen geometry dimensions.
+  const aspect = window.innerWidth / window.innerHeight;
+  const baseHeight = 2000;  // Base height (can be adjusted)
+  const baseWidth = baseHeight * aspect; // ensures full width coverage
+
+  const geometry = new THREE.PlaneGeometry(baseWidth, baseHeight, 1, 1);
+  
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0.0 },
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      // Core portal parameters:
+      travelOffset: { value: 0.0 },      // drives inward travel
+      spinSpeed: { value: 0.35 },        // single-direction spin (lower for slower animation)
+      warpStrength: { value: 0.8 },      // extra fractal warping
+      colorCycle: { value: 0.0 },        // continuous hue shift
+      unpredictability: { value: 0.5 },   // scales extra fractal noise
+      audioReactive: { value: 0.0 },      // audio reactivity influence
+      phaseShift: { value: 0.0 },         // for abrupt color/hue jumps
+      kaleidoSegments: { value: 6.0 }     // number of mirrored segments (kaleidoscope effect)
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;  
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      
+      uniform float time;
+      uniform vec2 resolution;
+      uniform float travelOffset;
+      uniform float spinSpeed;
+      uniform float warpStrength;
+      uniform float colorCycle;
+      uniform float unpredictability;
+      uniform float audioReactive;
+      uniform float phaseShift;
+      uniform float kaleidoSegments;
+      
+      varying vec2 vUv;
+      
+      // --- Noise functions ---
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(63.7264,78.233))) * 43758.5453123);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        float a = hash(i);
+        float b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0));
+        float d = hash(i + vec2(1.0, 1.0));
+        vec2 u = f * f * (3.0 - 2.0 * f);
+        return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
+      }
+      float fbm(vec2 p) {
+        float total = 0.0;
+        float amp = 0.5;
+        for (int i = 0; i < 5; i++){
+          total += amp * noise(p);
+          p *= 2.0;
+          amp *= 0.5;
+        }
+        return total;
+      }
+      
+      // --- Smooth angle wrap to avoid seams ---
+      float smoothAngleWrap(float angle) {
+        float modded = mod(angle, 6.28318);
+        float blendZone = 0.05;
+        if (modded < blendZone) {
+          float t = smoothstep(0.0, blendZone, modded);
+          modded = mix(6.28318, modded, t);
+        }
+        return modded;
+      }
+      
+      // --- Base swirl transform (main tunnel) ---
+      vec2 swirlTransform(vec2 uv) {
+        vec2 centered = uv - 0.5;
+        float r = length(centered);
+        float theta = atan(centered.y, centered.x);
+        float logR = log(r + 0.0001);
+        float rMod = fract(-logR + travelOffset);
+        // Enforce single-direction spin
+        float spinOffset = time * spinSpeed * (1.0 + audioReactive * 1.5);
+        // Basic fractal warp
+        float basicWarp = warpStrength * fbm(vec2(theta, time * 0.15)) * 0.5;
+        float rawTheta = theta + spinOffset + basicWarp;
+        float wrappedTheta = smoothAngleWrap(rawTheta);
+        float extraWarp = fbm(vec2(wrappedTheta * 1.2, rMod * unpredictability + time * 0.1));
+        wrappedTheta += extraWarp * 0.3;
+        return vec2(wrappedTheta, rMod);
+      }
+      
+      // --- Kaleidoscopic reflection ---
+      vec2 kaleidoWrap(vec2 polar, float segments) {
+        float slice = 6.28318 / segments;
+        float halfSlice = slice * 0.5;
+        float shifted = polar.x + halfSlice;
+        float modded = mod(shifted, slice);
+        float mirrored = modded > halfSlice ? slice - modded : modded;
+        float finalAngle = mirrored - halfSlice;
+        return vec2(finalAngle, polar.y);
+      }
+      
+      // --- Convert polar to normalized UV ---
+      vec2 polarToUV(vec2 polar) {
+        float u = polar.x / 6.28318;
+        return vec2(fract(u), polar.y);
+      }
+      
+      // --- Fractal color layering ---
+      vec3 fractalColor(vec2 uv, float shift) {
+        float n = fbm(uv * 3.5 + shift);
+        vec3 col1 = vec3(0.3, 0.0, 0.7);
+        vec3 col2 = vec3(0.0, 0.9, 0.8);
+        return mix(col1, col2, n);
+      }
+      
+      void main(){
+        // Apply main swirl transform.
+        vec2 polarCoords = swirlTransform(vUv);
+        // Apply kaleidoscopic wrap.
+        polarCoords = kaleidoWrap(polarCoords, kaleidoSegments);
+        vec2 newUv = polarToUV(polarCoords);
+        
+        // Create layered fractal colors.
+        float phase = time * 0.3 + colorCycle + phaseShift;
+        vec3 layer1 = fractalColor(newUv * 2.5, phase);
+        vec3 layer2 = fractalColor(newUv * 3.5, phase + 15.0);
+        float blendFactor = sin(6.28318 * newUv.y + phase * 0.4) * 0.5 + 0.5;
+        vec3 combinedColor = mix(layer1, layer2, blendFactor);
+        
+        // Additional flicker inversion for abrupt changes.
+        float flicker = fbm(newUv * unpredictability * 6.0 + time * 0.3);
+        combinedColor = mix(combinedColor, vec3(1.0) - combinedColor, flicker * 0.35);
+        
+        // Apply radial vignette.
+        float vignette = smoothstep(0.85, 0.3, length(vUv - 0.5));
+        combinedColor *= vignette;
+        
+        gl_FragColor = vec4(combinedColor, 1.0);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending
+  });
+  
+  const portal = new THREE.Mesh(geometry, material);
+  portal.name = 'Portal';
+  scene.add(portal);
+  visualElements.push(portal);
+}
+        
+function createSpaceshipEffect() {
+  // 1) Torus geometry that’s large, well subdivided, so the wireframe lines are plentiful.
+  const radius = 200;          // Larger “overall” radius
+  const tubeRadius = 50;       // Thickness of the donut cross-section
+  const radialSegments = 200;  // Around the donut (circumference)
+  const tubularSegments = 400; // Around the tube (cross-section)
+
+  const torusGeom = new THREE.TorusBufferGeometry(
+    radius,
+    tubeRadius,
+    radialSegments,
+    tubularSegments
+  );
+
+  // 2) ShaderMaterial with wireframe ON
+  const spaceshipMat = new THREE.ShaderMaterial({
+    wireframe: true,         // <— so we see all those colorful lines
+    side: THREE.DoubleSide,  // Ensures lines are visible from both “front” and “back”
+    uniforms: {
+      time:           { value: 0.0 },
+      audioLevel:     { value: 0.0 },
+      effectIntensity:{ value: 1.0 },
+    },
+    vertexShader: `
+      precision mediump float;
+
+      uniform float time;
+      uniform float audioLevel;
+      uniform float effectIntensity;
+
+      // We'll pass the ring angle into the fragment for coloring
+      varying float vRingAngle;
+
+      void main() {
+        // For a torus, uv.x is the ring around the “donut” (0..1),
+        // and uv.y is around the cross‐section tube (0..1).
+        float ringAngle = uv.x * 6.283185; // 2π
+        float tubeAngle = uv.y * 6.283185; // 2π
+
+        // Store for coloring in fragment shader
+        vRingAngle = ringAngle;
+
+        // Start from base geometry
+        vec3 pos = position;
+
+        // ----- MULTI‐WAVE DISPLACEMENT -----
+        // 1) Wave around the main ring circumference
+        float wave1 = sin(ringAngle * 6.0 + time * 2.0);
+        // 2) Another wave along the tube cross‐section
+        float wave2 = cos(tubeAngle * 8.0 + time * 1.5);
+
+        // Combine them with separate amplitudes
+        // These “magic numbers” can be tweaked to get more or less wiggle
+        float baseAmp1 = 15.0;  // ring wave amplitude
+        float baseAmp2 = 8.0;   // tube wave amplitude
+
+        // Let audio (if present) boost them
+        float audioBoost = audioLevel * 20.0 * effectIntensity;
+
+        // Total displacement along the normal
+        float totalDisp = wave1 * baseAmp1 + wave2 * baseAmp2 + audioBoost * (wave1 + wave2) * 0.25;
+
+        // Move the vertex outward along its normal
+        pos += normal * totalDisp;
+
+        // Standard projection
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision mediump float;
+
+      varying float vRingAngle;
+
+      // Quick HSV→RGB helper
+      vec3 hsv2rgb(vec3 c) {
+        float h = c.x, s = c.y, v = c.z;
+        float h6 = h * 6.0;
+        float i = floor(h6);
+        float f = fract(h6);
+        float p = v * (1.0 - s);
+        float q = v * (1.0 - f * s);
+        float t = v * (1.0 - (1.0 - f) * s);
+        if (i == 0.0) return vec3(v, t, p);
+        if (i == 1.0) return vec3(q, v, p);
+        if (i == 2.0) return vec3(p, v, t);
+        if (i == 3.0) return vec3(p, q, v);
+        if (i == 4.0) return vec3(t, p, v);
+        return vec3(v, p, q);
+      }
+
+      void main() {
+        // We map ringAngle from 0..2π → 0..1 for the hue
+        float hue = mod(vRingAngle, 6.283185) / 6.283185;
+        // Saturation=1, Value=1 => bright rainbow
+        vec3 rgb = hsv2rgb(vec3(hue, 1.0, 1.0));
+        gl_FragColor = vec4(rgb, 1.0);
+      }
+    `,
+    transparent: false,
+    depthTest: true,
+    depthWrite: true
+  });
+
+  // 3) Create the mesh
+  const spaceshipMesh = new THREE.Mesh(torusGeom, spaceshipMat);
+  spaceshipMesh.name = "SpaceshipEffect";
+
+  // 4) Give it a nice 3D tilt so we see the wave lines from an angle
+  spaceshipMesh.rotation.x = -Math.PI * 0.5 + 0.5; 
+  // ^ you can tweak “+0.5” to taste (i.e. 0.3, 0.7, etc.)
+
+  // 5) Add to scene
+  scene.add(spaceshipMesh);
+  visualElements.push(spaceshipMesh);
+
+  // 6) Store a base intensity for your code to scale
+  spaceshipMesh.userData.baseEffectIntensity = 1.0;
+}
+    
+    function createOceanEffect() {
+  // 1) Create a moderately dense sphere geometry for the wireframe.
+  //    The icosahedron shape is good for evenly distributed vertices,
+  //    but a SphereGeometry also works. Increase 'detail' or 'widthSegments' to get finer mesh.
+  const radius = 100; // size to taste
+  const detail = 5;   // higher => more triangles
+  const icoGeo = new THREE.IcosahedronGeometry(radius, detail);
+
+  // 2) Convert to a wireframe geometry so lines are drawn between edges.
+  const wireframeGeo = new THREE.WireframeGeometry(icoGeo);
+
+  // 3) Create a line material (gray or white). You can adjust thickness via linewidth,
+  //    but note that not all platforms/browsers support lineWidth > 1 in WebGL.
+  const wireframeMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1 });
+
+  // 4) Create the wireframe mesh
+  const oceanWireMesh = new THREE.LineSegments(wireframeGeo, wireframeMat);
+  oceanWireMesh.name = 'OceanEffect';
+
+  // 5) Store the original vertex positions so we can displace them each frame
+  //    NOTE: wireframeGeo.attributes.position is the list of line endpoints,
+  //    but we can also store from the original icoGeo if we want “true sphere” positions.
+  //    For simpler CPU updates, keep the base geometry in userData. We'll do that:
+  oceanWireMesh.userData.baseGeometry = icoGeo; // So we can recalc from original sphere
+
+  scene.add(oceanWireMesh);
+  visualElements.push(oceanWireMesh);
+}
+    
+    
+
+    function createAuroraEffect() {
+  // 1) Calculate the needed plane size to fill the view at a given distance.
+
+  // The camera has these properties:
+  //   camera.fov (vertical field of view in degrees)
+  //   camera.aspect (width / height)
+  //   camera.position.z (e.g. 500)
+
+  // We want the plane at z = -500, so the distance from camera to plane is:
+  const distance = camera.position.z - (-500); // e.g. 500 - (-500) = 1000
+
+  // Convert FOV from degrees to radians
+  const fovInRadians = (camera.fov * Math.PI) / 180.0;
+
+  // The plane height needed to fill the vertical FOV at 'distance':
+  const planeHeight = 2 * distance * Math.tan(fovInRadians / 2);
+
+  // The plane width depends on the camera aspect ratio:
+  const planeWidth = planeHeight * camera.aspect;
+
+  // 2) Create a plane geometry that exactly fills the camera view at that distance:
+  const geometry = new THREE.PlaneBufferGeometry(planeWidth, planeHeight, 1, 1);
+
+  // 3) Build the same ShaderMaterial you already have:
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0.0 },
+      audioIntensity: { value: 0.0 },
+      effectIntensity: { value: 1.0 },
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main(){
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      // (Same aurora-smoke shader logic you already have)
+      uniform float time;
+      uniform float audioIntensity;
+      uniform float effectIntensity;
+      uniform vec2 resolution;
+      varying vec2 vUv;
+      
+      float hash(vec2 p) {
+          return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453123);
+      }
+      float noise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = fract(p);
+          vec2 u = f * f * (3.0 - 2.0 * f);
+          return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+                     mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x),
+                     u.y);
+      }
+      float fbm(vec2 p) {
+          float total = 0.0;
+          float amplitude = 0.5;
+          for (int i = 0; i < 5; i++) {
+              total += amplitude * noise(p);
+              p *= 2.0;
+              amplitude *= 0.5;
+          }
+          return total;
+      }
+      void main(){
+          // Convert vUv to a 'centered' coordinate that accounts for aspect ratio.
+          vec2 centeredUv = (vUv - 0.5) * vec2(resolution.x / resolution.y, 1.0);
+          
+          // Base noise layer
+          float baseNoise = fbm(centeredUv * 3.0 + time * 0.2);
+          // Audio-driven noise layer
+          float audioNoise = fbm(centeredUv * 10.0 + time * 2.0);
+          float combinedNoise = baseNoise + audioIntensity * effectIntensity * audioNoise;
+          
+          // Swirl the UV coords based on the combined noise
+          float angle = time * 0.1 + combinedNoise * 6.2831;
+          mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
+          vec2 swirledUv = rot * centeredUv;
+          
+          // Fine detail noise
+          float detailNoise = fbm(swirledUv * 4.0 + time * 0.5);
+          float smokeValue = mix(combinedNoise, detailNoise, 0.5);
+          
+          // Aurora color gradient
+          vec3 colorA = vec3(0.2, 0.0, 0.3);  // deep purple
+          vec3 colorB = vec3(0.0, 0.6, 0.8);  // cyan
+          vec3 finalColor = mix(colorA, colorB, smoothstep(0.3, 0.7, smokeValue));
+          
+          // Glow in bright areas
+          float glow = smoothstep(0.4, 0.5, smokeValue) * audioIntensity * effectIntensity;
+          finalColor += glow * vec3(0.8, 0.9, 1.0);
+          
+          // Subtle vignette
+          float d = distance(vUv, vec2(0.5));
+          finalColor *= smoothstep(0.8, 0.4, d);
+          
+          gl_FragColor = vec4(finalColor, 1.0);
+      }
+    `,
+    transparent: true,
+    blending: THREE.AdditiveBlending
+  });
+
+  // 4) Create the mesh, position it at z = -500
+  const auroraSmoke = new THREE.Mesh(geometry, material);
+  auroraSmoke.name = "AuroraEffect";
+  auroraSmoke.position.z = -500; 
+  scene.add(auroraSmoke);
+  visualElements.push(auroraSmoke);
+}
+// 1. Replace the existing createScribbleEffect() function with this new version:
+function createScribbleEffect() {
+  // Fullscreen plane
+  const geometry = new THREE.PlaneBufferGeometry(window.innerWidth, window.innerHeight);
+  const material = new THREE.ShaderMaterial({
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      resolution:      { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      time:            { value: 0.0 },
+      audioLevel:      { value: 0.0 },
+      effectIntensity: { value: 1.0 },
+      loopCount:       { value: 6.0 },
+      baseRadius:      { value: 0.5 },
+      radiusVariation: { value: 0.35 },
+      lineThickness:   { value: 0.008 },
+      glowIntensity:   { value: 0.5 },
+      colorA:          { value: new THREE.Color(0x6aff00) },
+      colorB:          { value: new THREE.Color(0x00ffd2) }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      varying vec2 vUv;
+      uniform vec2 resolution;
+      uniform float time;
+      uniform float audioLevel;
+      uniform float effectIntensity;
+      uniform float loopCount;
+      uniform float baseRadius;
+      uniform float radiusVariation;
+      uniform float lineThickness;
+      uniform float glowIntensity;
+      uniform vec3 colorA;
+      uniform vec3 colorB;
+
+      // 2D noise
+      float rand(vec2 co) {
+        return fract(sin(dot(co,vec2(12.9898,78.233))) * 43758.5453);
+      }
+      float noise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        float a = rand(i), b = rand(i + vec2(1.0,0.0));
+        float c = rand(i + vec2(0.0,1.0)), d = rand(i + vec2(1.0,1.0));
+        vec2 u = f*f*(3.0-2.0*f);
+        return mix(mix(a,b,u.x), mix(c,d,u.x), u.y);
+      }
+
+      void main() {
+        // normalize coords to -1..1
+        vec2 uv = vUv * 2.0 - 1.0;
+        uv.x *= resolution.x / resolution.y;
+
+        vec3 accumColor = vec3(0.0);
+        float accumAlpha = 0.0;
+
+        for (float i = 0.0; i < loopCount; i += 1.0) {
+          float pct = (i + 1.0) / loopCount;
+
+          // fast‑spinning, evolving angle
+          float angle = pct * 6.283185 * (2.0 + pct) + time * (4.0 + pct * 5.0);
+
+          // pulsing radius + audio influence
+          float r = baseRadius 
+                    + radiusVariation * sin(time * (5.0 + pct * 10.0)) 
+                    * (0.5 + audioLevel * 0.5);
+
+          // hand‑drawn jitter
+          float jitter = noise(vec2(cos(angle), sin(angle)) * 5.0 + time * 3.0) * 0.1;
+
+          // compute center of this loop
+          vec2 center = vec2(cos(angle), sin(angle)) * r * effectIntensity;
+
+          // build an oriented, pulsing ellipse ("worm")
+          float longA = r * effectIntensity * (1.0 + 0.3 * sin(time * 20.0 + pct * 6.0));
+          float shortA = r * effectIntensity * 0.3;
+          vec2 dir = uv - center;
+
+          // rotate dir so ellipse is aligned
+          float ca = cos(-angle), sa = sin(-angle);
+          vec2 rotDir = vec2(
+            dir.x * ca - dir.y * sa,
+            dir.x * sa + dir.y * ca
+          );
+
+          // distance from ellipse boundary
+          float d = length(vec2(rotDir.x / longA, rotDir.y / shortA))
+                    - (1.0 + jitter);
+
+          // edge+glow
+          float glow = smoothstep(lineThickness + glowIntensity, lineThickness, abs(d));
+
+          // per‑ring color
+          vec3 ringColor = mix(colorA, colorB, pct);
+
+          accumColor += ringColor * glow;
+          accumAlpha = max(accumAlpha, glow);
+        }
+
+        gl_FragColor = vec4(accumColor, accumAlpha);
+      }
+    `
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = 'Scribble';
+  scene.add(mesh);
+  visualElements.push(mesh);
+}
+
+function createOrangeEffect() {
+  // Create a full-screen plane.
+  const geometry = new THREE.PlaneBufferGeometry(2000, 2000, 1, 1);
+
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      time: { value: 0.0 },
+      // This texture must be assigned when camera mode is enabled.
+      cameraTexture: { value: null },
+      resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
+      effectIntensity: { value: 1.0 },
+      audioIntensity: { value: 0.0 },
+      // Use HSV to create a dynamic background; baseHue is roughly orange.
+      baseHue: { value: 0.05 },
+      // When true, we switch to camera–based silhouette.
+      visualMode: { value: 0.0 },
+      // Pixels with luminance less than brightnessThreshold are considered part of the subject.
+      brightnessThreshold: { value: 0.5 },
+      // Edge threshold for our Sobel filter; adjust to boost the outline.
+      edgeThreshold: { value: 0.2 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+         vUv = uv;
+         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+  precision mediump float;
+  uniform float time;
+  uniform sampler2D cameraTexture;
+  uniform vec2 resolution;
+  uniform float effectIntensity;
+  uniform float audioIntensity;
+  uniform float baseHue;
+  uniform float visualMode;
+  uniform float brightnessThreshold;
+  uniform float edgeThreshold;
+  varying vec2 vUv;
+
+  // Convert HSV to RGB.
+  vec3 hsv2rgb(vec3 c) {
+    vec3 rgb = clamp(abs(mod(c.x * 6.0 + vec3(0.0,4.0,2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+    return c.z * mix(vec3(1.0), rgb, c.y);
+  }
+
+  // Compute luminance from an RGB color.
+  float luminance(vec3 color) {
+    return dot(color, vec3(0.299, 0.587, 0.114));
+  }
+
+  // Sobel edge detection function to compute edge magnitude at a given UV.
+  float edgeSobel(vec2 uv) {
+    vec2 onePixel = vec2(1.0) / resolution;
+    float tl = luminance(texture2D(cameraTexture, uv + onePixel * vec2(-1.0, -1.0)).rgb);
+    float t  = luminance(texture2D(cameraTexture, uv + onePixel * vec2( 0.0, -1.0)).rgb);
+    float tr = luminance(texture2D(cameraTexture, uv + onePixel * vec2( 1.0, -1.0)).rgb);
+    float l  = luminance(texture2D(cameraTexture, uv + onePixel * vec2(-1.0,  0.0)).rgb);
+    float r  = luminance(texture2D(cameraTexture, uv + onePixel * vec2( 1.0,  0.0)).rgb);
+    float bl = luminance(texture2D(cameraTexture, uv + onePixel * vec2(-1.0,  1.0)).rgb);
+    float b  = luminance(texture2D(cameraTexture, uv + onePixel * vec2( 0.0,  1.0)).rgb);
+    float br = luminance(texture2D(cameraTexture, uv + onePixel * vec2( 1.0,  1.0)).rgb);
+    float gx = -tl - 2.0 * l - bl + tr + 2.0 * r + br;
+    float gy = -tl - 2.0 * t - tr + bl + 2.0 * b + br;
+    return length(vec2(gx, gy));
+  }
+
+  void main() {
+    // Compute a dynamic background color using an HSV cycle.
+    float hue = mod(baseHue + 0.1 * sin(time * 0.2 + audioIntensity), 1.0);
+    vec3 bgColor = hsv2rgb(vec3(hue, 0.8, 0.95));
+
+    if (visualMode < 0.5) {
+      // Mode 0: Normal mode (no overlay).
+      gl_FragColor = vec4(bgColor, 1.0);
+
+    } else if (abs(visualMode - 1.0) < 0.1) {
+      // Mode 1: Outline only.
+      vec3 camSample = texture2D(cameraTexture, vUv).rgb;
+      float lum = luminance(camSample);
+      float binaryMask = step(lum, brightnessThreshold);
+      float edgeMag = edgeSobel(vUv);
+      float edgeMask = step(edgeThreshold, edgeMag);
+      float outline = binaryMask * edgeMask;
+      vec3 finalColor = mix(bgColor, vec3(0.0), outline);
+      gl_FragColor = vec4(finalColor, 1.0);
+
+    } else if (abs(visualMode - 2.0) < 0.1) {
+      // Mode 2: Filled silhouette only (no separate outline).
+      vec3 camSample = texture2D(cameraTexture, vUv).rgb;
+      float lum = luminance(camSample);
+      float binaryMask = step(lum, brightnessThreshold);
+      vec3 finalColor = mix(bgColor, vec3(0.0), binaryMask);
+      gl_FragColor = vec4(finalColor, 1.0);
+
+    } else if (abs(visualMode - 3.0) < 0.1) {
+      // Mode 3: Clear view mode (user’s silhouette in camera feed).
+      vec3 camSample = texture2D(cameraTexture, vUv).rgb;
+      float lum = luminance(camSample);
+      float binaryMask = step(lum, brightnessThreshold);
+      vec3 finalColor = mix(bgColor, camSample, binaryMask);
+      gl_FragColor = vec4(finalColor, 1.0);
+
+    } 
+    /***************
+     * NEW MODE 4 *
+     ***************/
+    else if (abs(visualMode - 4.0) < 0.1) {
+      // Mode 4: Outline + Fill
+      // 1) We detect the user as in outline mode, but 2) also fill them in with black.
+      vec3 camSample = texture2D(cameraTexture, vUv).rgb;
+      float lum = luminance(camSample);
+      float binaryMask = step(lum, brightnessThreshold);
+      float edgeMag = edgeSobel(vUv);
+      float edgeMask = step(edgeThreshold, edgeMag);
+      float outline = binaryMask * edgeMask;
+
+      // Fill the subject region with black
+      vec3 fillColor = mix(bgColor, vec3(0.0), binaryMask);
+      // Then ensure the outline remains black as well
+      vec3 finalColor = mix(fillColor, vec3(0.0), outline);
+
+      gl_FragColor = vec4(finalColor, 1.0);
+
+    } else {
+      // Fallback (same as normal).
+      gl_FragColor = vec4(bgColor, 1.0);
+    }
+  }
+`,
+    transparent: true,
+    blending: THREE.NormalBlending
+  });
+
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.name = 'Orange';
+  scene.add(mesh);
+  visualElements.push(mesh);
+}
+
+
+    function createVisualElements() {
+  createParticles();
+  createWaves();
+  create3DWaves();
+  createTrippyColors();
+  createPortal();
+  createSpaceshipEffect();
+  createOceanEffect();
+  createAuroraEffect();
+  createScribbleEffect();
+  createOrangeEffect();
+  // Additional styles can be added here
+  updateVisibility(); // Show only the selected style
+}
+            
+function updateVisibility() {
+  // Instead of instantly switching, trigger a fade transition.
+  fadeTransition(() => {
+    visualElements.forEach((elem, index) => {
+      elem.visible = (index === currentStyleIndex);
+    });
+    // After switching, if global visual mode is active, automatically turn
+    // on visual mode for the new active effect.
+    const activeEffect = visualElements[currentStyleIndex];
+    if (isCameraMode && activeEffect && activeEffect.material && activeEffect.material.uniforms && ("visualMode" in activeEffect.material.uniforms)) {
+      // For effects that support only an on/off mode, we set it to 1.
+      // (For multi‐style effects like Orange, you might choose a default state such as 1.)
+      activeEffect.material.uniforms.visualMode.value = 1.0;
+    }
+  });
+}
+    
+    function fadeTransition(callback) {
+      const fadeOverlay = document.getElementById('fadeOverlay');
+      if (!fadeOverlay) {
+        if (callback) callback();
+        return;
+      }
+      // Fade in overlay
+      fadeOverlay.style.opacity = '1';
+      setTimeout(() => {
+        // Call the callback (which will switch the effect)
+        if (callback) callback();
+        // Then fade out overlay
+        fadeOverlay.style.opacity = '0';
+      }, 500); // hold black for 500ms (adjust as desired)
+    }
+        
+    function animate() {
+      requestAnimationFrame(animate);
+            
+      if (isPlaying) {
+          animateAudioReactiveEffects();
+        } else {
+          animateInitialEffects();
+        }
+        // If augmentation is active, smoothly interpolate the uniforms
+  if (augmentInterval) {
+    smoothAugmentationStep();
+  }
+            
+        renderer.render(scene, camera);
+    }
+        
+    function animateInitialEffects() {
+      const delta = clock.getDelta();
+      const time = performance.now() * 0.001;
+        
+      // Trippy Colors
+      const trippyGroup = visualElements.find(e => e.name === "TrippyColors");
+  if (trippyGroup && trippyGroup.userData && trippyGroup.userData.material) {
+    const mat = trippyGroup.userData.material;
+
+    // Animate time
+    mat.uniforms.uTime.value = time;
+    // No audio, so set a small baseline
+    mat.uniforms.uAudioLevel.value = 0.0; 
+    // Keep effect intensity at 1.0 for a visible swirl
+    mat.uniforms.uEffectIntensity.value = 1.0;
+
+    // Periodically shift seeds
+    const now = time;
+    if (now - trippyGroup.userData.lastSeedUpdateTime > trippyGroup.userData.nextSeedInterval) {
+      mat.uniforms.uRandomShift.value = Math.random() * 10.0;
+      mat.uniforms.uSeedA.value = Math.random() * 1000.0;
+      mat.uniforms.uSeedB.value = Math.random() * 1000.0;
+      mat.uniforms.uSeedC.value = Math.random() * 1000.0;
+
+      trippyGroup.userData.lastSeedUpdateTime = now;
+      trippyGroup.userData.nextSeedInterval = 10.0 + Math.random() * 10.0;
+    }
+  }
+
+
+
+      const particleSystem = visualElements.find(elem => elem.name === 'CameraParticles');
+  if (particleSystem && particleSystem.material.uniforms) {
+    // Use a default low audioIntensity when no music is playing.
+    particleSystem.material.uniforms.audioIntensity.value = 0.2;
+    // Update the time uniform.
+    particleSystem.material.uniforms.time.value = time;
+    // Apply a gentle baseline drift.
+    particleSystem.rotation.y += 0.005;
+    particleSystem.rotation.x += 0.003;
+    // Set a default object offset (no influence)
+    particleSystem.material.uniforms.objectOffset.value.set(0.0, 0.0, 0.0);
+  }
+        
+            // Waves (Idle)
+            const waveEffect = visualElements.find(elem => elem.name === 'Waves');
+  if (waveEffect && waveEffect.material.uniforms) {
+    waveEffect.material.uniforms.time.value = time;
+    waveEffect.material.uniforms.bass.value = 0.0;
+    waveEffect.material.uniforms.mid.value = 0.0;
+    waveEffect.material.uniforms.treble.value = 0.0;
+    waveEffect.material.uniforms.effectIntensity.value = 1.0;
+    waveEffect.material.uniforms.lineThickness.value = 0.015;
+  }
+        
+      // 3D Waves (Initial Animation)
+const wave3DEffect = visualElements.find(elem => elem.name === '3DWaves');
+if (wave3DEffect && wave3DEffect.material.uniforms) {
+  const currentTime = performance.now() * 0.001;
+  wave3DEffect.material.uniforms.time.value = currentTime;
+  const baseAmp = wave3DEffect.userData?.baseAmplitude ?? 20.0;
+  const baseFreq = wave3DEffect.userData?.baseFrequency ?? 0.5;
+  const baseSpeed = wave3DEffect.userData?.baseSpeed ?? 1.0;
+  wave3DEffect.material.uniforms.amplitude.value = baseAmp;
+  wave3DEffect.material.uniforms.frequency.value = baseFreq;
+  wave3DEffect.material.uniforms.speed.value = baseSpeed;
+  wave3DEffect.geometry.attributes.position.needsUpdate = true;
+}
+        
+      // Portal
+      // Portal modifications for idle animation:
+      // Portal idle update
+const portal = visualElements.find(elem => elem.name === 'Portal');
+if (portal && portal.material && portal.material.uniforms) {
+  const time = performance.now() * 0.001;
+
+  portal.material.uniforms.time.value = time;
+  portal.material.uniforms.travelOffset.value = time * 0.15; // slower inward travel
+  portal.material.uniforms.colorCycle.value = 8.0 * Math.cos(time * 0.25);
+  portal.material.uniforms.spinSpeed.value = 0.35; // reduced spin speed
+  portal.material.uniforms.warpStrength.value = 0.9 + 0.3 * Math.sin(time * 0.4);
+  portal.material.uniforms.unpredictability.value = 0.5 + 0.2 * Math.cos(time * 0.6);
+  portal.material.uniforms.audioReactive.value = 0.0;
+  portal.material.uniforms.phaseShift.value = 0.5 * Math.sin(time * 0.1);
+  portal.material.uniforms.kaleidoSegments.value = 6.0;
+}
+        
+      // --- SpaceshipEffect: Non-reactive (initial) state ---
+      const spaceshipEffect = visualElements.find(e => e.name === "SpaceshipEffect");
+if (spaceshipEffect && spaceshipEffect.material?.uniforms) {
+  const now = performance.now() * 0.001;
+  spaceshipEffect.material.uniforms.time.value = now;
+  // No music => audioLevel = 0
+  spaceshipEffect.material.uniforms.audioLevel.value = 0.0;
+  spaceshipEffect.material.uniforms.effectIntensity.value = spaceshipEffect.userData.baseEffectIntensity || 1.0;
+}
+        
+      // --- Ocean Effect: Non-reactive (initial) state ---
+      const oceanEffect = visualElements.find(elem => elem.name === 'Ocean');
+      if (oceanEffect && oceanEffect.material.uniforms) {
+        oceanEffect.material.uniforms.time.value = performance.now() * 0.001;
+        // With no music, set audioIntensity to zero.
+        oceanEffect.material.uniforms.audioIntensity.value = 0.0;
+      }
+        
+
+      const aurora = visualElements.find(elem => elem.name === 'AuroraEffect');
+if (aurora && aurora.material.uniforms) {
+  aurora.material.uniforms.time.value = performance.now() * 0.001;
+  aurora.material.uniforms.audioIntensity.value = 0.0;
+  aurora.material.uniforms.effectIntensity.value = aurora.userData?.baseEffectIntensity ?? 1.0;
+}
+
+// --- Scribble (Idle) ---
+// --- Scribble (Idle) ---
+const scribbleIdle = visualElements.find(e => e.name === 'Scribble');
+if (scribbleIdle && scribbleIdle.material.uniforms) {
+  const mat = scribbleIdle.material;
+  const t = performance.now() * 0.001;
+  mat.uniforms.time.value         = t;
+  mat.uniforms.audioLevel.value   = 0.0;
+  mat.uniforms.effectIntensity.value = 1.0;
+}
+
+const t = performance.now() * 0.001;
+const orangeEffect = visualElements.find(e => e.name === 'Orange');
+if (orangeEffect && orangeEffect.material.uniforms) {
+  orangeEffect.material.uniforms.time.value = t;
+  orangeEffect.material.uniforms.audioIntensity.value = 0.0;
+  const baseEI = orangeEffect.userData?.baseEffectIntensity || 1.0;
+  orangeEffect.material.uniforms.effectIntensity.value = baseEI;
+  // Set the default brightness threshold (adjust as needed based on your camera conditions)
+  orangeEffect.material.uniforms.brightnessThreshold.value = 0.5;
+  // Set a default edge detection threshold.
+  orangeEffect.material.uniforms.edgeThreshold.value = 0.2;
+}
+visualElements.forEach(effect => {
+    if (effect.userData.customAnimateInitial) {
+      try {
+        effect.userData.customAnimateInitial();
+      } catch (e) {
+        console.error("Error in custom animateInitial:", e);
+      }
+    }
+  });
+}
+
+    function getSubrangeAverage(dataArray, startIndex, endIndex) {
+      let sum = 0;
+      let count = 0;
+      for (let i = startIndex; i < endIndex; i++) {
+        sum += dataArray[i];
+        count++;
+      }
+      return count > 0 ? (sum / count) : 0;
+    }
+    function animateAudioReactiveEffects() {
+      analyser.getByteFrequencyData(dataArray);
+      // We'll define approximate segments:
+      const bassEnd = Math.floor(bufferLength / 6);        // e.g. first ~1/6 for bass
+      const midEnd = Math.floor(bufferLength * 2/3);       // next up to 2/3 for mids
+      // from midEnd to bufferLength for treble
+      
+      // bass average
+      const bassAvg = getSubrangeAverage(dataArray, 0, bassEnd) / 256;    // 0..1
+      // mid average
+      const midAvg = getSubrangeAverage(dataArray, bassEnd, midEnd) / 256;
+      // treble average
+      const trebleAvg = getSubrangeAverage(dataArray, midEnd, bufferLength) / 256;
+      
+      // You can also define a total average if you want a global intensity:
+      const globalSum = getSubrangeAverage(dataArray, 0, bufferLength) / 256;
+      // Define a unified audio intensity for shaders
+      const audioIntensity = globalSum;
+      
+      // Now apply these subrange intensities to your visuals
+      // Example: bass -> amplitude, mid -> color shift, treble -> speed
+      
+      // Particles
+      const particleSystem = visualElements.find(elem => elem.name === 'CameraParticles');
+  if (particleSystem && particleSystem.material.uniforms) {
+    // Compute combined audio intensity.
+    let audioInt = (bassAvg + midAvg + trebleAvg) / 3.0;
+    particleSystem.material.uniforms.audioIntensity.value = audioInt;
+    // Update time uniform.
+    particleSystem.material.uniforms.time.value = performance.now() * 0.001;
+    // Apply dynamic rotations based on audio data.
+    particleSystem.rotation.y += 0.005 + midAvg * 0.05;
+    particleSystem.rotation.x += 0.003 + trebleAvg * 0.05;
+    // Update the objectOffset uniform using Math.sin and Math.cos.
+    particleSystem.material.uniforms.objectOffset.value.set(
+      Math.sin(performance.now() * 0.001 * 1.3) * audioInt * 20.0,
+      Math.cos(performance.now() * 0.001 * 1.7) * audioInt * 20.0,
+      Math.sin(performance.now() * 0.001 * 1.1) * audioInt * 10.0
+    );
+  }
+      
+      // Waves (named 'Waves')
+      const waveEffect = visualElements.find(elem => elem.name === 'Waves');
+  if (waveEffect && waveEffect.material.uniforms) {
+    waveEffect.material.uniforms.bass.value = bassAvg;
+    waveEffect.material.uniforms.mid.value = midAvg;
+    waveEffect.material.uniforms.treble.value = trebleAvg;
+    // Optionally adjust effectIntensity and lineThickness based on the audio
+    waveEffect.material.uniforms.effectIntensity.value = 1.0 + midAvg * 0.8;
+    waveEffect.material.uniforms.lineThickness.value = 0.015 + bassAvg * 0.03;
+  }
+      
+      // 3D Waves (Experimental Audio-Reactive)
+const wave3DEffect = visualElements.find(elem => elem.name === '3DWaves');
+if (wave3DEffect && wave3DEffect.material.uniforms) {
+  const baseAmp = wave3DEffect.userData?.baseAmplitude ?? 20.0;
+  // Non-linear modulation: squared bass average for dramatic amplitude effects
+  const newAmp = baseAmp * (1.0 + Math.pow(bassAvg, 2.0) * 2.0);
+  const baseFreq = wave3DEffect.userData?.baseFrequency ?? 0.5;
+  const newFreq = baseFreq + trebleAvg * 1.2;
+  const baseSpeed = wave3DEffect.userData?.baseSpeed ?? 1.0;
+  const newSpeed = baseSpeed + midAvg * 1.5;
+  wave3DEffect.material.uniforms.amplitude.value = newAmp;
+  wave3DEffect.material.uniforms.frequency.value = newFreq;
+  wave3DEffect.material.uniforms.speed.value = newSpeed;
+  wave3DEffect.material.uniforms.time.value = performance.now() * 0.001;
+  wave3DEffect.geometry.attributes.position.needsUpdate = true;
+}
+      
+const trippyGroup = visualElements.find(e => e.name === "TrippyColors");
+  if (trippyGroup && trippyGroup.userData && trippyGroup.userData.material) {
+    const mat = trippyGroup.userData.material;
+    const time = performance.now() * 0.001;
+    mat.uniforms.uTime.value = time;
+
+    // Combine frequencies or weight them
+    const overallAudio = (bassAvg + midAvg + trebleAvg) / 3.0; // 0..1-ish
+    // Possibly boost bass for dramatic swirl
+    const swirlAudio = overallAudio + bassAvg * 0.3;
+    mat.uniforms.uAudioLevel.value = THREE.MathUtils.clamp(swirlAudio, 0.0, 2.0);
+
+    // Increase effect intensity with total volume
+    const intensity = 1.0 + overallAudio * 1.0; 
+    mat.uniforms.uEffectIntensity.value = intensity;
+
+    // Periodic re-randomization
+    const now = time;
+    if (now - trippyGroup.userData.lastSeedUpdateTime > trippyGroup.userData.nextSeedInterval) {
+      mat.uniforms.uRandomShift.value = Math.random() * 10.0;
+      mat.uniforms.uSeedA.value = Math.random() * 1000.0;
+      mat.uniforms.uSeedB.value = Math.random() * 1000.0;
+      mat.uniforms.uSeedC.value = Math.random() * 1000.0;
+
+      trippyGroup.userData.lastSeedUpdateTime = now;
+      trippyGroup.userData.nextSeedInterval = 10.0 + Math.random() * 10.0;
+    }
+  }
+
+      
+      // Portal'
+      
+      const timeNow = performance.now() * 0.001;
+const portal = visualElements.find(elem => elem.name === 'Portal');
+if (portal && portal.material && portal.material.uniforms) {
+  let reactiveFactor = trebleAvg; // use your chosen audio metric
+  
+  // Smooth updates via lerp:
+  portal.material.uniforms.travelOffset.value = THREE.MathUtils.lerp(
+    portal.material.uniforms.travelOffset.value,
+    timeNow * 0.15 + reactiveFactor * 0.35,
+    0.1
+  );
+  portal.material.uniforms.colorCycle.value = THREE.MathUtils.lerp(
+    portal.material.uniforms.colorCycle.value,
+    8.0 * Math.sin(timeNow * 0.35 * reactiveFactor),
+    0.1
+  );
+  portal.material.uniforms.spinSpeed.value = THREE.MathUtils.lerp(
+    portal.material.uniforms.spinSpeed.value,
+    0.35 + reactiveFactor * 1.8,
+    0.1
+  );
+  portal.material.uniforms.warpStrength.value = THREE.MathUtils.lerp(
+    portal.material.uniforms.warpStrength.value,
+    0.9 + reactiveFactor * 1.0,
+    0.1
+  );
+  portal.material.uniforms.unpredictability.value = THREE.MathUtils.lerp(
+    portal.material.uniforms.unpredictability.value,
+    0.5 + reactiveFactor * 0.25,
+    0.1
+  );
+  // Smoothly update the audioReactive value:
+  portal.material.uniforms.audioReactive.value = THREE.MathUtils.lerp(
+    portal.material.uniforms.audioReactive.value,
+    reactiveFactor,
+    0.1
+  );
+  // Increment time slightly faster when reactive:
+  portal.material.uniforms.time.value += 0.04 + reactiveFactor * 0.08;
+  
+  // Force a phase shift jump if reactive is high:
+  if (reactiveFactor > 0.8) {
+    portal.material.uniforms.phaseShift.value += (Math.random() - 0.5) * 2.0;
+  }
+  // Adjust kaleido segments based on reactiveFactor:
+  portal.material.uniforms.kaleidoSegments.value = 6.0 + Math.floor(reactiveFactor * 3.0);
+}
+      
+      // --- SpaceshipEffect: Audio-reactive state ---
+      const spaceshipEffect = visualElements.find(e => e.name === "SpaceshipEffect");
+if (spaceshipEffect && spaceshipEffect.material?.uniforms) {
+  const now = performance.now() * 0.001;
+  spaceshipEffect.material.uniforms.time.value = now;
+  // for instance, the average amplitude of bass/mid/treble
+  const ringAudio = (bassAvg + midAvg + trebleAvg) / 3.0;
+  spaceshipEffect.material.uniforms.audioLevel.value = ringAudio;
+  spaceshipEffect.material.uniforms.effectIntensity.value = spaceshipEffect.userData.baseEffectIntensity || 1.0;
+}
+      
+      // --- Ocean Effect: Audio-reactive state ---
+      const ocean = visualElements.find(elem => elem.name === 'OceanEffect');
+  if (ocean && ocean.userData.baseGeometry) {
+    // We'll reconstruct a wireframe from a displaced version of the base geometry each frame.
+    // 1) Grab the base (the original sphere).
+    const baseGeo = ocean.userData.baseGeometry;
+
+    // 2) Clone or re-build a new geometry for this frame, with displaced vertices.
+    //    We'll do a quick CPU loop that modifies each vertex’s radius based on noise & audio.
+
+    // Create a fresh new geometry from base each frame
+    const tempGeo = baseGeo.clone();
+
+    // For each vertex in tempGeo, displace it outward/inward
+    const posAttr = tempGeo.attributes.position; // BufferAttribute (x,y,z for each vertex)
+    const vertexCount = posAttr.count;
+    const now = performance.now() * 0.001;
+
+    for (let i = 0; i < vertexCount; i++) {
+      // original position
+      const x0 = posAttr.getX(i);
+      const y0 = posAttr.getY(i);
+      const z0 = posAttr.getZ(i);
+
+      // radius
+      const r0 = Math.sqrt(x0*x0 + y0*y0 + z0*z0);
+
+      // A simple “noise” or “wobble” can be done with sin/cos – or use Perlin if you prefer
+      // Let's do a sin-based approach for demonstration:
+      const freq = 1.5; // base frequency
+      const t = now * 0.8; // wave speed
+      // We vary it by x0,y0,z0 so each vertex moves differently
+      let wobble = Math.sin(x0*freq + t) + Math.cos(y0*freq*1.1 - t*1.2) + Math.sin(z0*freq*0.9 + t*0.5);
+      wobble *= 0.3; // amplitude
+
+      // Scale with audio
+      wobble *= audioIntensity * 1.5; // how strongly audio affects shape
+
+      // new radius
+      const newR = r0 + wobble;
+      // direction
+      const scale = newR / r0;
+
+      // update
+      posAttr.setXYZ(i, x0 * scale, y0 * scale, z0 * scale);
+    }
+
+    posAttr.needsUpdate = true;
+    tempGeo.computeVertexNormals(); // might not strictly matter for wireframe
+
+    // 3) Now build wireframe geometry from tempGeo
+    const newWireframe = new THREE.WireframeGeometry(tempGeo);
+
+    // 4) Replace the oceanEffect mesh’s geometry
+    ocean.geometry = newWireframe;
+  }
+
+      const aurora = visualElements.find(elem => elem.name === 'AuroraEffect');
+if (aurora && aurora.material.uniforms) {
+  aurora.material.uniforms.time.value = performance.now() * 0.001;
+  // Compute overall audio intensity (tweak the multipliers for stronger effect)
+  let audioIntensity = (bassAvg * 0.5 + midAvg * 0.3 + trebleAvg * 0.2);
+  aurora.material.uniforms.audioIntensity.value = audioIntensity;
+  aurora.material.uniforms.effectIntensity.value = aurora.userData?.baseEffectIntensity ?? 1.0;
+}
+
+// --- Scribble (Audio‑Reactive) ---
+const scribbleReact = visualElements.find(e => e.name === 'Scribble');
+if (scribbleReact && scribbleReact.material.uniforms) {
+  const mat = scribbleReact.material;
+  const t = performance.now() * 0.001;
+  mat.uniforms.time.value         = t;
+  mat.uniforms.audioLevel.value   = audioIntensity;
+  mat.uniforms.effectIntensity.value = 1.0 + audioIntensity * 2.0;
+}
+
+analyser.getByteFrequencyData(dataArray);
+
+const totalAudio = bassAvg + midAvg + trebleAvg;
+
+const orangeEffect = visualElements.find(e => e.name === 'Orange');
+if (orangeEffect && orangeEffect.material.uniforms) {
+  const t = performance.now() * 0.001;
+  orangeEffect.material.uniforms.time.value = t;
+  orangeEffect.material.uniforms.audioIntensity.value = totalAudio;
+  // Increase effect intensity slightly based on midAvg.
+  const baseEI = orangeEffect.userData?.baseEffectIntensity || 1.0;
+  orangeEffect.material.uniforms.effectIntensity.value = baseEI + midAvg * 0.5;
+  // Adjust the brightness threshold based on treble for a more defined silhouette.
+  orangeEffect.material.uniforms.brightnessThreshold.value = 0.5 + trebleAvg * 0.2;
+  // Optionally, you can adjust the edgeThreshold if desired.
+  orangeEffect.material.uniforms.edgeThreshold.value = 0.2;
+}
+
+      renderer.render(scene, camera);
+    }
+    
+    async function toggleCameraBackground() {
+  if (!isCameraMode) {
+    // Turn camera mode ON
+    isCameraMode = true;
+    console.log('Enabling camera background...');
+    showActionMessage("visual mode: on");
+
+    try {
+      // 1) Request user media (video only)
+      userCameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+    } catch (err) {
+      console.error('Error accessing user camera:', err);
+      isCameraMode = false;
+      showActionMessage("visual mode: off");
+      return;
+    }
+
+    // 2) Create a video element for the stream
+    userCameraVideo = document.createElement('video');
+    userCameraVideo.autoplay = true;
+    userCameraVideo.playsInline = true;
+    userCameraVideo.srcObject = userCameraStream;
+
+    // 3) Wait for video to start playing
+    await userCameraVideo.play().catch(err => console.error('Video play error:', err));
+
+    // 4) Create a texture from the video
+    userCameraTexture = new THREE.VideoTexture(userCameraVideo);
+    userCameraTexture.minFilter = THREE.LinearFilter;
+    userCameraTexture.magFilter = THREE.LinearFilter;
+
+    // 5) “Enable” camera feed within the effects:
+    isCameraFeedInEffects = true;
+    // Update each effect that supports a cameraTexture uniform
+    visualElements.forEach(elem => {
+      if (elem.material && elem.material.uniforms && 'cameraTexture' in elem.material.uniforms) {
+        elem.material.uniforms.cameraTexture.value = userCameraTexture;
+      }
+    });
+    console.log('Camera feed applied to effects.');
+
+  } else {
+    // Turn camera mode OFF
+    isCameraMode = false;
+    console.log('Disabling camera background...');
+    showActionMessage("visual mode: off");
+
+    // Stop referencing the camera in effects
+    isCameraFeedInEffects = false;
+    visualElements.forEach(elem => {
+      if (elem.material && elem.material.uniforms && 'cameraTexture' in elem.material.uniforms) {
+        // Set the texture back to null
+        elem.material.uniforms.cameraTexture.value = null;
+      }
+    });
+
+    // Stop the camera stream (free resources)
+    if (userCameraStream) {
+      const tracks = userCameraStream.getTracks();
+      tracks.forEach(track => track.stop());
+      userCameraStream = null;
+    }
+    userCameraVideo = null;
+    userCameraTexture = null;
+    console.log('Camera feed removed from effects.');
+  }
+}
+    function startShuffleInterval() {
+      if (shuffleInterval) return; // Already running
+      shuffleInterval = setInterval(() => {
+        if (isPlaying && shuffleMode) {
+          shuffleToRandomEffect();
+        }
+      }, 7000);
+    }
+    
+    function stopShuffleInterval() {
+      if (shuffleInterval) {
+        clearInterval(shuffleInterval);
+        shuffleInterval = null;
+      }
+    }
+    
+    function shuffleToRandomEffect() {
+      if (visualElements.length <= 1) return; // No shuffle if only one effect
+      
+      let newIndex;
+      do {
+        newIndex = Math.floor(Math.random() * visualElements.length);
+      } while (newIndex === currentStyleIndex);
+      
+      currentStyleIndex = newIndex;
+      console.log('Shuffling to effect index:', newIndex);
+      updateVisibility();
+    }
+        
+    function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  // Update effect resolutions
+  visualElements.forEach(elem => {
+    if (elem.material && elem.material.uniforms && 'resolution' in elem.material.uniforms) {
+      elem.material.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+    }
+  });
+}
+        
+    function onKeyDown(event) {
+      switch (event.key) {
+        case ' ':
+          event.preventDefault();
+          togglePlayPause();
+        break;
+        case 'm':
+          event.preventDefault();
+          console.log('M key pressed, toggling mute at:', performance.now());
+          audioElement.muted = !audioElement.muted;
+          showActionMessage("mute: " + (audioElement.muted ? "on" : "off"));
+        break;
+        case 'i':
+          displayInfo();
+        break;
+        case 'ArrowLeft':
+          currentStyleIndex = (currentStyleIndex - 1 + visualElements.length) % visualElements.length;
+          updateVisibility();
+        break;
+        case 'ArrowRight':
+          currentStyleIndex = (currentStyleIndex + 1) % visualElements.length;
+          updateVisibility();
+        break;
+        case 'ArrowUp':
+          currentModeIndex = (currentModeIndex + 1) % modes.length;
+          switchMode(modes[currentModeIndex]);
+        break;
+        case 'ArrowDown':
+          currentModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
+          switchMode(modes[currentModeIndex]);
+        break;
+        case 'n':
+  if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 1) {
+    playNextUserSong();
+  } else if (currentMode === 'playlist') {
+    playNextSongInPlaylist();
+  }
+  break;
+case 'b':
+  if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 1) {
+    playPreviousUserSong();
+  } else if (currentMode === 'playlist') {
+    playPreviousSongInPlaylist();
+  }
+  break;
+  case 'v':
+  event.preventDefault();
+  // Get the active effect from visualElements using currentStyleIndex.
+  const activeEffect = visualElements[currentStyleIndex];
+  if (!activeEffect || !activeEffect.material) break;
+  
+  // For simplicity, we assume the "Orange" effect supports multiple visual styles.
+  const supportsMultiVisual = (activeEffect.name === "Orange");
+
+  if (supportsMultiVisual) {
+    // Access the visualMode uniform (which is defined for the Orange effect)
+    let currentState = Math.floor(activeEffect.material.uniforms.visualMode.value);
+    if (currentState === 0) {
+      // Currently off—turn it on and set the first style.
+      toggleCameraBackground();
+      activeEffect.material.uniforms.visualMode.value = 1.0;
+      showActionMessage("visual mode: on (1)");
+      console.log("Orange Visual Mode: On (1)");
+    } else if (currentState < 4) {
+      // Cycle to the next style (e.g., outline → filled → clear view).
+      currentState++;
+      activeEffect.material.uniforms.visualMode.value = currentState;
+      showActionMessage("visual mode: on (" + currentState + ")");
+      console.log("Orange Visual Mode updated to (" + currentState + ")");
+    } else {
+      // At the last style; next press turns it off.
+      activeEffect.material.uniforms.visualMode.value = 0.0;
+      toggleCameraBackground();
+      showActionMessage("visual mode: off");
+      console.log("Orange Visual Mode turned off");
+    }
+  } else {
+    // For effects that don't support multiple styles, simply toggle on/off.
+    // (If the effect has a visualMode uniform, use it; otherwise, just toggle the camera background.)
+    if (activeEffect.material.uniforms.visualMode) {
+      if (activeEffect.material.uniforms.visualMode.value == 0) {
+        toggleCameraBackground();
+        activeEffect.material.uniforms.visualMode.value = 1.0;
+        showActionMessage("visual mode: on");
+        console.log(activeEffect.name + " visual mode: on");
+      } else {
+        activeEffect.material.uniforms.visualMode.value = 0.0;
+        toggleCameraBackground();
+        showActionMessage("visual mode: off");
+        console.log(activeEffect.name + " visual Mode: off");
+      }
+    } else {
+      // If there is no visualMode uniform for the effect, we rely solely on the global camera mode flag.
+      if (!isCameraMode) {
+        toggleCameraBackground();
+        showActionMessage("Visual Mode: On");
+        console.log(activeEffect.name + " Visual Mode: On (fallback)");
+      } else {
+        toggleCameraBackground();
+        showActionMessage("Visual Mode: Off");
+        console.log(activeEffect.name + " Visual Mode: Off (fallback)");
+      }
+    }
+  }
+  break;
+        case 'h':
+          event.preventDefault();
+          toggleHelpOverlay();
+        break;
+        case 'o':
+          event.preventDefault();
+          shuffleMode = !shuffleMode;
+          console.log('Shuffle mode:', shuffleMode);
+          if (shuffleMode) {
+            startShuffleInterval();
+          } else {
+            stopShuffleInterval();
+          }
+          showActionMessage("effect shuffle: " + (shuffleMode ? "on" : "off"));
+        break;
+        case 'x':
+  event.preventDefault();
+  console.log('x key pressed: starting augmentation');
+  if (!augmentInterval) {
+    augmentInterval = setInterval(augmentEffect, 300);
+  }
+break;
+case 'p':
+  if (currentMode === 'fileSelect') {
+    if (!userPlaylistActive) {
+      // Activate the user playlist and add the *current* file once
+      userPlaylistActive = true;
+      if (audioElement && audioElement.src) {
+        let firstUserSong = {
+          src: audioElement.src,
+          title: selectedFileName,
+        };
+        userPlaylist.push(firstUserSong);
+        currentUserSongIndex = 0;
+        console.log('User playlist activated with first song:', selectedFileName);
+      } else {
+        console.error('No valid audio source when pressing P.');
+      }
+    } else {
+      // If the playlist is already active, do NOT add the current file again
+      // Just show a message or do nothing
+      console.log('User playlist is already active; pick another file if you want more songs.');
+    }
+    // Now open the file input so the user can select another file
+    document.getElementById('fileInput').click();
+  }
+  break;
+        default:
+        if (event.key >= '1' && event.key <= '9') {
+          intensityLevel = parseInt(event.key);
+          adjustVisualEffectsIntensity();
+        }
+        break;
+      }
+    }
+        
+    function adjustVisualEffectsIntensity() {
+      console.log(`Adjusting intensity to ${intensityLevel}`);
+      
+      const particleSystem = visualElements.find(elem => elem.name === 'CameraParticles');
+  if (particleSystem && particleSystem.material && particleSystem.material.uniforms) {
+    // For example, let the base effect intensity scale with intensityLevel.
+    // You can tweak the factor (0.3 in this case) to achieve the desired response.
+    particleSystem.userData.baseEffectIntensity = 1.0 + intensityLevel * 1;
+    particleSystem.material.uniforms.effectIntensity.value = particleSystem.userData.baseEffectIntensity;
+    
+    // Optionally, if you want to adjust additional properties, you can do so here.
+    console.log('Updated CameraParticles effectIntensity to', particleSystem.material.uniforms.effectIntensity.value);
+  }
+      
+      // Waves (named 'Waves')
+      const waveEffect = visualElements.find(elem => elem.name === 'Waves');
+  if (waveEffect && waveEffect.material.uniforms) {
+    waveEffect.material.uniforms.effectIntensity.value = newIntensity;
+  }
+      
+      // 3D Waves (named '3DWaves')
+const wave3DEffect = visualElements.find(elem => elem.name === '3DWaves');
+if (wave3DEffect && wave3DEffect.material && wave3DEffect.material.uniforms) {
+  wave3DEffect.userData = wave3DEffect.userData || {};
+  // Adjust the base amplitude, frequency, and speed with intensityLevel
+  wave3DEffect.userData.baseAmplitude = 20.0 + intensityLevel * 4.0;
+  wave3DEffect.userData.baseFrequency = 0.5 + (intensityLevel * 0.1);
+  wave3DEffect.userData.baseSpeed = 1.0 + intensityLevel * 0.1;
+}
+      
+      // Trippy Colors
+      const trippyGroup = visualElements.find(e => e.name === "TrippyColors");
+  if (trippyGroup && trippyGroup.userData && trippyGroup.userData.material) {
+    const mat = trippyGroup.userData.material;
+    mat.uniforms.uEffectIntensity.value = trippyIntensity;
+  }
+      
+      // Portal
+      const portal = visualElements.find(elem => elem.name === 'Portal');
+if (portal && portal.material && portal.material.uniforms) {
+  // Travel offset base speed
+  portal.userData.baseTravelOffset = 0.2 + intensityLevel * 0.02;
+  portal.material.uniforms.travelOffset.value = portal.userData.baseTravelOffset;
+
+  // Spin base speed
+  portal.userData.baseSpinSpeed = 0.4 + intensityLevel * 0.05;
+  portal.material.uniforms.spinSpeed.value = portal.userData.baseSpinSpeed;
+
+  // Warp strength
+  portal.userData.baseWarpStrength = 1.0 + intensityLevel * 0.1;
+  portal.material.uniforms.warpStrength.value = portal.userData.baseWarpStrength;
+
+  // colorCycle base
+  portal.userData.baseColorCycle = intensityLevel * 5.0;
+  portal.material.uniforms.colorCycle.value = portal.userData.baseColorCycle;
+
+  // unpredictability
+  portal.userData.baseUnpredictability = 0.5 + intensityLevel * 0.05;
+  portal.material.uniforms.unpredictability.value = portal.userData.baseUnpredictability;
+
+  // Optionally adjust kaleido segments as well
+  // E.g. more intensity => more segments
+  portal.material.uniforms.kaleidoSegments.value = 4.0 + intensityLevel;
+}
+      
+      // SpaceshipEffect: adjust its base effect intensity.
+      const spaceshipEffect = visualElements.find(e => e.name === "SpaceshipEffect");
+  if (spaceshipEffect) {
+    spaceshipEffect.userData.baseEffectIntensity = 1.0 + 0.2 * intensityLevel;
+    console.log("SpaceshipEffect baseEffectIntensity:", spaceshipEffect.userData.baseEffectIntensity);
+  }
+      
+      // Ocean effect intensity adjustment:
+      const oceanEffect = visualElements.find(elem => elem.name === 'Ocean');
+      if (oceanEffect) {
+        oceanEffect.userData = oceanEffect.userData || {};
+        // Increase the base wave amplitude with intensity.
+        oceanEffect.userData.baseWaveAmplitude = 20.0 + intensityLevel * 5.0;
+        oceanEffect.material.uniforms.waveAmplitude.value = oceanEffect.userData.baseWaveAmplitude;
+      }
+      
+      
+
+      const aurora = visualElements.find(elem => elem.name === 'AuroraEffect');
+if (aurora && aurora.material && aurora.material.uniforms) {
+  aurora.userData = aurora.userData || {};
+  // Scale the effect intensity dramatically with the user-selected intensityLevel
+  aurora.userData.baseEffectIntensity = 1.0 + intensityLevel * 0.5;
+  aurora.material.uniforms.effectIntensity.value = aurora.userData.baseEffectIntensity;
+}
+
+// --- Scribble (Intensity Slider) ---
+const scribbleInt = visualElements.find(e => e.name === 'Scribble');
+if (scribbleInt && scribbleInt.material.uniforms) {
+  const mat = scribbleInt.material;
+  mat.uniforms.effectIntensity.value = intensityLevel / 5.0;
+  mat.uniforms.lineThickness.value   = 0.005 * intensityLevel;
+  mat.uniforms.glowIntensity.value   = 1.0 + intensityLevel * 0.5;
+}
+const orangeEffect = visualElements.find(e => e.name === 'Orange');
+  if (orangeEffect && orangeEffect.material && orangeEffect.material.uniforms) {
+    // Scale the base effect intensity with the user-selected intensity level.
+    orangeEffect.userData.baseEffectIntensity = 1.0 + intensityLevel * 0.3;
+    orangeEffect.material.uniforms.effectIntensity.value = orangeEffect.userData.baseEffectIntensity;
+    console.log('Updated Orange effectIntensity to', orangeEffect.material.uniforms.effectIntensity.value);
+  }
+  
+visualElements.forEach(effect => {
+    if (effect.userData.customAdjustIntensity) {
+      try {
+        effect.userData.customAdjustIntensity();
+      } catch (e) {
+        console.error("Error in custom adjustIntensity:", e);
+      }
+    }
+  });
+}
+    function augmentEffect() {
+  const currentEffect = visualElements[currentStyleIndex];
+  if (!currentEffect || !currentEffect.material || !currentEffect.material.uniforms) return;
+  
+  
+  for (let key in currentEffect.material.uniforms) {
+    if (key === 'visualMode') continue;
+    let uniform = currentEffect.material.uniforms[key];
+    if (typeof uniform.value === 'number') {
+      // Store the base value if not already stored
+      if (currentEffect.userData[`base_${key}`] === undefined) {
+        currentEffect.userData[`base_${key}`] = uniform.value;
+      }
+      let baseValue = currentEffect.userData[`base_${key}`];
+      // Choose a random factor for wide variation (you can adjust the range)
+      let randomFactor = Math.random() * 9.8 + 0.2;
+      // Instead of directly setting uniform.value, store the target value:
+      uniform.target = baseValue * randomFactor;
+      console.log(`Uniform ${key}: base ${baseValue} -> target ${uniform.target}`);
+    }
+  }
+}
+function smoothAugmentationStep() {
+  const currentEffect = visualElements[currentStyleIndex];
+  if (!currentEffect || !currentEffect.material || !currentEffect.material.uniforms) return;
+  const smoothingFactor = 0.1; // Adjust this factor (0.0 to 1.0) for smoother/faster transitions
+  for (let key in currentEffect.material.uniforms) {
+    let uniform = currentEffect.material.uniforms[key];
+    if (typeof uniform.value === 'number' && uniform.target !== undefined) {
+      // Interpolate: newValue = current + (target - current) * smoothingFactor
+      uniform.value = uniform.value + (uniform.target - uniform.value) * smoothingFactor;
+    }
+  }
+}
+function resetAugmentation() {
+  const currentEffect = visualElements[currentStyleIndex];
+  if (!currentEffect || !currentEffect.material || !currentEffect.material.uniforms) return;
+  
+  for (let key in currentEffect.material.uniforms) {
+    let uniform = currentEffect.material.uniforms[key];
+    if (typeof uniform.value === 'number' && currentEffect.userData[`base_${key}`] !== undefined) {
+      // Set the target back to the base value
+      uniform.target = currentEffect.userData[`base_${key}`];
+    }
+  }
+}
+document.body.addEventListener('keyup', onKeyUp, false);
+
+function onKeyUp(event) {
+  if (event.key === 'x') {
+    console.log('x key released: stopping augmentation');
+    if (augmentInterval) {
+      clearInterval(augmentInterval);
+      augmentInterval = null;
+      resetAugmentation();
+    }
+  }
+}
+    
+    function displayInfo() {
+      // Display current mode
+      displayMode();
+
+      // Display song information
+      const songInfo = document.getElementById('songInfo');
+      songInfo.textContent = `song: ${selectedFileName}`;
+      songInfo.style.opacity = 1;
+
+      // Fade out song information after 3 seconds
+      setTimeout(() => {
+        songInfo.style.opacity = 0;
+      }, 3000);
+    }
+    function showActionMessage(message) {
+  const actionMessage = document.getElementById('actionMessage');
+  if (!actionMessage) return;
+  actionMessage.textContent = message;
+  actionMessage.style.opacity = '1';
+  setTimeout(() => {
+    actionMessage.style.opacity = '0';
+  }, 3000);
+}
+ 
+    function togglePlayPause() {
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
+  }
+  
+  if (!isPlaying) {
+    // If in fileSelect mode with a custom user playlist, load the current user song
+    if (currentMode === 'fileSelect' && userPlaylistActive && userPlaylist.length > 0) {
+      loadCurrentUserSong().then(() => {
+        audioElement.play();
+        isPlaying = true;
+      });
+    } else {
+      audioElement.play();
+      isPlaying = true;
+    }
+    document.getElementById('info').style.display = "none";
+  } else {
+    audioElement.pause();
+    const info = document.getElementById('info');
+    info.style.display = "block";
+    info.style.opacity = "0";
+    const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+    info.textContent = isMobile ? "tap to start" : "press spacebar to start";
+    void info.offsetWidth;
+    info.style.opacity = "1";
+    isPlaying = false;
+  }
+}
+    
+    function displayMode() {
+      const modeIndicator = document.getElementById('modeIndicator');
+      modeIndicator.textContent = `mode: ${currentMode}`;
+      modeIndicator.style.opacity = 1; // Make the mode indicator visible
+
+      // Fade out the mode indicator after 3 seconds
+      setTimeout(() => {
+        modeIndicator.style.opacity = 0;
+      }, 3000);
+    }
+
+    function toggleHelpOverlay() {
+      const helpOverlay = document.getElementById('helpOverlay');
+  const adBanner = document.getElementById('adBanner');
+  if (!helpOverlay) return;
+      
+      // Check mobile
+      const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        helpOverlay.innerHTML = `
+        <h2>Controls</h2>
+        <ul>
+          <li><b>Single Tap:</b> Play/Pause</li>
+          <li><b>Swipe Up/Down:</b> Switch Mode</li>
+          <li><b>Swipe Left/Right:</b> Switch Effect Style</li>      
+          <li><b>Double Tap:</b> Set Intensity</li>
+          <li><b>Triple Tap:</b> Next Song</li>
+          <li><b>Long Press:</b> Show/Hide Help</li>
+          <li><b>Full Version Soon!</li>
+        </ul>
+        `;
+      } else {
+        
+        helpOverlay.innerHTML = `
+        <h2>Controls</h2>
+        <ul>
+          <li><b>Spacebar:</b> Play/Pause</li>
+          <li><b>Arrow Up/Down:</b> Switch Mode</li>
+          <li><b>Arrow Left/Right:</b> Switch Effect Style</li>
+          <li><b>1–9:</b> Set Effect Intensity Level</li>
+          <li><b>N:</b> Next Song</li>
+          <li><b>B:</b> Previous Song</li>
+          <li><b>M:</b> Toggle Mute</li>
+          <li><b>O:</b> Toggle Effect Shuffle Mode</li>
+          <li><b>P:</b> Toggle Player Mode</li>
+          <li><b>I:</b> Show Info</li>
+          <li><b>H:</b> Show/Hide Help</li>
+          <li><b>Full Version Soon!</li>
+        </ul>
+        `;
+      }
+       // Check current display state by checking if "show" class is present.
+       if (helpOverlay.classList.contains('show')) {
+    // Hide help overlay by removing the "show" class (this triggers fade-out)
+    helpOverlay.classList.remove('show');
+    // Also remove "show" class from the ad banner
+    if (adBanner) {
+      adBanner.classList.remove('show');
+      // Wait for the fade-out animation to complete before setting display to none.
+      setTimeout(() => { 
+        helpOverlay.style.display = 'none';
+        adBanner.style.display = 'none';
+      }, 500); // This delay should match your CSS animation duration
+    }
+  } else {
+    // Show help overlay by setting display and then adding the "show" class.
+    helpOverlay.style.display = 'block';
+    if (adBanner) {
+      adBanner.style.display = 'block';
+    }
+    setTimeout(() => {
+      helpOverlay.classList.add('show');
+      if (adBanner) adBanner.classList.add('show');
+    }, 20); // Small delay to allow the browser to register display change
+  }
+    }
+    function toggleCreatorMode() {
+  let modal = document.getElementById('creatorModal');
+  if (modal) {
+      // simply display it and let CSS handle the fade/slide
+      modal.style.display = 'block';
+    requestAnimationFrame(() => modal.classList.add('show'));
+    return;
+  }
+  // Create the modal container covering the full screen
+  modal = document.createElement('div');
+  modal.id = 'creatorModal';
+  Object.assign(modal.style, {
+    position: 'fixed',
+    top: '0',
+    left: '0',
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: '10000',
+    overflow: 'auto'
+  });
+  
+  // Create the inner content styled like the help overlay
+  modal.innerHTML = `
+    <div style="background-color: rgba(0, 0, 0, 0.8); color: white; font-family: Arial, sans-serif; border: 2px solid grey; border-radius: 8px; padding: 20px; width: 90%; max-width: 600px; margin: 100px auto;">
+      <h2 style="text-align: center; margin-top: 0;">Create Custom Effect</h2>
+      <label style="font-weight:bold;">Create Function Code:</label><br>
+      <textarea id="creatorCreateCode" rows="10" style="width:100%; background: #333; color: white; border: 1px solid grey; padding: 5px;"></textarea><br><br>
+      <label style="font-weight:bold;">Animate Initial Code:</label><br>
+      <textarea id="creatorAnimateInitialCode" rows="5" style="width:100%; background: #333; color: white; border: 1px solid grey; padding: 5px;"></textarea><br><br>
+      <label style="font-weight:bold;">Animate Reactive Code:</label><br>
+      <textarea id="creatorAnimateReactiveCode" rows="5" style="width:100%; background: #333; color: white; border: 1px solid grey; padding: 5px;"></textarea><br><br>
+      <label style="font-weight:bold;">Adjust Intensity Code:</label><br>
+      <textarea id="creatorAdjustIntensityCode" rows="5" style="width:100%; background: #333; color: white; border: 1px solid grey; padding: 5px;"></textarea><br><br>
+      <div style="text-align: center;">\n         <button id="creatorSubmitButton" style="padding: 10px 20px; background-color: rgba(0,0,0,0.8); border: 2px solid grey; border-radius: 8px; color: white; font-family: Arial, sans-serif; font-size: 16px; cursor: pointer;">Submit Effect</button>      <button id="creatorCancelButton" style="padding: 10px 20px; background-color: transparent; border: 2px solid grey; border-radius: 8px; color: white; font-family: Arial, sans-serif; font-size: 16px; cursor: pointer;">Cancel</button>\n      </div>\n    </div>\n  `;
+  
+  document.body.appendChild(modal);
+  modal.style.display = 'block';
+  requestAnimationFrame(() => modal.classList.add('show'));
+  
+  document.getElementById('creatorSubmitButton').addEventListener('click', function(){
+    // Get the code from each textarea
+    let createCode = document.getElementById('creatorCreateCode').value;
+    let animateInitialCode = document.getElementById('creatorAnimateInitialCode').value;
+    let animateReactiveCode = document.getElementById('creatorAnimateReactiveCode').value;
+    let adjustIntensityCode = document.getElementById('creatorAdjustIntensityCode').value;
+    
+    try {
+      // Create functions using the Function constructor
+      let userCreateFunction = new Function(createCode);
+      let userAnimateInitialFunction = new Function(animateInitialCode);
+      let userAnimateReactiveFunction = new Function(animateReactiveCode);
+      let userAdjustIntensityFunction = new Function(adjustIntensityCode);
+      
+      // Create an object to store the custom effect functions and assign a unique name
+      let customEffect = {
+         name: "CustomEffect" + (visualElements.length + 1),
+         create: userCreateFunction,
+         animateInitial: userAnimateInitialFunction,
+         animateReactive: userAnimateReactiveFunction,
+         adjustIntensity: userAdjustIntensityFunction
+      };
+
+      // Execute the create function to create the effect.
+      customEffect.create();
+      
+      // Find the newly created effect in visualElements by its assigned name.
+      let newEffect = visualElements.find(elem => elem.name === customEffect.name);
+      if (newEffect) {
+         // Store the custom update functions on the effect so we can call them later.
+         newEffect.userData.customAnimateInitial = customEffect.animateInitial;
+         newEffect.userData.customAnimateReactive = customEffect.animateReactive;
+         newEffect.userData.customAdjustIntensity = customEffect.adjustIntensity;
+      } else {
+         console.warn("Custom effect not found in visualElements. Make sure your create code sets the effect’s name to: " + customEffect.name);
+      }
+      
+      // Display the loaded message.
+      showActionMessage("loaded");
+      
+      // Hide the modal.
+      modal.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+  modal.style.opacity   = '0';
+  modal.style.transform = 'translate(-50%, -40%)';
+  modal.addEventListener('transitionend', function handler() {
+    modal.style.display = 'none';
+    modal.removeEventListener('transitionend', handler);
+  }, { once: true });
+    } catch (e) {
+      alert("Error in custom effect code: " + e);
+    }
+  });
+  
+  document.getElementById('creatorCancelButton').addEventListener('click', function(){
+    const modal = document.getElementById('creatorModal');
+  if (!modal) return;
+  // remove the class to trigger your fade/slide‐out
+  modal.classList.remove('show');
+  modal.addEventListener('transitionend', function handler() {
+    modal.style.display = 'none';
+    modal.removeEventListener('transitionend', handler);
+  }, { once: true });
+});
+}
+
+// Listen for the "c" key to trigger creator mode.
+document.body.addEventListener('keydown', function(event) {
+  if (event.key === 'c') {
+    event.preventDefault();
+    toggleCreatorMode();
+  }
+});
+function loadCurrentUserSong() {
+  return new Promise((resolve) => {
+    if (!userPlaylist[currentUserSongIndex]) {
+      console.error('No user song at current index');
+      resolve();
+      return;
+    }
+    let currentSong = userPlaylist[currentUserSongIndex];
+    const newAudio = new Audio();
+    newAudio.src = currentSong.src;
+    newAudio.load();
+    selectedFileName = currentSong.title;
+    newAudio.onloadedmetadata = () => {
+      ensureAudioContextResumed().then(() => {
+        if (audioSrc) {
+          audioSrc.disconnect();
+          audioSrc = null;
+        }
+        audioSrc = audioContext.createMediaElementSource(newAudio);
+        const gainNode = audioContext.createGain();
+        gainNode.gain.value = 2.0;
+        audioSrc.connect(gainNode);
+        gainNode.connect(analyser);
+        analyser.connect(audioContext.destination);
+        audioElement.pause();
+        audioElement = newAudio;
+        resolve();
+      });
+    };
+  });
+}
+
+function playNextUserSong() {
+  if (userPlaylist.length < 2) return;
+  currentUserSongIndex = (currentUserSongIndex + 1) % userPlaylist.length;
+  loadCurrentUserSong().then(() => {
+    if (isPlaying) {
+      audioElement.play();
+    }
+  });
+}
+
+function playPreviousUserSong() {
+  if (userPlaylist.length < 2) return;
+  currentUserSongIndex = (currentUserSongIndex - 1 + userPlaylist.length) % userPlaylist.length;
+  loadCurrentUserSong().then(() => {
+    if (isPlaying) {
+      audioElement.play();
+    }
+  });
+}
+    // --- Touch control variables ---
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+    let tapCount = 0;
+    let tapTimer = null;
+    let longPressTimer = null;
+    
+    // Configurable thresholds (in ms and pixels)
+    const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
+    const tapMaxDuration = 200;      // Max duration (ms) for a tap
+    const tapDelay = 300;            // Time window (ms) to wait for additional taps
+    const swipeThreshold = 50;       // Minimum movement (pixels) to be considered a swipe
+    
+    // Initialize touch event listeners (call this after the DOM loads)
+    function initTouchControls() {
+      // Attach events to the document's body
+      const target = document.body;
+      target.addEventListener('touchstart', onTouchStart, { passive: false });
+      target.addEventListener('touchmove', onTouchMove, { passive: false });
+      target.addEventListener('touchend', onTouchEnd, { passive: false });
+      target.addEventListener('touchcancel', onTouchCancel, { passive: false });
+    }
+    
+    function onTouchStart(e) {
+      // Only consider single-finger touches
+      if (e.touches.length > 1) return;
+      e.preventDefault();
+      touchStartTime = Date.now();
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      // Start long press timer
+      longPressTimer = setTimeout(() => {
+        // Long press detected – show the help menu
+        toggleHelpOverlay();
+      }, longPressThreshold);
+    }
+    
+    function onTouchMove(e) {
+      e.preventDefault();
+      // Any movement cancels the long press timer
+      clearTimeout(longPressTimer);
+    }
+    
+    function onTouchEnd(e) {
+      e.preventDefault();
+      clearTimeout(longPressTimer);
+      const touchEndTime = Date.now();
+      let touchEndX = 0, touchEndY = 0;
+      if (e.changedTouches.length > 0) {
+        touchEndX = e.changedTouches[0].clientX;
+        touchEndY = e.changedTouches[0].clientY;
+      }
+      const dt = touchEndTime - touchStartTime;
+      const dx = touchEndX - touchStartX;
+      const dy = touchEndY - touchStartY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // When in fileSelect mode on mobile, trigger the file input only once.
+      if (currentMode === 'fileSelect' && /Mobi|Android/i.test(navigator.userAgent)) {
+        if (!fileSelectTriggered) {
+          let fileInput = document.getElementById('fileInput');
+          if (fileInput) {
+            fileInput.click();
+            fileSelectTriggered = true;
+            return; // Only return on the first tap to trigger file selection.
+            }
+          }
+          // If fileSelectTriggered is true, do not return so that gestures can be processed.
+      }        
+      
+      // (Existing swipe and tap logic follows here.)
+      if (distance >= swipeThreshold) {
+        if (Math.abs(dx) > Math.abs(dy)) {
+          if (dx > 0) {
+            currentStyleIndex = (currentStyleIndex + 1) % visualElements.length;
+          } else {
+            currentStyleIndex = (currentStyleIndex - 1 + visualElements.length) % visualElements.length;
+          }
+          updateVisibility();
+        } else {
+          if (dy < 0) {
+            currentModeIndex = (currentModeIndex + 1) % modes.length;
+            switchMode(modes[currentModeIndex]);
+          } else {
+            currentModeIndex = (currentModeIndex - 1 + modes.length) % modes.length;
+            switchMode(modes[currentModeIndex]);
+          }
+        }
+        tapCount = 0;
+        clearTimeout(tapTimer);
+      } else {
+        if (dt < tapMaxDuration) {
+          tapCount++;
+          if (tapTimer) clearTimeout(tapTimer);
+          tapTimer = setTimeout(() => {
+            if (tapCount === 1) {
+              togglePlayPause();
+            } else if (tapCount === 2) {
+              intensityLevel = (intensityLevel % 9) + 1;
+              adjustVisualEffectsIntensity();
+            } else if (tapCount === 3) {
+              playNextSongInPlaylist();
+            }
+            tapCount = 0;
+          }, tapDelay);
+        }
+      }
+    }
+    
+    function onTouchCancel(e) {
+      clearTimeout(longPressTimer);
+      clearTimeout(tapTimer);
+      tapCount = 0;
+    }
+    
+    // Call initTouchControls() once the DOM is ready
+    document.addEventListener('DOMContentLoaded', initTouchControls);
+    
+    init();
+  </script>
+</body>
+</html>
