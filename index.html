@@ -1560,7 +1560,7 @@ function createWaves() {
       }
     `,
     // Fragment Shader: Draws multiple translucent ribbons (the base ribbons)
-    // plus three additional front ripple layers with improved, complex movement.
+    // with controlled audio reactivity and frequency separation
     fragmentShader: `
       precision mediump float;
       
@@ -1568,10 +1568,14 @@ function createWaves() {
       uniform float bass;
       uniform float mid;
       uniform float treble;
+      uniform float audioSeg1; // Deep bass
+      uniform float audioSeg2; // Upper bass
+      uniform float audioSeg3; // Lower mid
+      uniform float audioSeg4; // Upper mid
+      uniform float audioSeg5; // Lower treble
+      uniform float audioSeg6; // High treble
       uniform float effectIntensity;
       uniform float lineThickness;
-      // uniform vec2 resolution; -- removed
-      // Add camera aspect uniform
       uniform vec2 resolution;
       uniform float cameraAspect;
       // Add uniforms for visual mode
@@ -1597,91 +1601,167 @@ function createWaves() {
         vec2 st = vUv;
         st.x *= cameraAspect;
 
-        float waveTime = time * (1.0 + mid * 2.0);
-        // Increase thickness reactivity slightly
-        float thickness = lineThickness * (3.0 + bass * 12.0);
+        // Individual timing for each band - no shared timing
+        float time1 = time * (0.8 + audioSeg1 * 1.5); // Deep bass timing
+        float time2 = time * (1.0 + audioSeg2 * 1.8); // Upper bass timing  
+        float time3 = time * (1.2 + audioSeg3 * 2.0); // Lower mid timing
+        float time4 = time * (1.4 + audioSeg4 * 1.6); // Upper mid timing
+        float time5 = time * (1.6 + audioSeg5 * 2.2); // Lower treble timing
+        float time6 = time * (1.8 + audioSeg6 * 2.5); // High treble timing
+        
+        // Individual thickness for each band - optimized for clarity
+        float baseThickness = lineThickness * 3.5; // Slightly increased to compensate for reduced multipliers
         
         vec3 accColor = vec3(0.0);
         float accAlpha = 0.0;
         
-        // --- Base Ribbons Calculation (regardless of visual mode) ---
-        // RIBBON 1: Pink -> Purple
+        // --- Base Ribbons Calculation with frequency separation ---
+        // RIBBON 1: Pink -> Purple (DEEP BASS - Individual Heavy Bouncing)
         {
-          float centerY = 0.45 + 0.08 * sin((st.x * 3.0) + waveTime * 1.1);
-          centerY += bass * 0.1 * sin(st.x * 10.0 + waveTime * 1.5);
+          // Completely independent deep bass movements with own timing
+          float bassThump = smoothstep(0.0, 0.8, audioSeg1 * 1.2); // More sensitive threshold
+          float slowBounce = sin(time1 * 0.6) * bassThump * 0.18; // Slow, heavy bounce with own timing
+          float rapidShake = sin(time1 * 7.0 + st.x * 4.0) * bassThump * 0.04; // Quick shake unique to this band
+          float bassWobble = cos(time1 * 0.4 + st.x * 1.5) * bassThump * 0.06; // Wobble motion
           
-          float alpha = ribbonAlpha(st.y, centerY, thickness);
+          // Independent base wave pattern for this band only
+          float centerY = 0.45 + 0.06 * sin((st.x * 2.5 + time1 * 0.9)); // Unique wave pattern
+          centerY += slowBounce + rapidShake + bassWobble; // Individual bass movements
+          centerY += audioSeg1 * 0.12 * sin(st.x * 5.0 + time1 * 1.1); // Only responds to seg1
+          
+          // Individual thickness controlled only by audioSeg1 - FURTHER REDUCED for no blur
+          float thickness1 = baseThickness * (1.0 + audioSeg1 * 1.5); // Reduced from 3.0 to 1.5
+          float alpha = ribbonAlpha(st.y, centerY, thickness1);
           vec3 c1 = vec3(1.0, 0.2, 0.8);  // neon pink
           vec3 c2 = vec3(0.6, 0.0, 0.8);  // purple
-          float mixF = 0.5 + 0.5 * sin(waveTime + treble * 3.0);
+          float mixF = 0.5 + 0.5 * sin(time1 * 0.8 + audioSeg1 * 3.0); // Individual color mixing
           vec3 ribbonColor = blendColors(c1, c2, mixF);
           
           accColor += ribbonColor * alpha;
           accAlpha = max(accAlpha, alpha);
         }
         
-        // RIBBON 2: Purple -> Blue
+        // RIBBON 2: Purple -> Blue (UPPER BASS - Individual Pumping)
         {
-          float centerY = 0.5 + 0.08 * sin((st.x * 2.0) + waveTime * 1.2);
-          centerY += mid * 0.1 * sin(st.x * 12.0 + waveTime * 0.7);
+          // Completely independent upper bass with own timing
+          float bassPump = smoothstep(0.0, 0.7, audioSeg2 * 1.3); // More sensitive threshold
+          float pumpMotion = sin(time2 * 1.8) * bassPump * 0.14; // Individual pumping timing
+          float lateralShift = cos(time2 * 1.3 + st.x * 3.0) * bassPump * 0.07; // Unique lateral motion
+          float pumpPulse = sin(time2 * 2.5) * bassPump * 0.05; // Additional pulse motion
           
-          float alpha = ribbonAlpha(st.y, centerY, thickness * 0.8);
+          // Independent base wave pattern
+          float centerY = 0.5 + 0.07 * sin((st.x * 3.5 + time2 * 1.1)); // Unique wave frequency
+          centerY += pumpMotion + lateralShift + pumpPulse; // Individual movements
+          centerY += audioSeg2 * 0.10 * sin(st.x * 7.0 + time2 * 1.4); // Only responds to seg2
+          
+          // Individual thickness controlled only by audioSeg2 - FURTHER REDUCED for no blur
+          float thickness2 = baseThickness * 0.8 * (1.0 + audioSeg2 * 1.2); // Reduced from 2.5 to 1.2
+          float alpha = ribbonAlpha(st.y, centerY, thickness2);
           vec3 c1 = vec3(0.6, 0.0, 0.8);  // purple
           vec3 c2 = vec3(0.0, 0.7, 1.0);  // cyan/blue
-          float mixF = 0.5 + 0.5 * cos(waveTime * 0.9 + bass * 2.0);
+          float mixF = 0.5 + 0.5 * cos(time2 * 1.0 + audioSeg2 * 2.8); // Individual color mixing
           vec3 ribbonColor = blendColors(c1, c2, mixF);
           
           accColor += ribbonColor * alpha;
           accAlpha = max(accAlpha, alpha);
         }
         
-        // RIBBON 3: Pink -> Cyan
+        // RIBBON 3: Pink -> Cyan (LOWER MID - Individual Flowing)
         {
-          float centerY = 0.55 + 0.1 * sin((st.x * 4.0) - waveTime * 1.5);
-          centerY += treble * 0.1 * sin(st.x * 15.0 + waveTime * 2.0);
+          // Completely independent lower mid with own timing
+          float midFlow = smoothstep(0.0, 0.6, audioSeg3 * 1.4); // More sensitive threshold
+          float flowingWave = sin(st.x * 4.0 - time3 * 2.2) * midFlow * 0.12; // Individual flowing timing
+          float verticalFlow = cos(time3 * 1.6 + st.x * 1.8) * midFlow * 0.09; // Unique vertical flow
+          float ripple = sin(st.x * 14.0 + time3 * 2.8) * midFlow * 0.04; // Individual ripples
+          float midSway = cos(time3 * 0.9) * midFlow * 0.06; // Additional sway motion
           
-          float alpha = ribbonAlpha(st.y, centerY, thickness * 0.7);
+          // Independent base wave pattern
+          float centerY = 0.55 + 0.08 * sin((st.x * 4.5 - time3 * 1.3)); // Unique wave frequency
+          centerY += flowingWave + verticalFlow + ripple + midSway; // Individual movements
+          centerY += audioSeg3 * 0.08 * sin(st.x * 9.0 + time3 * 1.7); // Only responds to seg3
+          
+          // Individual thickness controlled only by audioSeg3 - FURTHER REDUCED for no blur
+          float thickness3 = baseThickness * 0.7 * (1.0 + audioSeg3 * 1.1); // Reduced from 2.2 to 1.1
+          float alpha = ribbonAlpha(st.y, centerY, thickness3);
           vec3 c1 = vec3(1.0, 0.2, 0.8);  // pink
           vec3 c2 = vec3(0.0, 1.0, 1.0);  // neon cyan
-          float mixF = 0.5 + 0.5 * sin(waveTime * 1.4 + mid * 3.0);
+          float mixF = 0.5 + 0.5 * sin(time3 * 1.2 + audioSeg3 * 3.1); // Individual color mixing
           vec3 ribbonColor = blendColors(c1, c2, mixF);
           
           accColor += ribbonColor * alpha;
           accAlpha = max(accAlpha, alpha);
         }
         
-        // RIBBON 4: Blue->Green
+        // RIBBON 4: Blue->Green (UPPER MID - Individual Swaying)
         {
-          float centerY = 0.4 + 0.08 * cos(st.x * 5.0 + waveTime * 1.7);
-          centerY += bass * 0.12 * sin(st.x * 8.0 + waveTime * 2.2);
-          float alpha2 = ribbonAlpha(st.y, centerY, thickness * 0.6);
+          // Completely independent upper mid with own timing
+          float midSway = smoothstep(0.0, 0.65, audioSeg4 * 1.3); // More sensitive threshold
+          float slowSway = sin(time4 * 0.8 + st.x * 2.0) * midSway * 0.11; // Individual swaying timing
+          float breathe = cos(time4 * 0.6) * midSway * 0.07; // Unique breathing motion
+          float gentleRipple = sin(st.x * 9.0 + time4 * 2.6) * midSway * 0.03; // Individual ripples
+          float midWave = sin(time4 * 1.1 + st.x * 2.5) * midSway * 0.05; // Additional wave motion
+          
+          // Independent base wave pattern
+          float centerY = 0.4 + 0.07 * cos(st.x * 5.5 + time4 * 1.5); // Unique wave frequency
+          centerY += slowSway + breathe + gentleRipple + midWave; // Individual movements
+          centerY += audioSeg4 * 0.09 * sin(st.x * 7.5 + time4 * 1.9); // Only responds to seg4
+          
+          // Individual thickness controlled only by audioSeg4 - FURTHER REDUCED for no blur
+          float thickness4 = baseThickness * 0.6 * (1.0 + audioSeg4 * 1.0); // Reduced from 2.0 to 1.0
+          float alpha2 = ribbonAlpha(st.y, centerY, thickness4);
           vec3 c3 = vec3(0.0, 0.7, 1.0);
           vec3 c4 = vec3(0.0, 1.0, 0.5);
-          float mixF2 = 0.5 + 0.5 * sin(waveTime * 1.3 + treble * 2.0);
+          float mixF2 = 0.5 + 0.5 * sin(time4 * 1.1 + audioSeg4 * 2.7); // Individual color mixing
           vec3 ribbonColor4 = blendColors(c3, c4, mixF2);
           accColor += ribbonColor4 * alpha2;
           accAlpha = max(accAlpha, alpha2);
         }
         
-        // RIBBON 5: Yellow->Orange (extra layer)
+        // RIBBON 5: Yellow->Orange (LOWER TREBLE - Individual Jitters with Strong Bending)
         {
-          float centerY = 0.35 + 0.09 * sin(st.x * 6.0 + waveTime * 2.1);
-          centerY += bass * 0.08 * cos(st.x * 10.0 + waveTime * 1.8); // Added cos term
-          float alpha5 = ribbonAlpha(st.y, centerY, thickness * 0.5);
+          // Completely independent lower treble with own timing and STRONGER movements
+          float trebleJitter = smoothstep(0.0, 0.7, audioSeg5 * 1.5); // More sensitive threshold
+          float quickJitter = sin(time5 * 5.5 + st.x * 10.0) * trebleJitter * 0.11; // INCREASED from 0.07 to 0.11
+          float sharpPulse = sin(time5 * 4.2) * trebleJitter * 0.08; // INCREASED from 0.05 to 0.08
+          float microVibration = sin(time5 * 11.0 + st.x * 18.0) * trebleJitter * 0.05; // INCREASED from 0.025 to 0.05
+          float trebleFlutter = cos(time5 * 6.8 + st.x * 12.0) * trebleJitter * 0.06; // INCREASED from 0.03 to 0.06
+          float trebleWave = sin(time5 * 2.8 + st.x * 6.0) * trebleJitter * 0.09; // NEW wave motion
+          
+          // Independent base wave pattern with LARGER amplitude
+          float centerY = 0.35 + 0.08 * sin(st.x * 7.0 + time5 * 2.0); // INCREASED from 0.06 to 0.08
+          centerY += quickJitter + sharpPulse + microVibration + trebleFlutter + trebleWave; // Added trebleWave
+          centerY += audioSeg5 * 0.10 * cos(st.x * 13.0 + time5 * 2.3); // INCREASED from 0.07 to 0.10
+          
+          // Individual thickness controlled only by audioSeg5 - FURTHER REDUCED for no blur
+          float thickness5 = baseThickness * 0.5 * (1.0 + audioSeg5 * 0.9); // Reduced from 1.8 to 0.9
+          float alpha5 = ribbonAlpha(st.y, centerY, thickness5);
           vec3 c5 = vec3(1.0, 0.8, 0.2);
           vec3 c6 = vec3(1.0, 0.4, 0.0);
-          float mixF5 = 0.5 + 0.5 * cos(waveTime * 1.3 + bass * 2.0);
+          float mixF5 = 0.5 + 0.5 * cos(time5 * 1.4 + audioSeg5 * 3.5); // Individual color mixing
           accColor += blendColors(c5, c6, mixF5) * alpha5;
           accAlpha = max(accAlpha, alpha5);
         }
-        // RIBBON 6: Green->Pink (extra layer)
+        // RIBBON 6: Green->Pink (HIGH TREBLE - Individual Sparkles with Strong Bending)
         {
-          float centerY = 0.58 + 0.09 * cos(st.x * 4.0 + waveTime * 2.3);
-          centerY += mid * 0.08 * sin(st.x * 7.0 + waveTime * 2.0); // Added sin term
-          float alpha6 = ribbonAlpha(st.y, centerY, thickness * 0.4);
+          // Completely independent high treble with own timing and STRONGER movements
+          float trebleSpark = smoothstep(0.0, 0.75, audioSeg6 * 1.8); // More sensitive threshold
+          float sparkleVibe = sin(time6 * 9.0 + st.x * 22.0) * trebleSpark * 0.12; // INCREASED from 0.05 to 0.12
+          float electricPulse = cos(time6 * 7.5) * trebleSpark * 0.09; // INCREASED from 0.04 to 0.09
+          float highFreqShake = sin(time6 * 14.0 + st.x * 28.0) * trebleSpark * 0.06; // INCREASED from 0.02 to 0.06
+          float sparkleShimmer = cos(time6 * 12.0 + st.x * 35.0) * trebleSpark * 0.04; // INCREASED from 0.015 to 0.04
+          float trebleBend = sin(time6 * 3.0 + st.x * 8.0) * trebleSpark * 0.08; // NEW bending motion
+          
+          // Independent base wave pattern with LARGER amplitude
+          float centerY = 0.58 + 0.08 * cos(st.x * 6.0 + time6 * 2.1); // INCREASED from 0.05 to 0.08
+          centerY += sparkleVibe + electricPulse + highFreqShake + sparkleShimmer + trebleBend; // Added trebleBend
+          centerY += audioSeg6 * 0.12 * sin(st.x * 20.0 + time6 * 2.8); // INCREASED from 0.06 to 0.12
+          
+          // Individual thickness controlled only by audioSeg6 - FURTHER REDUCED for no blur
+          float thickness6 = baseThickness * 0.4 * (1.0 + audioSeg6 * 0.8); // Reduced from 1.5 to 0.8
+          float alpha6 = ribbonAlpha(st.y, centerY, thickness6);
           vec3 c7 = vec3(0.0, 1.0, 0.5);
           vec3 c8 = vec3(1.0, 0.2, 0.6);
-          float mixF6 = 0.5 + 0.5 * sin(waveTime * 1.5 + mid * 2.2);
+          float mixF6 = 0.5 + 0.5 * sin(time6 * 1.6 + audioSeg6 * 4.0); // Individual color mixing
           accColor += blendColors(c7, c8, mixF6) * alpha6;
           accAlpha = max(accAlpha, alpha6);
         }
@@ -1717,8 +1797,14 @@ function createWaves() {
              gl_FragColor = vec4(finalColor, waveAlpha > 0.0 ? 1.0 : 0.0);
            }
         } else {
-           // Visual Mode OFF: Render waves normally
-           gl_FragColor = vec4(accColor, clamp(accAlpha * 0.85, 0.0, 1.0));
+           // Visual Mode OFF: Render waves normally with color protection
+           // Prevent oversaturation by normalizing if colors get too bright
+           float colorIntensity = length(accColor);
+           if (colorIntensity > 1.5) {
+             accColor = normalize(accColor) * 1.5; // Cap color intensity
+           }
+           
+           gl_FragColor = vec4(accColor, clamp(accAlpha * 0.85, 0.0, 1.0)); // Back to original alpha values
         }
       }
     `,
@@ -2192,7 +2278,7 @@ function createTrippyColors() {
 function createPortal() {
   // Create properly sized fullscreen geometry
   const aspect = window.innerWidth / window.innerHeight;
-  const baseHeight = 1000;  // Reduced size to prevent clipping
+  const baseHeight = 1000;
   const baseWidth = baseHeight * aspect;
 
   const geometry = new THREE.PlaneGeometry(baseWidth, baseHeight, 1, 1);
@@ -2204,15 +2290,13 @@ function createPortal() {
     uniforms: {
       time: { value: 0.0 },
       resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-      // Core portal parameters:
-      travelOffset: { value: 0.0 },      // drives inward travel
-      spinSpeed: { value: 0.35 },        // single-direction spin (lower for slower animation)
-      warpStrength: { value: 0.8 },      // extra fractal warping
-      colorCycle: { value: 0.0 },        // continuous hue shift
-      unpredictability: { value: 0.5 },   // scales extra fractal noise
-      audioReactive: { value: 0.0 },      // audio reactivity influence
-      phaseShift: { value: 0.0 },         // for abrupt color/hue jumps
-      kaleidoSegments: { value: 6.0 },    // number of mirrored segments (kaleidoscope effect)
+      // Core eternal zoom parameters:
+      zoomSpeed: { value: 1.5 },         // Speed of eternal zoom
+      tunnelDepth: { value: 8.0 },       // Depth of tunnel layers
+      ringSpacing: { value: 0.15 },      // Spacing between tunnel rings
+      rotationSpeed: { value: 0.3 },     // Rotation speed
+      audioReactive: { value: 0.0 },     // Audio reactivity influence
+      colorShift: { value: 0.0 },        // Color cycling
       // --- Visual Mode Uniforms ---
       cameraTexture: { value: null },
       visualMode:    { value: 0.0 },
@@ -2230,25 +2314,24 @@ function createPortal() {
       
       uniform float time;
       uniform vec2 resolution;
-      uniform float travelOffset;
-      uniform float spinSpeed;
-      uniform float warpStrength;
-      uniform float colorCycle;
-      uniform float unpredictability;
+      uniform float zoomSpeed;
+      uniform float tunnelDepth;
+      uniform float ringSpacing;
+      uniform float rotationSpeed;
       uniform float audioReactive;
-      uniform float phaseShift;
-      uniform float kaleidoSegments;
-      // Visual Mode Uniforms
+      uniform float colorShift;
+      
+      // --- Visual Mode Uniforms ---
+      uniform sampler2D cameraTexture;
       uniform float visualMode;
       uniform float cameraActive;
-      uniform sampler2D cameraTexture;
       
       varying vec2 vUv;
       
-      // --- Noise functions ---
       float hash(vec2 p) {
         return fract(sin(dot(p, vec2(63.7264,78.233))) * 43758.5453123);
       }
+      
       float noise(vec2 p) {
         vec2 i = floor(p);
         vec2 f = fract(p);
@@ -2259,158 +2342,180 @@ function createPortal() {
         vec2 u = f * f * (3.0 - 2.0 * f);
         return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
       }
-      float fbm(vec2 p) {
+      
+      // Fractal noise for DMT-like patterns
+      float fractalNoise(vec2 p) {
         float total = 0.0;
-        float amp = 0.5;
-        for (int i = 0; i < 5; i++){
-          total += amp * noise(p);
+        float amplitude = 0.5;
+        for (int i = 0; i < 6; i++) {
+          total += amplitude * noise(p);
           p *= 2.0;
-          amp *= 0.5;
+          amplitude *= 0.5;
         }
         return total;
       }
       
-
-      
-      // --- Enhanced Mandala Kaleidoscope Transform with Trippy Texture Movement ---
-      vec2 mandalaTransform(vec2 uv, float processedLuminance) {
-        vec2 centered = uv - 0.5;
-        float r = length(centered);
-        float theta = atan(centered.y, centered.x);
+      // Kaleidoscope symmetry function
+      vec2 kaleidoscope(vec2 uv, float segments) {
+        float angle = atan(uv.y, uv.x);
+        float radius = length(uv);
         
-        // Create proper inward tunneling effect - always moving forward (fewer rings)
-        float tunnelDepth = 1.0 / (r + 0.1) + travelOffset;
-        float depthLayer = fract(tunnelDepth * 0.3); // Much fewer rings
-        
-        // Consistent spinning - just like initial animation
-        theta += time * spinSpeed;
-        
-        // Enhanced mandala pattern with more complexity
-        float mandalaPattern = 0.0;
-        for (int i = 1; i <= 12; i++) {
-          float freq = float(i);
-          float amp = 1.0 / freq;
-          mandalaPattern += amp * sin(freq * theta + time * 0.3 + float(i) * 0.5);
-        }
-        
-        // Trippy texture movement - simplified layers with trippy shapes
-        float audioBoost = 1.0 + audioReactive * 0.3; // Audio boosts texture movement speed
-        
-        // Core fractal layers (reduced from 6 to 3)
-        float fractalDetail = fbm(vec2(theta * 3.0, depthLayer * 5.0 + time * 0.4 * audioBoost));
-        fractalDetail += fbm(vec2(theta * 6.0, depthLayer * 8.0 + time * 0.6 * audioBoost)) * 0.5;
-        fractalDetail += fbm(vec2(theta * 12.0, depthLayer * 12.0 + time * 0.2 * audioBoost)) * 0.25;
-        
-        // Trippy geometric shapes blended into texture
-        float spiral = sin(r * 8.0 + theta * 6.0 + time * 1.5 * audioBoost) * 0.3;
-        float hexagon = cos(theta * 6.0 + time * 0.8 * audioBoost) * sin(r * 4.0 + time * 0.9 * audioBoost) * 0.2;
-        float waves = sin(theta * 8.0 + time * 1.2 * audioBoost) * cos(r * 6.0 + time * 0.7 * audioBoost) * 0.25;
-        
-        // Combine fractal base with trippy shapes
-        float combinedTexture = (fractalDetail + spiral + hexagon + waves) * 0.25;
-        
-        // Audio-reactive warp with texture movement
-        float audioWarp = warpStrength * (1.0 + audioReactive) * combinedTexture;
-        theta += audioWarp * 0.3;
-        
-        // Simplified breathing effect - always positive, audio makes it more intense
-        float breathingEffect = (sin(time * 1.5 * audioBoost + depthLayer * 4.0) * 0.5 + 0.5) * 0.05;
-        r += breathingEffect * unpredictability * (1.0 + audioReactive * 0.3);
-        
-        // Simplified radial depth variation - always forward motion
-        float radialDepth = depthLayer + (sin(theta * 6.0 + time * 0.8 * audioBoost) * 0.5 + 0.5) * 0.1 * unpredictability;
-        
-        // Simplified swirling - consistent rotation direction with audio intensity
-        float swirl = sin(theta * 8.0 + time * 1.5 * audioBoost) * 0.02 * (1.0 + audioReactive * 0.2);
-        theta += swirl * unpredictability;
-        
-        return vec2(theta, radialDepth);
-      }
-      
-      // --- Mandala Kaleidoscope Symmetry ---
-      vec2 mandalaSymmetry(vec2 polar, float segments) {
-        float angle = polar.x;
-        float radius = polar.y;
-        
-        // Create perfect mandala symmetry
+        // Create kaleidoscope effect
         float sliceAngle = 6.28318 / segments;
-        float halfSlice = sliceAngle * 0.5;
+        float segmentIndex = floor(angle / sliceAngle);
+        float localAngle = angle - segmentIndex * sliceAngle;
         
-        // Normalize angle to 0-2π
-        angle = mod(angle + 3.14159, 6.28318);
-        
-        // Find position within slice
-        float segmentPos = mod(angle, sliceAngle);
-        
-        // Create mirror symmetry within each slice
-        if (segmentPos > halfSlice) {
-          segmentPos = sliceAngle - segmentPos;
+        // Mirror alternate segments
+        if (mod(segmentIndex, 2.0) > 0.5) {
+          localAngle = sliceAngle - localAngle;
         }
         
-        // Normalize to 0-1 range for seamless tiling
-        float normalizedAngle = segmentPos / halfSlice;
-        
-        return vec2(normalizedAngle, radius);
+        return vec2(cos(localAngle) * radius, sin(localAngle) * radius);
       }
       
-
-      
-      // --- Enhanced Mandala Color Patterns with Dynamic Color Shifting ---
-      vec3 mandalaColor(vec2 uv, float shift, float depth) {
-        float angle = uv.x * 6.28318;
-        float radius = uv.y;
+      vec3 eternalZoom(vec2 uv) {
+        // Center the coordinates
+        vec2 centered = uv - 0.5;
         
-        // Enhanced radial and angular bands with more variation
-        float radialBands = sin(radius * 15.0 + shift) * 0.5 + 0.5;
-        float angularBands = sin(angle * 8.0 + shift * 0.5) * 0.5 + 0.5;
+        // Convert to polar coordinates for tunnel effect
+        float radius = length(centered);
+        float angle = atan(centered.y, centered.x);
         
-        // More complex mandala patterns for trippy movement
-        float pattern1 = sin(angle * 6.0 + radius * 10.0 + shift);
-        float pattern2 = sin(angle * 12.0 - radius * 8.0 + shift * 1.5);
-        float pattern3 = sin(angle * 18.0 + radius * 6.0 + shift * 2.0);
-        float pattern4 = sin(angle * 24.0 + radius * 4.0 + shift * 0.8); // New pattern
+        // ENHANCED ZOOM SPEED - Much more audio reactive
+        float audioZoomBoost = 1.0 + audioReactive * 3.0; // 3x speed boost with audio
+        float depth = 1.0 / (radius + 0.01) + time * zoomSpeed * audioZoomBoost;
         
-        // Dynamic color shifting based on time and audio
-        float colorShift = shift * 0.3;
-        float hueShift = mod(colorShift, 6.28318);
+        // Create repeating tunnel rings
+        float ringPattern = fract(depth * ringSpacing);
         
-        // Create 5 different color schemes that cycle
-        vec3 colors[5];
-        // Scheme 1: Classic psychedelic
-        colors[0] = vec3(1.0, 0.2, 0.8);     // Magenta
-        colors[1] = vec3(0.2, 1.0, 0.8);     // Cyan
-        colors[2] = vec3(1.0, 0.8, 0.2);     // Gold
-        colors[3] = vec3(0.8, 0.2, 1.0);     // Purple
-        colors[4] = vec3(0.2, 0.8, 0.2);     // Green
+        // Add rotation to the tunnel with audio reactivity
+        angle += time * rotationSpeed * (1.0 + audioReactive * 0.5) + depth * 0.1;
         
-        // Determine which color scheme to use based on shift
-        int schemeIndex = int(mod(hueShift, 5.0));
-        vec3 baseColor = colors[schemeIndex];
+        // DMT-INSPIRED KALEIDOSCOPE PATTERNS
+        vec2 kaleidoCoords = kaleidoscope(centered, 8.0 + audioReactive * 8.0);
+        float kaleidoPattern = fractalNoise(kaleidoCoords * 10.0 + time * 0.5);
         
-        // Create complementary colors for blending
-        vec3 compColor1 = vec3(1.0 - baseColor.r, baseColor.g, 1.0 - baseColor.b);
-        vec3 compColor2 = vec3(baseColor.b, 1.0 - baseColor.g, baseColor.r);
+        // ACID-INSPIRED FRACTAL LAYERS
+        float fractalLayer1 = fractalNoise(vec2(angle * 4.0, depth * 6.0) + time * 0.3);
+        float fractalLayer2 = fractalNoise(vec2(angle * 8.0, depth * 3.0) + time * 0.6);
+        float fractalLayer3 = fractalNoise(vec2(angle * 16.0, depth * 2.0) + time * 0.9);
         
-        // Blend colors based on radius and patterns
-        vec3 color = mix(baseColor, compColor1, radius);
-        color = mix(color, compColor2, radialBands);
-        color = mix(color, baseColor * 1.2, angularBands);
+        // Combine fractal layers
+        float fractalCombined = (fractalLayer1 + fractalLayer2 * 0.5 + fractalLayer3 * 0.25) / 1.75;
         
-        // Add dynamic pattern-based color shifts
-        float patternMix = (pattern1 + pattern2 + pattern3 + pattern4) * 0.25;
-        vec3 patternColor = vec3(
-          0.5 + 0.5 * sin(shift + patternMix),
-          0.5 + 0.5 * sin(shift * 1.3 + patternMix),
-          0.5 + 0.5 * sin(shift * 0.7 + patternMix)
+        // Create geometric patterns for the tunnel walls
+        float tunnelPattern = 0.0;
+        
+        // Primary tunnel structure - create strong geometric segments
+        float segments = 8.0 + audioReactive * 8.0;
+        float segmentPattern = abs(sin(angle * segments)) * 0.7 + 0.3;
+        tunnelPattern += segmentPattern;
+        
+        // Secondary pattern - radial lines creating perspective
+        float radialLines = sin(angle * 16.0 + depth * 4.0) * 0.3 + 0.7;
+        tunnelPattern *= radialLines;
+        
+        // Tertiary pattern - depth rings for stronger tunnel effect
+        float depthRings = sin(depth * 12.0) * 0.4 + 0.6;
+        tunnelPattern *= depthRings;
+        
+        // CRYSTALLINE DMT PATTERNS
+        float crystalPattern = 0.0;
+        for (int i = 0; i < 12; i++) {
+          float crystalAngle = float(i) * 0.524 + time * rotationSpeed * 0.3; // 30 degrees
+          float crystalLine = abs(sin(angle - crystalAngle)) * 0.3 + 0.7;
+          crystalPattern += crystalLine;
+        }
+        tunnelPattern *= (crystalPattern * 0.2 + 0.8);
+        
+        // ORNATE DECORATIVE PATTERNS
+        float ornatePattern = 0.0;
+        ornatePattern += sin(angle * 24.0 + depth * 8.0 + time * 2.0) * 0.1;
+        ornatePattern += cos(angle * 36.0 - depth * 6.0 + time * 1.5) * 0.1;
+        ornatePattern += sin(angle * 48.0 + depth * 4.0 + time * 3.0) * 0.05;
+        tunnelPattern += ornatePattern;
+        
+        // TESSELLATED GEOMETRIC SHAPES
+        float tessellation = 0.0;
+        float tessRadius = mod(radius * 20.0 + time * 2.0, 1.0);
+        float tessAngle = mod(angle * 6.0, 1.0);
+        tessellation += smoothstep(0.3, 0.7, tessRadius) * smoothstep(0.3, 0.7, tessAngle);
+        tunnelPattern += tessellation * 0.3;
+        
+        // MORPHING GEOMETRIC MANDALAS
+        float mandalaPattern = 0.0;
+        for (int i = 1; i <= 8; i++) {
+          float freq = float(i) * 3.0;
+          float amp = 1.0 / float(i);
+          mandalaPattern += amp * sin(freq * angle + time * 0.5 + depth * 2.0);
+        }
+        tunnelPattern += mandalaPattern * 0.2;
+        
+        // Apply fractal and kaleidoscope effects
+        tunnelPattern *= (1.0 + fractalCombined * 0.5);
+        tunnelPattern *= (1.0 + kaleidoPattern * 0.3);
+        
+        // Audio-reactive tunnel distortion - MORE INTENSE
+        float audioDistortion = 1.0 + audioReactive * 0.8 * sin(angle * 12.0 + time * 6.0);
+        tunnelPattern *= audioDistortion;
+        
+        // Create depth-based brightness for tunnel effect
+        float tunnelBrightness = 1.0 - smoothstep(0.0, 0.8, radius);
+        tunnelBrightness *= (0.2 + ringPattern * 0.8);
+        
+        // Enhanced perspective effect
+        float perspective = pow(1.0 - radius, 1.5);
+        tunnelBrightness *= (0.5 + perspective * 0.5);
+        
+        // PSYCHEDELIC COLOR SYSTEM
+        float hue = colorShift + depth * 1.2 + angle * 0.2 + fractalCombined * 2.0;
+        
+        // Create vivid psychedelic colors
+        vec3 color1 = vec3(
+          0.5 + 0.5 * sin(hue),
+          0.5 + 0.5 * sin(hue + 2.094),  // 120 degrees
+          0.5 + 0.5 * sin(hue + 4.188)   // 240 degrees
         );
-        color = mix(color, patternColor, 0.4);
         
-        // Add depth-based variation with more intensity
-        color *= (0.7 + depth * 0.6);
+        vec3 color2 = vec3(
+          0.5 + 0.5 * sin(hue + 1.0 + kaleidoPattern),
+          0.5 + 0.5 * sin(hue + 3.094 + kaleidoPattern),
+          0.5 + 0.5 * sin(hue + 5.188 + kaleidoPattern)
+        );
         
-        // Add trippy color pulsing
-        float colorPulse = sin(shift * 2.0) * 0.1;
-        color += colorPulse;
+        vec3 color3 = vec3(
+          0.5 + 0.5 * sin(hue + 2.0 + fractalCombined * 2.0),
+          0.5 + 0.5 * sin(hue + 4.094 + fractalCombined * 2.0),
+          0.5 + 0.5 * sin(hue + 6.188 + fractalCombined * 2.0)
+        );
+        
+        // Blend colors based on tunnel pattern and fractals
+        vec3 color = mix(color1, color2, ringPattern);
+        color = mix(color, color3, fractalCombined * 0.5);
+        
+        // Apply tunnel pattern and brightness
+        color *= tunnelPattern * tunnelBrightness;
+        
+        // Add highlights at tunnel edges for better definition
+        float edgeHighlight = smoothstep(0.1, 0.3, ringPattern) * smoothstep(0.9, 0.7, ringPattern);
+        color += edgeHighlight * 0.6;
+        
+        // Add perspective glow effect - brighter center
+        float perspectiveGlow = pow(1.0 - radius, 3.0) * 0.4;
+        color += perspectiveGlow;
+        
+        // Add geometric detail overlay with fractals
+        float detailPattern = sin(angle * 24.0 + depth * 8.0) * sin(depth * 16.0) * 0.15;
+        detailPattern *= (1.0 + fractalCombined * 0.5);
+        color += detailPattern * (1.0 + audioReactive * 0.8);
+        
+        // Add DMT-style breathing effect
+        float breathingEffect = sin(time * 2.0 + radius * 8.0) * 0.1 * audioReactive;
+        color += breathingEffect;
+        
+        // Enhance saturation for more psychedelic effect
+        float saturation = 1.0 + audioReactive * 0.5;
+        color *= saturation;
         
         return clamp(color, 0.0, 1.0);
       }
@@ -2418,63 +2523,25 @@ function createPortal() {
       void main(){
         vec2 screenUV = gl_FragCoord.xy / resolution.xy;
         vec4 cameraColor = texture2D(cameraTexture, screenUV);
-        float cameraLuminance = dot(cameraColor.rgb, vec3(0.299, 0.587, 0.114));
-        // Sharpen the camera feed's contrast to create a better "edge detection" feel
-        float sharpenedLuminance = smoothstep(0.25, 0.75, cameraLuminance);
-
-        // Apply mandala transform for proper inward tunneling
-        vec2 polarCoords = mandalaTransform(vUv, sharpenedLuminance);
-        // Apply mandala symmetry for kaleidoscope effect
-        vec2 mandalaUV = mandalaSymmetry(polarCoords, kaleidoSegments);
         
-        float phase = time * 0.3 + colorCycle + phaseShift;
-        float depth = polarCoords.y;
+        // Create eternal zoom effect
+        vec3 zoomColor = eternalZoom(vUv);
         
-        // Create multiple mandala layers at different depths
-        vec3 layer1 = mandalaColor(mandalaUV, phase, depth);
-        vec3 layer2 = mandalaColor(mandalaUV * 1.5, phase + 2.0, depth * 0.8);
-        vec3 layer3 = mandalaColor(mandalaUV * 2.0, phase + 4.0, depth * 0.6);
-        
-        // Create depth-based blending for tunnel effect (much fewer rings)
-        float depthBlend1 = sin(depth * 2.0 + phase) * 0.5 + 0.5;
-        float depthBlend2 = sin(depth * 3.0 + phase * 1.5) * 0.5 + 0.5;
-        float depthBlend3 = sin(depth * 4.0 + phase * 2.0) * 0.5 + 0.5;
-        
-        // Blend layers for rich mandala appearance
-        vec3 combinedColor = mix(layer1, layer2, depthBlend1 * 0.7);
-        combinedColor = mix(combinedColor, layer3, depthBlend2 * 0.5);
-        
-        // Add geometric mandala details
-        float angle = mandalaUV.x * 6.28318;
-        float radius = mandalaUV.y;
-        
-        // Create mandala geometric patterns
-        float mandalaDetail1 = sin(angle * 8.0 + radius * 12.0 + phase);
-        float mandalaDetail2 = sin(angle * 16.0 - radius * 8.0 + phase * 1.3);
-        float mandalaDetail3 = sin(angle * 24.0 + radius * 6.0 + phase * 0.7);
-        
-        // Add details that respond to audio
-        float audioDetail = (mandalaDetail1 + mandalaDetail2 + mandalaDetail3) * 0.33;
-        combinedColor += audioDetail * 0.2 * (1.0 + audioReactive * 0.5);
-        
-        // Add depth-based brightness for tunnel effect
-        float tunnelBrightness = 1.0 - smoothstep(0.0, 1.0, radius);
-        combinedColor *= (0.6 + tunnelBrightness * 0.4);
-        
+        // Create vignette effect
         float vignette = smoothstep(0.85, 0.3, length(vUv - 0.5));
         
         // --- Visual Mode Logic ---
         if (cameraActive > 0.5) {
             if (abs(visualMode - 2.0) < 0.1) { // Style 2: Blend with camera
-                combinedColor = mix(combinedColor, cameraColor.rgb, 0.5);
+                zoomColor = mix(zoomColor, cameraColor.rgb, 0.5);
             }
             // Style 3 is handled by alpha
         }
         
-        combinedColor *= vignette;
+        zoomColor *= vignette;
         float finalAlpha = (abs(visualMode - 3.0) < 0.1 && cameraActive > 0.5) ? vignette : 1.0;
         
-        gl_FragColor = vec4(combinedColor, finalAlpha);
+        gl_FragColor = vec4(zoomColor, finalAlpha);
       }
     `,
     transparent: true,
@@ -2488,7 +2555,7 @@ function createPortal() {
   geometry.parentMesh = portal;
   portal.updateGeometry = function() {
     const aspect = window.innerWidth / window.innerHeight;
-    const baseHeight = 1000; // Match the reduced size
+    const baseHeight = 1000;
     const baseWidth = baseHeight * aspect;
     
     // Create new geometry
@@ -2991,9 +3058,9 @@ function createOceanEffect() {
           return total;
       }
       
-              void main() {
-            vec2 centeredUv = (vUv - 0.5) * vec2(resolution.x / resolution.y, 1.0);
-            
+      void main() {
+          vec2 centeredUv = (vUv - 0.5) * vec2(resolution.x / resolution.y, 1.0);
+          
             // BASS - Powerful wind that blows smoke across screen
             float windStrength = bassLevel * effectIntensity * 4.0;
             vec2 windDirection = vec2(sin(time * 0.3 + bassLevel * 8.0), sin(time * 0.2 + bassLevel * 3.0) * 0.3) * windStrength;
@@ -3078,7 +3145,7 @@ function createOceanEffect() {
           } else if (visualMode == 2.0) {
               // Smoke blends with camera
               vec3 blendedColor = mix(cameraColor.rgb, smokeColor, finalSmoke * 0.6);
-              gl_FragColor = vec4(blendedColor, 1.0);
+            gl_FragColor = vec4(blendedColor, 1.0);
           } else {
               gl_FragColor = vec4(smokeColor, finalSmoke);
           }
@@ -3194,27 +3261,28 @@ function createScribbleEffect() {
         for (float i = 0.0; i < loopCount; i += 1.0) {
           float pct = (i + 1.0) / loopCount;
 
-          // Audio-reactive spinning speed (toned down)
-          float audioSpeedMult = 1.0 + audioLevel * 1.5;
+          // Audio-reactive spinning speed (much more controlled)
+          float smoothedAudio = audioLevel * 0.5; // Dampen the audio input
+          float audioSpeedMult = 1.0 + smoothedAudio * 0.4; // Reduced from 1.5 to 0.4
           float angle = pct * 6.283185 * (2.0 + pct) + time * (4.0 + pct * 5.0) * audioSpeedMult;
 
-          // More reactive pulsing radius with audio bursts (controlled)
+          // Controlled pulsing radius with gentle audio response
           float basePulse = sin(time * (5.0 + pct * 10.0));
-          float audioPulse = sin(time * (15.0 + pct * 20.0)) * audioLevel * 0.8;
+          float audioPulse = sin(time * (10.0 + pct * 8.0)) * smoothedAudio * 0.3; // Much gentler
           float r = baseRadius 
                     + radiusVariation * (basePulse + audioPulse) 
-                    * (0.4 + audioLevel * 0.6);
+                    * (0.6 + smoothedAudio * 0.2); // Less dramatic changes
 
-          // Enhanced audio-reactive jitter (reduced)
-          float audioJitter = audioLevel * 0.3;
-          float jitter = noise(vec2(cos(angle), sin(angle)) * 5.0 + time * 3.0) * (0.1 + audioJitter);
+          // Subtle audio-reactive jitter (much reduced)
+          float audioJitter = smoothedAudio * 0.1; // Reduced from 0.3 to 0.1
+          float jitter = noise(vec2(cos(angle), sin(angle)) * 5.0 + time * 3.0) * (0.05 + audioJitter);
 
           // compute center of this loop
           vec2 center = vec2(cos(angle), sin(angle)) * r * effectIntensity;
 
-          // Audio-reactive ellipse shape with controlled changes
-          float audioShapeA = 1.0 + audioLevel * 0.4;
-          float audioShapeB = 1.0 + audioLevel * 0.3;
+          // Audio-reactive ellipse shape with subtle controlled changes
+          float audioShapeA = 1.0 + smoothedAudio * 0.15; // Reduced from 0.4 to 0.15
+          float audioShapeB = 1.0 + smoothedAudio * 0.1; // Reduced from 0.3 to 0.1
           float longA = r * effectIntensity * (1.0 + 0.3 * sin(time * 20.0 + pct * 6.0)) * audioShapeA;
           float shortA = r * effectIntensity * 0.3 * audioShapeB;
           vec2 dir = uv - center;
@@ -3230,9 +3298,9 @@ function createScribbleEffect() {
           float d = length(vec2(rotDir.x / longA, rotDir.y / shortA))
                     - (1.0 + jitter);
 
-          // Audio-reactive line thickness and glow (subtle)
-          float audioThickness = lineThickness * (1.0 + audioLevel * 0.25);
-          float audioGlow = glowIntensity * (1.0 + audioLevel * 0.5);
+          // Audio-reactive line thickness and glow (much more controlled)
+          float audioThickness = lineThickness * (1.0 + smoothedAudio * 0.1); // Reduced from 0.25 to 0.1
+          float audioGlow = glowIntensity * (1.0 + smoothedAudio * 0.2); // Reduced from 0.5 to 0.2
           float glow = smoothstep(audioThickness + audioGlow, audioThickness, abs(d));
 
           // per‑ring color
@@ -7435,7 +7503,7 @@ function createPixelSortEffect() {
                   
                   // Bubbles
                   for(int i = 0; i < 8; i++) {
-                      float bubbleY = fract(time * 0.3 + float(i) * 0.125);
+                      float bubbleY = 0.3 + fract(time * 0.3 + float(i) * 0.125);
                       float bubbleX = 0.3 + fract(float(i) * 0.618) * 0.4;
                       float bubble = length(pos - vec2(bubbleX, bubbleY)) - 0.01;
                       fish += smoothstep(0.01, 0.008, abs(bubble - 0.005)) * (0.6 + trebleControl * 0.4);
@@ -8534,12 +8602,10 @@ function createWaterPoolEffect() {
 //         vec2 i = floor(p);
 //         vec2 f = fract(p);
 //         vec2 u = f * f * (3.0 - 2.0 * f);
-        
 //         float a = hash(i);
 //         float b = hash(i + vec2(1.0, 0.0));
 //         float c = hash(i + vec2(0.0, 1.0));
 //         float d = hash(i + vec2(1.0, 1.0));
-        
 //         return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 //       }
       
@@ -8558,30 +8624,21 @@ function createWaterPoolEffect() {
 //       vec2 kaleidoscope(vec2 uv) {
 //         float angle = atan(uv.y, uv.x);
 //         float radius = length(uv);
-        
-//         // 4-way symmetry
 //         angle = mod(angle, PI * 0.5);
 //         if (angle > PI * 0.25) {
 //           angle = PI * 0.5 - angle;
 //         }
-        
 //         return vec2(cos(angle), sin(angle)) * radius;
 //       }
       
 //       // Organic tendril shape
 //       float tendril(vec2 p, float phase, float thickness) {
-//         // Create flowing curve
 //         float curve = sin(p.x * 3.0 + time * 2.0 + phase) * 0.3;
 //         curve += sin(p.x * 5.0 - time * 1.5 + phase * 2.0) * 0.15;
 //         curve += fbm(vec2(p.x * 2.0 + time, phase)) * 0.2 * midIntensity;
-//        
-//         // Distance from curve
 //         float d = abs(p.y - curve);
-//        
-//         // Smooth tendril with variable thickness
 //         float tendrilThickness = thickness * (1.0 + bassIntensity * 0.5);
 //         tendrilThickness *= (1.0 - smoothstep(0.0, 2.0, abs(p.x)));
-//        
 //         return smoothstep(tendrilThickness, 0.0, d);
 //       }
       
@@ -8601,43 +8658,26 @@ function createWaterPoolEffect() {
 //       void main() {
 //         vec2 uv = (vUv - 0.5) * 2.0;
 //         uv.x *= resolution.x / resolution.y;
-        
-//         // Apply rotation based on time and audio
 //         float rotation = time * 0.1 + audioIntensity * 0.5;
 //         mat2 rot = mat2(cos(rotation), -sin(rotation), sin(rotation), cos(rotation));
 //         uv = rot * uv;
-        
-//         // Apply kaleidoscope
 //         vec2 kUv = kaleidoscope(uv);
-        
-//         // Scale based on bass
 //         kUv *= 1.0 - bassIntensity * 0.2;
-        
-//         // Background color (red/orange)
 //         vec3 bgColor = vec3(0.8, 0.1, 0.0);
 //         bgColor = mix(bgColor, vec3(1.0, 0.3, 0.0), bassIntensity);
-//        
-//         // Tendril color (green)
 //         vec3 tendrilColor = vec3(0.0, 0.8, 0.2);
 //         tendrilColor = mix(tendrilColor, vec3(0.2, 1.0, 0.4), trebleIntensity);
-//        
-//         // Create multiple tendrils
 //         float tendrilsValue = 0.0;
 //         float particlesValue = 0.0;
 //         for (float i = 0.0; i < 8.0; i++) {
 //           float phase = i * 0.8;
 //           vec2 offset = vec2(0.0, i * 0.1 - 0.35);
-          
-//           // Add swirl distortion
 //           vec2 swirlUv = kUv + offset;
 //           float swirl = fbm(swirlUv * 2.0 + time * 0.3) * 0.1 * midIntensity;
 //           swirlUv += vec2(swirl, swirl * 0.5);
-          
 //           tendrilsValue += tendril(swirlUv, phase, 0.05 + i * 0.005);
 //           particlesValue += particleDots(swirlUv, phase);
 //         }
-        
-//         // Add glow
 //         float glow = tendrilsValue * 0.5;
 //         for (float i = 1.0; i < 4.0; i++) {
 //           vec2 glowUv = kUv * (1.0 + i * 0.05);
@@ -8647,20 +8687,13 @@ function createWaterPoolEffect() {
 //             glow += tendril(glowUv + offset, phase, 0.1 * i) * (0.3 / i);
 //           }
 //         }
-        
-//         // Combine everything
 //         vec3 color = bgColor;
 //         color = mix(color, tendrilColor, clamp(tendrilsValue + particlesValue, 0.0, 1.0));
 //         color += tendrilColor * glow * 0.5;
-        
-//         // Add center glow
 //         float centerDist = length(uv);
 //         float centerGlow = smoothstep(0.5, 0.0, centerDist) * audioIntensity;
 //         color += vec3(1.0, 1.0, 0.8) * centerGlow * 0.3;
-        
-//         // Apply effect intensity
 //         color = mix(bgColor, color, effectIntensity);
-        
 //         gl_FragColor = vec4(color, 1.0);
 //       }
 //     `,
@@ -8893,22 +8926,19 @@ if (wave3DEffect && wave3DEffect.material.uniforms) {
   wave3DEffect.geometry.attributes.position.needsUpdate = true;
 }
         
-      // Portal
-      // Portal modifications for idle animation:
+      // Portal - Eternal Zoom
       // Portal idle update
 const portal = visualElements.find(elem => elem.name === 'Portal');
 if (portal && portal.material && portal.material.uniforms) {
   const time = performance.now() * 0.001;
 
   portal.material.uniforms.time.value = time;
-  portal.material.uniforms.travelOffset.value = time * 0.5; // Consistent forward tunneling speed
-  portal.material.uniforms.colorCycle.value = time * 2.0 + Math.sin(time * 0.8) * 4.0; // Enhanced color cycling
-  portal.material.uniforms.spinSpeed.value = 0.35; // Consistent mandala spinning
-  portal.material.uniforms.warpStrength.value = 0.8 + 0.3 * Math.sin(time * 0.4); // Enhanced warp for trippy texture
-  portal.material.uniforms.unpredictability.value = 0.6 + 0.2 * Math.cos(time * 0.7); // Enhanced pattern variation
+  portal.material.uniforms.zoomSpeed.value = 1.5; // Faster base zoom speed for more intensity
+  portal.material.uniforms.tunnelDepth.value = 8.0; // Tunnel depth
+  portal.material.uniforms.ringSpacing.value = 0.15; // Ring spacing for tunnel effect
+  portal.material.uniforms.rotationSpeed.value = 0.3; // Rotation speed
+  portal.material.uniforms.colorShift.value = time * 2.0 + Math.sin(time * 0.8) * 4.0; // Enhanced color cycling
   portal.material.uniforms.audioReactive.value = 0.0;
-  portal.material.uniforms.phaseShift.value = 0.5 * Math.sin(time * 0.1);
-  portal.material.uniforms.kaleidoSegments.value = 8.0;
 }
         
       // --- SpaceshipEffect: Non-reactive (initial) state ---
@@ -9195,15 +9225,47 @@ visualElements.forEach(effect => {
     );
   }
       
-      // Waves (named 'Waves')
+      // Waves (named 'Waves') - Enhanced audio reactivity with frequency separation
       const waveEffect = visualElements.find(elem => elem.name === 'Waves');
   if (waveEffect && waveEffect.material.uniforms) {
-    // STRICTLY only update audio data for bending and time
-    waveEffect.material.uniforms.bass.value = bassAvg;
-    waveEffect.material.uniforms.mid.value = midAvg;
-    waveEffect.material.uniforms.treble.value = trebleAvg;
+    // Initialize smoothing state if not exists
+    if (!waveEffect.userData) {
+      waveEffect.userData = {};
+    }
+    if (!waveEffect.userData.smoothedBass) waveEffect.userData.smoothedBass = 0;
+    if (!waveEffect.userData.smoothedMid) waveEffect.userData.smoothedMid = 0;
+    if (!waveEffect.userData.smoothedTreble) waveEffect.userData.smoothedTreble = 0;
+    
+    // Smooth audio values to prevent jarring movements (different rates for each frequency)
+    waveEffect.userData.smoothedBass = THREE.MathUtils.lerp(waveEffect.userData.smoothedBass, bassAvg, 0.12);
+    waveEffect.userData.smoothedMid = THREE.MathUtils.lerp(waveEffect.userData.smoothedMid, midAvg, 0.15);
+    waveEffect.userData.smoothedTreble = THREE.MathUtils.lerp(waveEffect.userData.smoothedTreble, trebleAvg, 0.18);
+    
+    // Clamp audio values to prevent oversaturation (max 0.8 to keep colors vibrant, not white)
+    const clampedBass = Math.min(waveEffect.userData.smoothedBass * 0.7, 0.8);
+    const clampedMid = Math.min(waveEffect.userData.smoothedMid * 0.7, 0.8);
+    const clampedTreble = Math.min(waveEffect.userData.smoothedTreble * 0.7, 0.8);
+    
+    // Create frequency segments for different bands (more detailed audio separation)
+    const bufferLength = dataArray.length;
+    const seg1 = getSubrangeAverage(dataArray, 0, Math.floor(bufferLength / 8)) / 256 * 0.6; // Deep bass
+    const seg2 = getSubrangeAverage(dataArray, Math.floor(bufferLength / 8), Math.floor(bufferLength / 4)) / 256 * 0.6; // Upper bass
+    const seg3 = getSubrangeAverage(dataArray, Math.floor(bufferLength / 4), Math.floor(bufferLength / 3)) / 256 * 0.6; // Lower mid
+    const seg4 = getSubrangeAverage(dataArray, Math.floor(bufferLength / 3), Math.floor(bufferLength / 2)) / 256 * 0.6; // Upper mid
+    const seg5 = getSubrangeAverage(dataArray, Math.floor(bufferLength / 2), Math.floor(bufferLength * 2/3)) / 256 * 0.6; // Lower treble
+    const seg6 = getSubrangeAverage(dataArray, Math.floor(bufferLength * 2/3), bufferLength) / 256 * 0.6; // High treble
+    
+    // Update all uniforms
+    waveEffect.material.uniforms.bass.value = clampedBass;
+    waveEffect.material.uniforms.mid.value = clampedMid;
+    waveEffect.material.uniforms.treble.value = clampedTreble;
+    waveEffect.material.uniforms.audioSeg1.value = seg1;
+    waveEffect.material.uniforms.audioSeg2.value = seg2;
+    waveEffect.material.uniforms.audioSeg3.value = seg3;
+    waveEffect.material.uniforms.audioSeg4.value = seg4;
+    waveEffect.material.uniforms.audioSeg5.value = seg5;
+    waveEffect.material.uniforms.audioSeg6.value = seg6;
     waveEffect.material.uniforms.time.value = performance.now() * 0.001;
-    // DO NOT modify effectIntensity or lineThickness here.
   }
       
       // 3D Waves (Experimental Audio-Reactive)
@@ -9234,7 +9296,7 @@ if (wave3DEffect && wave3DEffect.material.uniforms) {
       }
 
       
-      // Portal audio reactive
+      // Portal audio reactive - Eternal Zoom
       const portal = visualElements.find(elem => elem.name === 'Portal');
       if (portal && portal.material && portal.material.uniforms) {
         const time = performance.now() * 0.001;
@@ -9259,43 +9321,35 @@ if (wave3DEffect && wave3DEffect.material.uniforms) {
         portal.material.uniforms.time.value = time;
         
         // Initialize momentum if not exists
-        if (!portal.userData.tunnelMomentum) portal.userData.tunnelMomentum = 0.5;
-        if (!portal.userData.spinMomentum) portal.userData.spinMomentum = 0.35;
+        if (!portal.userData.zoomMomentum) portal.userData.zoomMomentum = 1.5;
+        if (!portal.userData.rotationMomentum) portal.userData.rotationMomentum = 0.3;
         
         // Audio energy adds momentum, then momentum gradually returns to base
         const audioEnergy = (smoothedBass + smoothedMid + smoothedTreble);
-        const momentumBoost = audioEnergy * 0.1;
+        const momentumBoost = audioEnergy * 0.4; // Much more aggressive boost
         
         // Add momentum from audio, then slowly decay back to base
-        portal.userData.tunnelMomentum += momentumBoost * 0.02;
-        portal.userData.spinMomentum += momentumBoost * 0.02;
+        portal.userData.zoomMomentum += momentumBoost * 0.08; // Faster momentum building
+        portal.userData.rotationMomentum += momentumBoost * 0.03;
         
         // Gradually decay back to base speeds (but never below base)
-        portal.userData.tunnelMomentum = Math.max(0.5, portal.userData.tunnelMomentum * 0.995);
-        portal.userData.spinMomentum = Math.max(0.35, portal.userData.spinMomentum * 0.995);
+        portal.userData.zoomMomentum = Math.max(1.5, portal.userData.zoomMomentum * 0.992); // Slightly slower decay
+        portal.userData.rotationMomentum = Math.max(0.3, portal.userData.rotationMomentum * 0.995);
         
-        // TUNNELING: Use momentum-based speed
-        portal.material.uniforms.travelOffset.value = time * portal.userData.tunnelMomentum;
+        // ETERNAL ZOOM: Use momentum-based speed with extra audio boost
+        const directAudioBoost = 1.0 + audioEnergy * 1.5; // Direct audio multiplier
+        portal.material.uniforms.zoomSpeed.value = portal.userData.zoomMomentum * directAudioBoost;
         
         // Enhanced color cycling: More dynamic and trippy color shifts
-        portal.material.uniforms.colorCycle.value = time * 2.0 + smoothedBass * 8.0 + Math.sin(time * 0.8) * 4.0;
+        portal.material.uniforms.colorShift.value = time * 2.0 + smoothedBass * 8.0 + Math.sin(time * 0.8) * 4.0;
         
-        // SPINNING: Use momentum-based speed
-        portal.material.uniforms.spinSpeed.value = portal.userData.spinMomentum;
+        // ROTATION: Use momentum-based speed
+        portal.material.uniforms.rotationSpeed.value = portal.userData.rotationMomentum;
         
-                                 // WARP & UNPREDICTABILITY: Smooth consistent values + audio boosts
-        portal.material.uniforms.warpStrength.value = 0.8 + 0.3 * Math.sin(time * 0.4) + smoothedTreble * 0.1;
-        portal.material.uniforms.unpredictability.value = 0.6 + 0.2 * Math.cos(time * 0.7) + smoothedMid * 0.08;
-        portal.material.uniforms.audioReactive.value = (smoothedBass + smoothedMid + smoothedTreble) * 0.3; // Audio reactive effects
-        
-        // Much less frequent phase shifts
-        if (smoothedBass > 0.8 && Math.random() < 0.02) {
-          portal.material.uniforms.phaseShift.value = (Math.random() - 0.5) * 2.0;
-        } else {
-          portal.material.uniforms.phaseShift.value = 0.5 * Math.sin(time * 0.1);
-        }
-        
-        portal.material.uniforms.kaleidoSegments.value = Math.round(8.0 + smoothedTreble * 4.0); // Audio-reactive mandala segments (8-12)
+        // TUNNEL PARAMETERS: Audio-reactive tunnel structure
+        portal.material.uniforms.tunnelDepth.value = 8.0 + smoothedMid * 4.0; // Mid frequencies affect tunnel depth
+        portal.material.uniforms.ringSpacing.value = 0.15 + smoothedTreble * 0.1; // Treble affects ring spacing
+        portal.material.uniforms.audioReactive.value = (smoothedBass + smoothedMid + smoothedTreble) * 0.4; // Audio reactive effects
       }
       
       // --- SpaceshipEffect: Audio-reactive state ---
@@ -9365,12 +9419,12 @@ if (scribbleReact && scribbleReact.material.uniforms) {
   mat.uniforms.audioLevel.value   = audioIntensity;
   // Use base intensity if available, otherwise default to 1.0
   const baseIntensity = scribbleReact.userData?.baseEffectIntensity || 1.0;
-  // Controlled audio reactivity building on base intensity
-  mat.uniforms.effectIntensity.value = baseIntensity + audioIntensity * 1.5;
-  // Make line thickness respond to bass (subtle)
-  mat.uniforms.lineThickness.value = 0.008 + bassAvg * 0.006;
-  // Make glow intensity respond to treble (controlled)
-  mat.uniforms.glowIntensity.value = 0.5 + trebleAvg * 0.4;
+  // Much more controlled audio reactivity building on base intensity
+  mat.uniforms.effectIntensity.value = baseIntensity + audioIntensity * 0.3; // Reduced from 1.5 to 0.3
+  // Make line thickness respond to bass (very subtle)
+  mat.uniforms.lineThickness.value = 0.008 + bassAvg * 0.002; // Reduced from 0.006 to 0.002
+  // Make glow intensity respond to treble (gentle)
+  mat.uniforms.glowIntensity.value = 0.5 + trebleAvg * 0.15; // Reduced from 0.4 to 0.15
 }
 
 analyser.getByteFrequencyData(dataArray);
@@ -10326,31 +10380,23 @@ if (wave3DEffect && wave3DEffect.material && wave3DEffect.material.uniforms) {
         trippyGroup.userData.customAdjustIntensity(intensityLevel);
       }
       
-      // Portal intensity adjustment
+      // Portal intensity adjustment - Eternal Zoom
       const portal = visualElements.find(elem => elem.name === 'Portal');
 if (portal && portal.material && portal.material.uniforms) {
   // Initialize userData if it doesn't exist
   if (!portal.userData) {
-    const currentTime = performance.now() * 0.001;
     portal.userData = {
-      smoothTravelOffset: currentTime * 0.2,
-      smoothSpinSpeed: 0.35,
-      smoothWarpStrength: 0.9,
-      smoothColorCycle: 0.0,
-      smoothUnpredictability: 0.5,
-      smoothAudioReactive: 0.0,
-      smoothPhaseShift: 0.0,
-      smoothKaleidoSegments: 6.0
+      zoomMomentum: 1.5,
+      rotationMomentum: 0.3
     };
   }
 
   // Store base intensity multipliers (these affect the targets, not the current values)
-  portal.userData.intensityMultiplier = 0.5 + intensityLevel * 0.15; // Scale effect intensity
-  portal.userData.baseTunnelSpeed = 0.15 + intensityLevel * 0.03; // Base tunneling speed (time-based)
-  portal.userData.baseSpinSpeed = 0.25 + intensityLevel * 0.02; // Base spin speed
-  portal.userData.baseWarpStrength = 0.8 + intensityLevel * 0.15; // Base warp strength
-  portal.userData.baseUnpredictability = 0.4 + intensityLevel * 0.02; // Base unpredictability
-  portal.userData.baseKaleidoSegments = 4.0 + intensityLevel * 0.5; // Base segments
+  portal.userData.intensityMultiplier = 0.5 + intensityLevel * 0.2; // Scale effect intensity
+  portal.userData.baseZoomSpeed = 1.0 + intensityLevel * 0.3; // Base zoom speed - more aggressive
+  portal.userData.baseRotationSpeed = 0.2 + intensityLevel * 0.08; // Base rotation speed
+  portal.userData.baseTunnelDepth = 6.0 + intensityLevel * 1.2; // Base tunnel depth
+  portal.userData.baseRingSpacing = 0.1 + intensityLevel * 0.03; // Base ring spacing
 
   console.log(`Portal intensity set to level ${intensityLevel} (multiplier: ${portal.userData.intensityMultiplier})`);
 }
@@ -10744,7 +10790,7 @@ function togglePlayPause() {
     setTimeout(() => {
       helpOverlay.classList.add('show');
       if (adBanner) adBanner.classList.add('show');
-      // load the ad once, the first time it’s shown
+      // load the ad once, the first time it's shown
     if (!adBanner.dataset.loaded) {
       (adsbygoogle = window.adsbygoogle || []).push({});
       adBanner.dataset.loaded = 'true';
