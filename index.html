@@ -12,7 +12,7 @@
 
   
   <!-- PNG favicon for browsers that prefer PNG -->
-  <link rel="icon" type="image/png" sizes="32x32" href="images/faivcon-32x32.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="images/favicon-16x16.png">
     
   <!-- Apple Touch Icon -->
@@ -2786,9 +2786,9 @@ function createOceanEffect() {
       uBass:           { value: 0.0 },
       uMid:            { value: 0.0 },
       uTreble:         { value: 0.0 },
-      flowSpeed:       { value: 1.0 }, // Faster flow for more chaotic movement
-      audioStrength:   { value: 300.0 }, // High audio reactivity but controlled
-      effectIntensity: { value: 2.0 }, // Balanced base intensity
+      flowSpeed:       { value: 0.2 }, // Much calmer base flow
+      audioStrength:   { value: 20.0 }, // Substantially reduced base audio strength
+      effectIntensity: { value: 0.15 }, // Substantially reduced base intensity
       // --- Visual Mode Uniforms ---
       cameraTexture:   { value: null },
       resolution:      { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
@@ -2968,6 +2968,80 @@ function createOceanEffect() {
 
   const oceanMesh = new THREE.Mesh(geometry, material);
   oceanMesh.name  = 'OceanEffect';
+  
+  // Add proper intensity adjustment function like other effects
+  oceanMesh.userData = oceanMesh.userData || {};
+  oceanMesh.userData.baseEffectIntensity = 0.3;
+  
+  oceanMesh.userData.customAdjustIntensity = function(intensityLevel) {
+    // Make level 1 equal to the initial userData.baseEffectIntensity = 0.3, and scale up from there
+    // Initial userData.baseEffectIntensity = 0.3, audioStrength = 20.0, flowSpeed = 0.2
+    this.userData.baseEffectIntensity = 0.2 + intensityLevel * 0.1; // Range: 0.3 to 1.1 (matches initial userData 0.3)
+    
+    // Scale audio strength to match the initial state at level 1 - substantially reduced
+    const audioStrength = 10.0 + intensityLevel * 10.0; // Range: 20 to 100 (matches initial 20.0)
+    const flowSpeed = 0.1 + intensityLevel * 0.1; // Range: 0.2 to 1.0 (matches initial 0.2)
+    
+    // Update material uniforms
+    if (this.material && this.material.uniforms) {
+      this.material.uniforms.effectIntensity.value = this.userData.baseEffectIntensity;
+      this.material.uniforms.audioStrength.value = audioStrength;
+      this.material.uniforms.flowSpeed.value = flowSpeed;
+    }
+    
+    console.log(`Ocean effect intensity adjusted to level ${intensityLevel} (base: ${this.userData.baseEffectIntensity}, audio: ${audioStrength})`);
+  }.bind(oceanMesh);
+
+  // Add idle animation function like other effects
+  oceanMesh.userData.customAnimateInitial = function() {
+    const time = performance.now() * 0.001;
+    const mat = this.material;
+    
+    mat.uniforms.time.value = time;
+    
+    // Add gentle fluctuation with subtle fake audio values for idle movement
+    const gentleWave1 = Math.sin(time * 0.8) * 0.12 + 0.12; // Slow gentle wave - more intense
+    const gentleWave2 = Math.sin(time * 1.2 + 1.5) * 0.08 + 0.08; // Slightly faster wave - more intense
+    const gentleWave3 = Math.sin(time * 0.6 + 3.0) * 0.10 + 0.10; // Even slower wave - more intense
+    
+    mat.uniforms.uBass.value = gentleWave1;
+    mat.uniforms.uMid.value = gentleWave2;
+    mat.uniforms.uTreble.value = gentleWave3;
+    mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 0.3;
+    
+    // Update camera texture if available
+    if (window.userCameraTexture && this.userData.visualMode > 0.5) {
+      mat.uniforms.cameraTexture.value = window.userCameraTexture;
+      mat.uniforms.cameraActive.value = 1.0;
+    } else {
+      mat.uniforms.cameraActive.value = 0.0;
+    }
+    mat.uniforms.visualMode.value = this.userData.visualMode || 0.0;
+    mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+  }.bind(oceanMesh);
+
+  // Add reactive animation function like other effects
+  oceanMesh.userData.customAnimateReactive = function(bassAvg, midAvg, trebleAvg) {
+    const time = performance.now() * 0.001;
+    const mat = this.material;
+    
+    mat.uniforms.time.value = time;
+    mat.uniforms.uBass.value = bassAvg;
+    mat.uniforms.uMid.value = midAvg;
+    mat.uniforms.uTreble.value = trebleAvg;
+    mat.uniforms.effectIntensity.value = this.userData.baseEffectIntensity || 1.0;
+    
+    // Update camera texture if available
+    if (window.userCameraTexture && this.userData.visualMode > 0.5) {
+      mat.uniforms.cameraTexture.value = window.userCameraTexture;
+      mat.uniforms.cameraActive.value = 1.0;
+    } else {
+      mat.uniforms.cameraActive.value = 0.0;
+    }
+    mat.uniforms.visualMode.value = this.userData.visualMode || 0.0;
+    mat.uniforms.resolution.value.set(window.innerWidth, window.innerHeight);
+  }.bind(oceanMesh);
+  
   scene.add(oceanMesh);
   visualElements.push(oceanMesh);
 }
@@ -8956,21 +9030,14 @@ if (spaceshipEffect && spaceshipEffect.material?.uniforms) {
 }
         
       // --- Ocean Effect: Non-reactive (initial) state ---
-      // OceanEffect (Idle): smooth ball shape with gentle flow
-       // OceanEffect (Idle): morphing sphere with gentle flow
-  const oceanIdle = visualElements.find(elem => elem.name === 'OceanEffect');
-  if (oceanIdle && oceanIdle.material.uniforms) {
-    const baseIntensity = oceanIdle.userData?.baseEffectIntensity || 1.0; // Get base intensity if set
-    oceanIdle.material.uniforms.time.value            = time;
-    // Set specific audio uniforms to 0
-    oceanIdle.material.uniforms.uBass.value           = 0.0; 
-    oceanIdle.material.uniforms.uMid.value            = 0.0;
-    oceanIdle.material.uniforms.uTreble.value         = 0.0;
-    // Keep flowSpeed and effectIntensity potentially controlled by user/slider
-    oceanIdle.material.uniforms.flowSpeed.value       = oceanIdle.userData?.baseFlowSpeed || 1.0;
-    oceanIdle.material.uniforms.effectIntensity.value = baseIntensity; 
-    oceanIdle.material.uniforms.audioStrength.value   = oceanIdle.userData?.baseAudioStrength || 50.0;
-  }
+      const oceanIdle = visualElements.find(elem => elem.name === 'OceanEffect');
+      if (oceanIdle && oceanIdle.userData && oceanIdle.userData.customAnimateInitial) {
+        try {
+          oceanIdle.userData.customAnimateInitial();
+        } catch (err) {
+          console.error("Error in OceanEffect customAnimateInitial:", err);
+        }
+      }
 
         
 
@@ -9375,22 +9442,16 @@ if (spaceshipEffect && spaceshipEffect.material?.uniforms) {
 }
       
       // --- Ocean Effect: Audio-reactive state ---
-      // OceanEffect (Audio Reactive): pulsating flow
       const time = performance.now() * 0.001;
-
+      
       const oceanReactive = visualElements.find(elem => elem.name === 'OceanEffect');
-  if (oceanReactive && oceanReactive.material.uniforms) {
-    const baseIntensity = oceanReactive.userData?.baseEffectIntensity || 1.0; // Get base intensity if set
-    oceanReactive.material.uniforms.time.value            = time;
-    // Update specific audio uniforms
-    oceanReactive.material.uniforms.uBass.value           = bassAvg; 
-    oceanReactive.material.uniforms.uMid.value            = midAvg;
-    oceanReactive.material.uniforms.uTreble.value         = trebleAvg;
-    // Keep flowSpeed, audioStrength, effectIntensity controlled by user/slider
-    oceanReactive.material.uniforms.flowSpeed.value       = oceanReactive.userData?.baseFlowSpeed || 1.0;
-    oceanReactive.material.uniforms.audioStrength.value   = oceanReactive.userData?.baseAudioStrength || 50.0;
-    oceanReactive.material.uniforms.effectIntensity.value = baseIntensity;
-  }
+      if (oceanReactive && oceanReactive.userData && oceanReactive.userData.customAnimateReactive) {
+        try {
+          oceanReactive.userData.customAnimateReactive(bassAvg, midAvg, trebleAvg);
+        } catch (err) {
+          console.error("Error in OceanEffect customAnimateReactive:", err);
+        }
+      }
 
       const aurora = visualElements.find(elem => elem.name === 'AuroraEffect');
 if (aurora && aurora.material.uniforms) {
@@ -10410,13 +10471,11 @@ if (portal && portal.material && portal.material.uniforms) {
     console.log("SpaceshipEffect baseEffectIntensity set to:", spaceshipEffect.userData.baseEffectIntensity);
   }
       
-      // Ocean effect intensity adjustment:
-      const oceanAdjust = visualElements.find(elem => elem.name === 'OceanEffect');
-  if (oceanAdjust && oceanAdjust.material.uniforms) {
-    oceanAdjust.material.uniforms.audioStrength.value   = 100.0 * intensityLevel;
-    oceanAdjust.material.uniforms.flowSpeed.value       = 0.5 + 0.5 * intensityLevel;
-    oceanAdjust.material.uniforms.effectIntensity.value = 0.5 * intensityLevel;
-  }
+      // Ocean effect intensity adjustment using customAdjustIntensity like other effects:
+      const oceanEffect = visualElements.find(elem => elem.name === 'OceanEffect');
+      if (oceanEffect && oceanEffect.userData && oceanEffect.userData.customAdjustIntensity) {
+        oceanEffect.userData.customAdjustIntensity(intensityLevel);
+      }
 
       
       
