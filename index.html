@@ -9441,8 +9441,12 @@ if (apple1Effect && apple1Effect.material.uniforms) {
     showActionMessage("visual mode: on");
 
     try {
-      // 1) Request user media (video only)
-      userCameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      // 1) Request user media (video only) - start with front camera
+      userCameraStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'user' 
+        } 
+      });
     } catch (err) {
       console.error('Error accessing user camera:', err);
       isCameraMode = false;
@@ -9455,6 +9459,7 @@ if (apple1Effect && apple1Effect.material.uniforms) {
     userCameraVideo.autoplay = true;
     userCameraVideo.playsInline = true;
     userCameraVideo.srcObject = userCameraStream;
+    userCameraVideo.setAttribute('data-facing-mode', 'user'); // Track current camera
 
     // 3) Wait for video to start playing
     await userCameraVideo.play().catch(err => console.error('Video play error:', err));
@@ -9529,6 +9534,90 @@ if (apple1Effect && apple1Effect.material.uniforms) {
     userCameraTexture = null;
     window.userCameraTexture = null;
     console.log('Camera feed removed from effects and global reference cleared.');
+  }
+}
+
+// Function to flip between front and back camera
+async function flipCamera() {
+  if (!isCameraMode) {
+    console.log('Camera not active, cannot flip');
+    return;
+  }
+  
+  console.log('Flipping camera...');
+  showActionMessage("flipping camera...");
+  
+  try {
+    // Stop the current camera stream
+    if (userCameraStream) {
+      const tracks = userCameraStream.getTracks();
+      tracks.forEach(track => track.stop());
+      userCameraStream = null;
+    }
+    
+    // Determine which camera to use next
+    const currentFacingMode = userCameraVideo ? 
+      (userCameraVideo.getAttribute('data-facing-mode') || 'user') : 'user';
+    const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+    
+    console.log(`Switching from ${currentFacingMode} to ${newFacingMode} camera`);
+    
+    // Request the new camera stream
+    userCameraStream = await navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        facingMode: newFacingMode 
+      } 
+    });
+    
+    // Update the video element
+    userCameraVideo.srcObject = userCameraStream;
+    userCameraVideo.setAttribute('data-facing-mode', newFacingMode);
+    
+    // Wait for video to start playing
+    await userCameraVideo.play().catch(err => console.error('Video play error:', err));
+    
+    // Update the texture
+    userCameraTexture = new THREE.VideoTexture(userCameraVideo);
+    userCameraTexture.minFilter = THREE.LinearFilter;
+    userCameraTexture.magFilter = THREE.LinearFilter;
+    
+    // Update global reference
+    window.userCameraTexture = userCameraTexture;
+    
+    // Update all effects with the new texture
+    visualElements.forEach(elem => {
+      if (elem.material && elem.material.uniforms && 'cameraTexture' in elem.material.uniforms) {
+        elem.material.uniforms.cameraTexture.value = userCameraTexture;
+      }
+    });
+    
+    const cameraName = newFacingMode === 'user' ? 'front' : 'back';
+    showActionMessage(`camera: ${cameraName}`);
+    console.log(`Successfully switched to ${cameraName} camera`);
+    
+  } catch (err) {
+    console.error('Error flipping camera:', err);
+    showActionMessage("camera flip failed");
+    
+    // Fallback: try to restart with default camera
+    try {
+      userCameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+      userCameraVideo.srcObject = userCameraStream;
+      await userCameraVideo.play();
+      userCameraTexture = new THREE.VideoTexture(userCameraVideo);
+      window.userCameraTexture = userCameraTexture;
+      
+      visualElements.forEach(elem => {
+        if (elem.material && elem.material.uniforms && 'cameraTexture' in elem.material.uniforms) {
+          elem.material.uniforms.cameraTexture.value = userCameraTexture;
+        }
+      });
+      
+      showActionMessage("camera: default");
+    } catch (fallbackErr) {
+      console.error('Fallback camera restart failed:', fallbackErr);
+      showActionMessage("camera error");
+    }
   }
 }
     function startShuffleInterval() {
@@ -10582,6 +10671,7 @@ function togglePlayPause() {
           <li><b>Two-Finger Hold:</b> Augment Effect</li>
           <li><b>Pinch In/Out:</b> Toggle Visual Mode</li>
           <li><b>Long Press:</b> Show/Hide Help</li>
+          <li><b>Long Press (Visual Mode):</b> Flip Camera</li>
           <li><a href="https://visualizerwebsite.gumroad.com/l/pro-access" target="_blank" style="color:white; text-decoration:underline;"><b>Donate For Pro Version</b></a></li>
         </ul>
         `;
@@ -10603,6 +10693,7 @@ function togglePlayPause() {
           <li><b>V:</b> Toggle Visual Mode</li>
           <li><b>I:</b> Show Info</li>
           <li><b>H:</b> Show/Hide Help</li>
+          <li><b>Long Press (Visual Mode):</b> Flip Camera (Mobile)</li>
           <li><a href="https://visualizerwebsite.gumroad.com/l/pro-access" target="_blank" style="color:white; text-decoration:underline;">Donate For Pro Version</a></li>
         </ul>
         `;
@@ -10900,6 +10991,7 @@ function playPreviousUserSong() {
     let tapCount = 0;
     let tapTimer = null;
     let longPressTimer = null;
+    let cameraFlipTimer = null; // Timer for camera flip gesture
 
 
     // Pinch & two-finger gesture tracking
@@ -10918,6 +11010,7 @@ function playPreviousUserSong() {
     
     // Configurable thresholds (in ms and pixels)
     const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
+    const cameraFlipThreshold = 1200; // Duration (ms) to trigger camera flip (longer than help menu)
     const tapMaxDuration = 200;      // Max duration (ms) for a tap
     const tapDelay = 300;            // Time window (ms) to wait for additional taps
     const swipeThreshold = 50;       // Minimum movement (pixels) to be considered a swipe
@@ -10978,6 +11071,14 @@ function playPreviousUserSong() {
         // Long press detected – show the help menu
         toggleHelpOverlay();
       }, longPressThreshold);
+      
+      // Start camera flip timer (only if in visual mode)
+      if (isCameraMode) {
+        cameraFlipTimer = setTimeout(() => {
+          // Camera flip detected – switch to back camera
+          flipCamera();
+        }, cameraFlipThreshold);
+      }
     }
     
     function onTouchMove(e) {
@@ -11030,11 +11131,13 @@ function playPreviousUserSong() {
         
         // Cancel single-finger long press timer
         clearTimeout(longPressTimer);
+        clearTimeout(cameraFlipTimer);
         return;
       }
       e.preventDefault();
       // Any movement cancels the long press timer
       clearTimeout(longPressTimer);
+      clearTimeout(cameraFlipTimer);
     }
     
     function onTouchEnd(e) {
@@ -11042,6 +11145,7 @@ function playPreviousUserSong() {
       e.preventDefault();
       // Clear timers when touch ends
       clearTimeout(longPressTimer);
+      clearTimeout(cameraFlipTimer);
       
       if (touchStartTouches === 2) {
         console.log('Two-finger touch ended');
