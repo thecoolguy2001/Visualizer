@@ -11010,7 +11010,7 @@ function playPreviousUserSong() {
     
     // Configurable thresholds (in ms and pixels)
     const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
-    const cameraFlipThreshold = 1200; // Duration (ms) to trigger camera flip (longer than help menu)
+    const cameraFlipThreshold = 2000; // Duration (ms) to trigger camera flip (longer than help menu)
     const tapMaxDuration = 200;      // Max duration (ms) for a tap
     const tapDelay = 300;            // Time window (ms) to wait for additional taps
     const swipeThreshold = 50;       // Minimum movement (pixels) to be considered a swipe
@@ -11075,6 +11075,15 @@ function playPreviousUserSong() {
       // Start camera flip timer (only if in visual mode)
       if (isCameraMode) {
         cameraFlipTimer = setTimeout(() => {
+          // Hide help menu first if it's showing
+          const helpOverlay = document.getElementById('helpOverlay');
+          if (helpOverlay && helpOverlay.classList.contains('show')) {
+            helpOverlay.classList.remove('show');
+            setTimeout(() => {
+              helpOverlay.style.display = 'none';
+            }, 500); // Wait for fade-out animation
+          }
+          
           // Camera flip detected – switch to back camera
           flipCamera();
         }, cameraFlipThreshold);
