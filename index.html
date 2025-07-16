@@ -122,6 +122,15 @@ body.authorized .restricted {
     background-color: black;
     margin: 0;
     padding: 0;
+    /* Prevent unwanted mobile behaviors */
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
   }
   
   #info {
@@ -1616,23 +1625,23 @@ function createWaves() {
         float accAlpha = 0.0;
         
         // --- Base Ribbons Calculation with frequency separation ---
-        // RIBBON 1: Pink -> Purple (DEEP BASS - Individual Heavy Bouncing)
+        // RIBBON 1: Orange -> Purple (DEEP BASS - Individual Heavy Bouncing)
         {
           // Completely independent deep bass movements with own timing
-          float bassThump = smoothstep(0.0, 0.8, audioSeg1 * 1.2); // More sensitive threshold
-          float slowBounce = sin(time1 * 0.6) * bassThump * 0.18; // Slow, heavy bounce with own timing
-          float rapidShake = sin(time1 * 7.0 + st.x * 4.0) * bassThump * 0.04; // Quick shake unique to this band
-          float bassWobble = cos(time1 * 0.4 + st.x * 1.5) * bassThump * 0.06; // Wobble motion
+          float bassThump = smoothstep(0.0, 0.8, audioSeg1 * 0.8); // Reduced sensitivity
+          float slowBounce = sin(time1 * 0.6) * bassThump * 0.08; // Reduced from 0.18 to 0.08
+          float rapidShake = sin(time1 * 7.0 + st.x * 4.0) * bassThump * 0.02; // Reduced from 0.04 to 0.02
+          float bassWobble = cos(time1 * 0.4 + st.x * 1.5) * bassThump * 0.03; // Reduced from 0.06 to 0.03
           
           // Independent base wave pattern for this band only
           float centerY = 0.45 + 0.06 * sin((st.x * 2.5 + time1 * 0.9)); // Unique wave pattern
           centerY += slowBounce + rapidShake + bassWobble; // Individual bass movements
-          centerY += audioSeg1 * 0.12 * sin(st.x * 5.0 + time1 * 1.1); // Only responds to seg1
+          centerY += audioSeg1 * 0.06 * sin(st.x * 5.0 + time1 * 1.1); // Reduced from 0.12 to 0.06
           
           // Individual thickness controlled only by audioSeg1 - FURTHER REDUCED for no blur
           float thickness1 = baseThickness * (1.0 + audioSeg1 * 1.5); // Reduced from 3.0 to 1.5
           float alpha = ribbonAlpha(st.y, centerY, thickness1);
-          vec3 c1 = vec3(1.0, 0.2, 0.8);  // neon pink
+          vec3 c1 = vec3(1.0, 0.6, 0.2);  // orange
           vec3 c2 = vec3(0.6, 0.0, 0.8);  // purple
           float mixF = 0.5 + 0.5 * sin(time1 * 0.8 + audioSeg1 * 3.0); // Individual color mixing
           vec3 ribbonColor = blendColors(c1, c2, mixF);
@@ -1644,15 +1653,15 @@ function createWaves() {
         // RIBBON 2: Purple -> Blue (UPPER BASS - Individual Pumping)
         {
           // Completely independent upper bass with own timing
-          float bassPump = smoothstep(0.0, 0.7, audioSeg2 * 1.3); // More sensitive threshold
-          float pumpMotion = sin(time2 * 1.8) * bassPump * 0.14; // Individual pumping timing
-          float lateralShift = cos(time2 * 1.3 + st.x * 3.0) * bassPump * 0.07; // Unique lateral motion
-          float pumpPulse = sin(time2 * 2.5) * bassPump * 0.05; // Additional pulse motion
+          float bassPump = smoothstep(0.0, 0.7, audioSeg2 * 0.9); // Reduced sensitivity
+          float pumpMotion = sin(time2 * 1.8) * bassPump * 0.07; // Reduced from 0.14 to 0.07
+          float lateralShift = cos(time2 * 1.3 + st.x * 3.0) * bassPump * 0.04; // Reduced from 0.07 to 0.04
+          float pumpPulse = sin(time2 * 2.5) * bassPump * 0.03; // Reduced from 0.05 to 0.03
           
           // Independent base wave pattern
           float centerY = 0.5 + 0.07 * sin((st.x * 3.5 + time2 * 1.1)); // Unique wave frequency
           centerY += pumpMotion + lateralShift + pumpPulse; // Individual movements
-          centerY += audioSeg2 * 0.10 * sin(st.x * 7.0 + time2 * 1.4); // Only responds to seg2
+          centerY += audioSeg2 * 0.05 * sin(st.x * 7.0 + time2 * 1.4); // Reduced from 0.10 to 0.05
           
           // Individual thickness controlled only by audioSeg2 - FURTHER REDUCED for no blur
           float thickness2 = baseThickness * 0.8 * (1.0 + audioSeg2 * 1.2); // Reduced from 2.5 to 1.2
@@ -1666,24 +1675,24 @@ function createWaves() {
           accAlpha = max(accAlpha, alpha);
         }
         
-        // RIBBON 3: Pink -> Cyan (LOWER MID - Individual Flowing)
+        // RIBBON 3: Orange -> Cyan (LOWER MID - Individual Flowing)
         {
           // Completely independent lower mid with own timing
-          float midFlow = smoothstep(0.0, 0.6, audioSeg3 * 1.4); // More sensitive threshold
-          float flowingWave = sin(st.x * 4.0 - time3 * 2.2) * midFlow * 0.12; // Individual flowing timing
-          float verticalFlow = cos(time3 * 1.6 + st.x * 1.8) * midFlow * 0.09; // Unique vertical flow
-          float ripple = sin(st.x * 14.0 + time3 * 2.8) * midFlow * 0.04; // Individual ripples
-          float midSway = cos(time3 * 0.9) * midFlow * 0.06; // Additional sway motion
+          float midFlow = smoothstep(0.0, 0.6, audioSeg3 * 1.0); // Reduced sensitivity
+          float flowingWave = sin(st.x * 4.0 - time3 * 2.2) * midFlow * 0.06; // Reduced from 0.12 to 0.06
+          float verticalFlow = cos(time3 * 1.6 + st.x * 1.8) * midFlow * 0.05; // Reduced from 0.09 to 0.05
+          float ripple = sin(st.x * 14.0 + time3 * 2.8) * midFlow * 0.02; // Reduced from 0.04 to 0.02
+          float midSway = cos(time3 * 0.9) * midFlow * 0.03; // Reduced from 0.06 to 0.03
           
           // Independent base wave pattern
           float centerY = 0.55 + 0.08 * sin((st.x * 4.5 - time3 * 1.3)); // Unique wave frequency
           centerY += flowingWave + verticalFlow + ripple + midSway; // Individual movements
-          centerY += audioSeg3 * 0.08 * sin(st.x * 9.0 + time3 * 1.7); // Only responds to seg3
+          centerY += audioSeg3 * 0.04 * sin(st.x * 9.0 + time3 * 1.7); // Reduced from 0.08 to 0.04
           
           // Individual thickness controlled only by audioSeg3 - FURTHER REDUCED for no blur
           float thickness3 = baseThickness * 0.7 * (1.0 + audioSeg3 * 1.1); // Reduced from 2.2 to 1.1
           float alpha = ribbonAlpha(st.y, centerY, thickness3);
-          vec3 c1 = vec3(1.0, 0.2, 0.8);  // pink
+          vec3 c1 = vec3(1.0, 0.6, 0.2);  // orange
           vec3 c2 = vec3(0.0, 1.0, 1.0);  // neon cyan
           float mixF = 0.5 + 0.5 * sin(time3 * 1.2 + audioSeg3 * 3.1); // Individual color mixing
           vec3 ribbonColor = blendColors(c1, c2, mixF);
@@ -1695,16 +1704,16 @@ function createWaves() {
         // RIBBON 4: Blue->Green (UPPER MID - Individual Swaying)
         {
           // Completely independent upper mid with own timing
-          float midSway = smoothstep(0.0, 0.65, audioSeg4 * 1.3); // More sensitive threshold
-          float slowSway = sin(time4 * 0.8 + st.x * 2.0) * midSway * 0.11; // Individual swaying timing
-          float breathe = cos(time4 * 0.6) * midSway * 0.07; // Unique breathing motion
-          float gentleRipple = sin(st.x * 9.0 + time4 * 2.6) * midSway * 0.03; // Individual ripples
-          float midWave = sin(time4 * 1.1 + st.x * 2.5) * midSway * 0.05; // Additional wave motion
+          float midSway = smoothstep(0.0, 0.65, audioSeg4 * 0.9); // Reduced sensitivity
+          float slowSway = sin(time4 * 0.8 + st.x * 2.0) * midSway * 0.06; // Reduced from 0.11 to 0.06
+          float breathe = cos(time4 * 0.6) * midSway * 0.04; // Reduced from 0.07 to 0.04
+          float gentleRipple = sin(st.x * 9.0 + time4 * 2.6) * midSway * 0.02; // Reduced from 0.03 to 0.02
+          float midWave = sin(time4 * 1.1 + st.x * 2.5) * midSway * 0.03; // Reduced from 0.05 to 0.03
           
           // Independent base wave pattern
           float centerY = 0.4 + 0.07 * cos(st.x * 5.5 + time4 * 1.5); // Unique wave frequency
           centerY += slowSway + breathe + gentleRipple + midWave; // Individual movements
-          centerY += audioSeg4 * 0.09 * sin(st.x * 7.5 + time4 * 1.9); // Only responds to seg4
+          centerY += audioSeg4 * 0.05 * sin(st.x * 7.5 + time4 * 1.9); // Reduced from 0.09 to 0.05
           
           // Individual thickness controlled only by audioSeg4 - FURTHER REDUCED for no blur
           float thickness4 = baseThickness * 0.6 * (1.0 + audioSeg4 * 1.0); // Reduced from 2.0 to 1.0
@@ -1719,18 +1728,18 @@ function createWaves() {
         
         // RIBBON 5: Yellow->Orange (LOWER TREBLE - Individual Jitters with Strong Bending)
         {
-          // Completely independent lower treble with own timing and STRONGER movements
-          float trebleJitter = smoothstep(0.0, 0.7, audioSeg5 * 1.5); // More sensitive threshold
-          float quickJitter = sin(time5 * 5.5 + st.x * 10.0) * trebleJitter * 0.11; // INCREASED from 0.07 to 0.11
-          float sharpPulse = sin(time5 * 4.2) * trebleJitter * 0.08; // INCREASED from 0.05 to 0.08
-          float microVibration = sin(time5 * 11.0 + st.x * 18.0) * trebleJitter * 0.05; // INCREASED from 0.025 to 0.05
-          float trebleFlutter = cos(time5 * 6.8 + st.x * 12.0) * trebleJitter * 0.06; // INCREASED from 0.03 to 0.06
-          float trebleWave = sin(time5 * 2.8 + st.x * 6.0) * trebleJitter * 0.09; // NEW wave motion
+          // Completely independent lower treble with own timing and CONTROLLED movements
+          float trebleJitter = smoothstep(0.0, 0.7, audioSeg5 * 0.8); // Reduced sensitivity
+          float quickJitter = sin(time5 * 5.5 + st.x * 10.0) * trebleJitter * 0.04; // Reduced from 0.11 to 0.04
+          float sharpPulse = sin(time5 * 4.2) * trebleJitter * 0.03; // Reduced from 0.08 to 0.03
+          float microVibration = sin(time5 * 11.0 + st.x * 18.0) * trebleJitter * 0.02; // Reduced from 0.05 to 0.02
+          float trebleFlutter = cos(time5 * 6.8 + st.x * 12.0) * trebleJitter * 0.025; // Reduced from 0.06 to 0.025
+          float trebleWave = sin(time5 * 2.8 + st.x * 6.0) * trebleJitter * 0.035; // Reduced from 0.09 to 0.035
           
-          // Independent base wave pattern with LARGER amplitude
-          float centerY = 0.35 + 0.08 * sin(st.x * 7.0 + time5 * 2.0); // INCREASED from 0.06 to 0.08
+          // Independent base wave pattern with CONTROLLED amplitude
+          float centerY = 0.35 + 0.08 * sin(st.x * 7.0 + time5 * 2.0); // Keep base amplitude
           centerY += quickJitter + sharpPulse + microVibration + trebleFlutter + trebleWave; // Added trebleWave
-          centerY += audioSeg5 * 0.10 * cos(st.x * 13.0 + time5 * 2.3); // INCREASED from 0.07 to 0.10
+          centerY += audioSeg5 * 0.05 * cos(st.x * 13.0 + time5 * 2.3); // Reduced from 0.10 to 0.05
           
           // Individual thickness controlled only by audioSeg5 - FURTHER REDUCED for no blur
           float thickness5 = baseThickness * 0.5 * (1.0 + audioSeg5 * 0.9); // Reduced from 1.8 to 0.9
@@ -1741,26 +1750,26 @@ function createWaves() {
           accColor += blendColors(c5, c6, mixF5) * alpha5;
           accAlpha = max(accAlpha, alpha5);
         }
-        // RIBBON 6: Green->Pink (HIGH TREBLE - Individual Sparkles with Strong Bending)
+        // RIBBON 6: Green->Orange (HIGH TREBLE - Individual Sparkles with CONTROLLED Bending)
         {
-          // Completely independent high treble with own timing and STRONGER movements
-          float trebleSpark = smoothstep(0.0, 0.75, audioSeg6 * 1.8); // More sensitive threshold
-          float sparkleVibe = sin(time6 * 9.0 + st.x * 22.0) * trebleSpark * 0.12; // INCREASED from 0.05 to 0.12
-          float electricPulse = cos(time6 * 7.5) * trebleSpark * 0.09; // INCREASED from 0.04 to 0.09
-          float highFreqShake = sin(time6 * 14.0 + st.x * 28.0) * trebleSpark * 0.06; // INCREASED from 0.02 to 0.06
-          float sparkleShimmer = cos(time6 * 12.0 + st.x * 35.0) * trebleSpark * 0.04; // INCREASED from 0.015 to 0.04
-          float trebleBend = sin(time6 * 3.0 + st.x * 8.0) * trebleSpark * 0.08; // NEW bending motion
+          // Completely independent high treble with own timing and CONTROLLED movements
+          float trebleSpark = smoothstep(0.0, 0.75, audioSeg6 * 0.7); // Reduced sensitivity
+          float sparkleVibe = sin(time6 * 9.0 + st.x * 22.0) * trebleSpark * 0.04; // Reduced from 0.12 to 0.04
+          float electricPulse = cos(time6 * 7.5) * trebleSpark * 0.03; // Reduced from 0.09 to 0.03
+          float highFreqShake = sin(time6 * 14.0 + st.x * 28.0) * trebleSpark * 0.02; // Reduced from 0.06 to 0.02
+          float sparkleShimmer = cos(time6 * 12.0 + st.x * 35.0) * trebleSpark * 0.015; // Reduced from 0.04 to 0.015
+          float trebleBend = sin(time6 * 3.0 + st.x * 8.0) * trebleSpark * 0.025; // Reduced from 0.08 to 0.025
           
-          // Independent base wave pattern with LARGER amplitude
-          float centerY = 0.58 + 0.08 * cos(st.x * 6.0 + time6 * 2.1); // INCREASED from 0.05 to 0.08
+          // Independent base wave pattern with CONTROLLED amplitude
+          float centerY = 0.58 + 0.08 * cos(st.x * 6.0 + time6 * 2.1); // Keep base amplitude
           centerY += sparkleVibe + electricPulse + highFreqShake + sparkleShimmer + trebleBend; // Added trebleBend
-          centerY += audioSeg6 * 0.12 * sin(st.x * 20.0 + time6 * 2.8); // INCREASED from 0.06 to 0.12
+          centerY += audioSeg6 * 0.05 * sin(st.x * 20.0 + time6 * 2.8); // Reduced from 0.12 to 0.05
           
           // Individual thickness controlled only by audioSeg6 - FURTHER REDUCED for no blur
           float thickness6 = baseThickness * 0.4 * (1.0 + audioSeg6 * 0.8); // Reduced from 1.5 to 0.8
           float alpha6 = ribbonAlpha(st.y, centerY, thickness6);
           vec3 c7 = vec3(0.0, 1.0, 0.5);
-          vec3 c8 = vec3(1.0, 0.2, 0.6);
+          vec3 c8 = vec3(1.0, 0.6, 0.2);
           float mixF6 = 0.5 + 0.5 * sin(time6 * 1.6 + audioSeg6 * 4.0); // Individual color mixing
           accColor += blendColors(c7, c8, mixF6) * alpha6;
           accAlpha = max(accAlpha, alpha6);
@@ -1800,8 +1809,8 @@ function createWaves() {
            // Visual Mode OFF: Render waves normally with color protection
            // Prevent oversaturation by normalizing if colors get too bright
            float colorIntensity = length(accColor);
-           if (colorIntensity > 1.5) {
-             accColor = normalize(accColor) * 1.5; // Cap color intensity
+           if (colorIntensity > 1.2) {
+             accColor = normalize(accColor) * 1.2; // Cap color intensity more conservatively
            }
            
            gl_FragColor = vec4(accColor, clamp(accAlpha * 0.85, 0.0, 1.0)); // Back to original alpha values
@@ -2070,10 +2079,10 @@ function createPortal() {
       time: { value: 0.0 },
       resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
       // Core eternal zoom parameters:
-      zoomSpeed: { value: 1.5 },         // Speed of eternal zoom
-      tunnelDepth: { value: 8.0 },       // Depth of tunnel layers
-      ringSpacing: { value: 0.15 },      // Spacing between tunnel rings
-      rotationSpeed: { value: 0.3 },     // Rotation speed
+      zoomSpeed: { value: 0.8 },         // Slower, more controlled zoom
+      tunnelDepth: { value: 12.0 },      // Deeper tunnel for better quality
+      ringSpacing: { value: 0.12 },      // Tighter ring spacing
+      rotationSpeed: { value: 0.15 },    // Slower rotation
       audioReactive: { value: 0.0 },     // Audio reactivity influence
       colorShift: { value: 0.0 },        // Color cycling
       // --- Visual Mode Uniforms ---
@@ -2160,19 +2169,22 @@ function createPortal() {
         float radius = length(centered);
         float angle = atan(centered.y, centered.x);
         
-        // ENHANCED ZOOM SPEED - Much more audio reactive
-        float audioZoomBoost = 1.0 + audioReactive * 3.0; // 3x speed boost with audio
+        // Smooth audio-reactive zoom speed
+        float audioZoomBoost = 1.0 + audioReactive * 0.8;
         float depth = 1.0 / (radius + 0.01) + time * zoomSpeed * audioZoomBoost;
         
-        // Create repeating tunnel rings
+        // Create smooth tunnel rings
         float ringPattern = fract(depth * ringSpacing);
+        float ringSmooth = smoothstep(0.0, 0.3, ringPattern) * smoothstep(1.0, 0.7, ringPattern);
         
-        // Add rotation to the tunnel with audio reactivity
-        angle += time * rotationSpeed * (1.0 + audioReactive * 0.5) + depth * 0.1;
+        // Smooth rotation with audio reactivity
+        float rotation = time * rotationSpeed * (1.0 + audioReactive * 0.3);
+        angle += rotation + depth * 0.05;
         
-        // DMT-INSPIRED KALEIDOSCOPE PATTERNS
-        vec2 kaleidoCoords = kaleidoscope(centered, 8.0 + audioReactive * 8.0);
-        float kaleidoPattern = fractalNoise(kaleidoCoords * 10.0 + time * 0.5);
+        // High-quality kaleidoscope patterns
+        float kaleidoSegments = 6.0 + audioReactive * 4.0;
+        vec2 kaleidoCoords = kaleidoscope(centered, kaleidoSegments);
+        float kaleidoPattern = fractalNoise(kaleidoCoords * 8.0 + time * 0.2);
         
         // ACID-INSPIRED FRACTAL LAYERS
         float fractalLayer1 = fractalNoise(vec2(angle * 4.0, depth * 6.0) + time * 0.3);
@@ -2185,9 +2197,9 @@ function createPortal() {
         // Create geometric patterns for the tunnel walls
         float tunnelPattern = 0.0;
         
-        // Primary tunnel structure - create strong geometric segments
-        float segments = 8.0 + audioReactive * 8.0;
-        float segmentPattern = abs(sin(angle * segments)) * 0.7 + 0.3;
+        // Primary tunnel structure - create smooth geometric segments
+        float segments = 6.0 + audioReactive * 3.0;
+        float segmentPattern = abs(sin(angle * segments)) * 0.6 + 0.4;
         tunnelPattern += segmentPattern;
         
         // Secondary pattern - radial lines creating perspective
@@ -2238,28 +2250,28 @@ function createPortal() {
         float audioDistortion = 1.0 + audioReactive * 0.8 * sin(angle * 12.0 + time * 6.0);
         tunnelPattern *= audioDistortion;
         
-        // Create depth-based brightness for tunnel effect
-        float tunnelBrightness = 1.0 - smoothstep(0.0, 0.8, radius);
-        tunnelBrightness *= (0.2 + ringPattern * 0.8);
+        // Create smooth depth-based brightness for tunnel effect
+        float tunnelBrightness = 1.0 - smoothstep(0.0, 0.7, radius);
+        tunnelBrightness *= (0.3 + ringSmooth * 0.7);
         
         // Enhanced perspective effect
-        float perspective = pow(1.0 - radius, 1.5);
-        tunnelBrightness *= (0.5 + perspective * 0.5);
+        float perspective = pow(1.0 - radius, 2.0);
+        tunnelBrightness *= (0.6 + perspective * 0.4);
         
         // PSYCHEDELIC COLOR SYSTEM
         float hue = colorShift + depth * 1.2 + angle * 0.2 + fractalCombined * 2.0;
         
-        // Create vivid psychedelic colors
+        // Create smooth, less bright colors
         vec3 color1 = vec3(
-          0.5 + 0.5 * sin(hue),
-          0.5 + 0.5 * sin(hue + 2.094),  // 120 degrees
-          0.5 + 0.5 * sin(hue + 4.188)   // 240 degrees
+          0.4 + 0.3 * sin(hue),
+          0.4 + 0.3 * sin(hue + 2.094),  // 120 degrees
+          0.4 + 0.3 * sin(hue + 4.188)   // 240 degrees
         );
         
         vec3 color2 = vec3(
-          0.5 + 0.5 * sin(hue + 1.0 + kaleidoPattern),
-          0.5 + 0.5 * sin(hue + 3.094 + kaleidoPattern),
-          0.5 + 0.5 * sin(hue + 5.188 + kaleidoPattern)
+          0.4 + 0.3 * sin(hue + 0.5 + kaleidoPattern),
+          0.4 + 0.3 * sin(hue + 2.594 + kaleidoPattern),
+          0.4 + 0.3 * sin(hue + 4.688 + kaleidoPattern)
         );
         
         vec3 color3 = vec3(
@@ -2275,25 +2287,25 @@ function createPortal() {
         // Apply tunnel pattern and brightness
         color *= tunnelPattern * tunnelBrightness;
         
-        // Add highlights at tunnel edges for better definition
-        float edgeHighlight = smoothstep(0.1, 0.3, ringPattern) * smoothstep(0.9, 0.7, ringPattern);
-        color += edgeHighlight * 0.6;
+        // Subtle edge highlights
+        float edgeHighlight = smoothstep(0.1, 0.2, ringPattern) * smoothstep(0.9, 0.8, ringPattern);
+        color += edgeHighlight * 0.2;
         
-        // Add perspective glow effect - brighter center
-        float perspectiveGlow = pow(1.0 - radius, 3.0) * 0.4;
+        // Subtle perspective glow
+        float perspectiveGlow = pow(1.0 - radius, 4.0) * 0.15;
         color += perspectiveGlow;
         
-        // Add geometric detail overlay with fractals
-        float detailPattern = sin(angle * 24.0 + depth * 8.0) * sin(depth * 16.0) * 0.15;
-        detailPattern *= (1.0 + fractalCombined * 0.5);
-        color += detailPattern * (1.0 + audioReactive * 0.8);
+        // Smooth geometric detail overlay
+        float detailPattern = sin(angle * 16.0 + depth * 4.0) * sin(depth * 8.0) * 0.08;
+        detailPattern *= (1.0 + fractalCombined * 0.3);
+        color += detailPattern * (1.0 + audioReactive * 0.4);
         
-        // Add DMT-style breathing effect
-        float breathingEffect = sin(time * 2.0 + radius * 8.0) * 0.1 * audioReactive;
+        // Subtle breathing effect
+        float breathingEffect = sin(time * 1.5 + radius * 6.0) * 0.03 * audioReactive;
         color += breathingEffect;
         
-        // Enhance saturation for more psychedelic effect
-        float saturation = 1.0 + audioReactive * 0.5;
+        // Controlled saturation
+        float saturation = 1.0 + audioReactive * 0.2;
         color *= saturation;
         
         return clamp(color, 0.0, 1.0);
@@ -2711,9 +2723,9 @@ function createOceanEffect() {
         float saturation = 0.8 + rim * 0.2 + displacementIntensity * 0.3;
         float value = 0.5 + rim * 0.5 + displacementIntensity * 0.4;
         
-        // Add pulsing brightness for extreme displacements
+        // Add subtle brightness variation for extreme displacements
         if (abs(vDisplacement) > 100.0) {
-          value += sin(time * 10.0) * 0.3; // Pulsing effect for extreme morphing
+          value += sin(time * 5.0) * 0.1; // Subtle variation for extreme morphing
         }
         
         vec3 proceduralColor = hsv2rgb(vec3(hue, saturation, value));
@@ -2914,42 +2926,54 @@ function createOceanEffect() {
       void main() {
           vec2 centeredUv = (vUv - 0.5) * vec2(resolution.x / resolution.y, 1.0);
           
-            // BASS - Powerful wind that blows smoke across screen
-            float windStrength = bassLevel * effectIntensity * 4.0;
-            vec2 windDirection = vec2(sin(time * 0.3 + bassLevel * 8.0), sin(time * 0.2 + bassLevel * 3.0) * 0.3) * windStrength;
+            // BASS - Gentle wind that slowly moves smoke
+            float windStrength = bassLevel * effectIntensity * 1.0; // Much more subtle
+            vec2 windDirection = vec2(sin(time * 0.1 + bassLevel * 2.0), sin(time * 0.05 + bassLevel * 1.0) * 0.2) * windStrength;
             
             // TREBLE - Smoke dissipation and new smoke injection
             float dissipation = 1.0 - trebleLevel * 0.8;  // High treble makes smoke disappear
             float smokeBurst = smoothstep(0.4, 1.0, trebleLevel) * 3.0;  // Treble creates new smoke bursts
             
             // MID - Controls swirling and turbulence intensity
-            float swirlingPower = midLevel * effectIntensity * 5.0;
+            float swirlingPower = midLevel * effectIntensity * 2.0;
           
-                      // Base smoke position with wind offset (bass blows smoke around)
-            vec2 smokePos = centeredUv + windDirection * 0.4;
+            // Base smoke position with wind offset (bass blows smoke around like real audio pressure)
+            vec2 smokePos = centeredUv + windDirection * 0.8; // Increased wind influence
             
             // Multiple smoke layers with different behaviors
-            float baseSmoke = fbm(smokePos * 2.0 + time * 0.2);
+            float baseSmoke = fbm(smokePos * 2.0 + time * 0.05);
             
             // MID-FREQUENCY SWIRLING - creates rotating smoke patterns
-            float angle = time * 0.4 + baseSmoke * swirlingPower;
+            float angle = time * 0.1 + baseSmoke * swirlingPower;
             mat2 rotation = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
             vec2 swirledPos = rotation * smokePos;
             
-            // Dynamic smoke density
-            float smokeDensity = fbm(swirledPos * 1.5 + time * 0.15);
+            // Dynamic smoke density with enhanced audio reactivity
+            float smokeDensity = fbm(swirledPos * 1.5 + time * 0.05);
+            
+            // Mid-frequency creates additional smoke turbulence and swirling
+            float midTurbulence = fbm(smokePos * 6.0 + time * (0.2 + midLevel * 0.5)) * midLevel * 0.4;
+            smokeDensity += midTurbulence;
             
             // TREBLE creates fine turbulence and detail
-            float turbulence = fbm(smokePos * 8.0 + time * (1.0 + trebleLevel * 3.0));
+            float turbulence = fbm(smokePos * 8.0 + time * (0.3 + trebleLevel * 0.8));
             smokeDensity += turbulence * trebleLevel * 0.7;
             
+            // Treble also creates small smoke particles that get blown around
+            float particleEffect = fbm(smokePos * 12.0 + time * (0.5 + trebleLevel * 1.2)) * trebleLevel * 0.3;
+            smokeDensity += particleEffect;
+            
             // TREBLE bursts create new smoke clouds
-            float burstSmoke = fbm(smokePos * 4.0 + time * 2.5) * smokeBurst;
+            float burstSmoke = fbm(smokePos * 4.0 + time * 0.6) * smokeBurst;
             smokeDensity += burstSmoke;
             
-            // BASS creates flowing smoke trails that move across screen
-            float trails = fbm(smokePos + vec2(time * (0.8 + bassLevel * 1.5), time * 0.2) * (1.0 + bassLevel));
-            smokeDensity = mix(smokeDensity, trails, 0.4);
+            // BASS creates flowing smoke trails that move across screen like real audio pressure waves
+            float trails = fbm(smokePos + vec2(time * (0.2 + bassLevel * 0.6), time * 0.05) * (1.0 + bassLevel * 0.5));
+            smokeDensity = mix(smokeDensity, trails, 0.6); // Increased trail influence
+            
+            // Additional bass-driven smoke displacement for realistic blowing effect
+            float bassDisplacement = fbm(smokePos * 3.0 + time * (0.3 + bassLevel * 1.0)) * bassLevel * 0.3;
+            smokePos += vec2(bassDisplacement, bassDisplacement * 0.5) * windStrength * 0.2;
             
             // Apply treble-driven dissipation
             smokeDensity *= dissipation;
@@ -2958,7 +2982,7 @@ function createOceanEffect() {
             float finalSmoke = smoothstep(0.1, 0.9, smokeDensity);
             
             // Overall audio enhances smoke concentration
-            finalSmoke *= (0.5 + audioIntensity * effectIntensity * 1.0);
+            finalSmoke *= (0.5 + audioIntensity * effectIntensity * 0.3);
           
           // MILKY WHITE SMOKE with subtle variations
           vec3 milkyBase = vec3(0.9, 0.9, 0.9);      // milky white base
@@ -2966,7 +2990,7 @@ function createOceanEffect() {
           vec3 milkyShadow = vec3(0.7, 0.7, 0.8);    // slightly blue shadows
           
           // Color variation based on density and movement
-          float colorVar = noise(smokePos * 6.0 + time * 0.4);
+                      float colorVar = noise(smokePos * 6.0 + time * 0.1);
           vec3 smokeColor = mix(milkyShadow, milkyBase, finalSmoke);
           smokeColor = mix(smokeColor, milkyHighlight, finalSmoke * colorVar);
           
@@ -2974,9 +2998,9 @@ function createOceanEffect() {
             // Bass adds warmth (slight yellow tint)
             smokeColor += vec3(0.15, 0.1, 0.0) * bassLevel * finalSmoke;
             
-            // Mid frequencies add brightness pulses
-            float brightnessPulse = 1.0 + midLevel * 0.4;
-            smokeColor *= brightnessPulse;
+            // Mid frequencies add subtle brightness variation
+            float brightnessVariation = 1.0 + midLevel * 0.1;
+            smokeColor *= brightnessVariation;
             
             // Treble adds cool highlights (slight blue tint)
             smokeColor += vec3(0.0, 0.05, 0.1) * trebleLevel * finalSmoke;
@@ -3060,7 +3084,7 @@ function createScribbleEffect() {
       radiusVariation: { value: 0.20 },
       lineThickness:   { value: 0.008 },
       glowIntensity:   { value: 0.5 },
-      colorA:          { value: new THREE.Color(0x6aff00) },
+      colorA:          { value: new THREE.Color(0xff00ff) }, // Pink
       colorB:          { value: new THREE.Color(0x00ffd2) },
       cameraTexture:   { value: null },
       visualMode:      { value: 0.0 },
@@ -3115,27 +3139,27 @@ function createScribbleEffect() {
           float pct = (i + 1.0) / loopCount;
 
           // Audio-reactive spinning speed (much more controlled)
-          float smoothedAudio = audioLevel * 0.5; // Dampen the audio input
-          float audioSpeedMult = 1.0 + smoothedAudio * 0.4; // Reduced from 1.5 to 0.4
+          float smoothedAudio = audioLevel * 0.15; // Further dampen the audio input
+          float audioSpeedMult = 1.0 + smoothedAudio * 0.1; // Reduced from 0.2 to 0.1
           float angle = pct * 6.283185 * (2.0 + pct) + time * (4.0 + pct * 5.0) * audioSpeedMult;
 
           // Controlled pulsing radius with gentle audio response
           float basePulse = sin(time * (5.0 + pct * 10.0));
-          float audioPulse = sin(time * (10.0 + pct * 8.0)) * smoothedAudio * 0.3; // Much gentler
+          float audioPulse = sin(time * (10.0 + pct * 8.0)) * smoothedAudio * 0.08; // Further reduced
           float r = baseRadius 
                     + radiusVariation * (basePulse + audioPulse) 
-                    * (0.6 + smoothedAudio * 0.2); // Less dramatic changes
+                    * (0.8 + smoothedAudio * 0.05); // Even less dramatic changes
 
           // Subtle audio-reactive jitter (much reduced)
-          float audioJitter = smoothedAudio * 0.1; // Reduced from 0.3 to 0.1
+          float audioJitter = smoothedAudio * 0.05; // Reduced from 0.1 to 0.05
           float jitter = noise(vec2(cos(angle), sin(angle)) * 5.0 + time * 3.0) * (0.05 + audioJitter);
 
           // compute center of this loop
           vec2 center = vec2(cos(angle), sin(angle)) * r * effectIntensity;
 
           // Audio-reactive ellipse shape with subtle controlled changes
-          float audioShapeA = 1.0 + smoothedAudio * 0.15; // Reduced from 0.4 to 0.15
-          float audioShapeB = 1.0 + smoothedAudio * 0.1; // Reduced from 0.3 to 0.1
+          float audioShapeA = 1.0 + smoothedAudio * 0.08; // Reduced from 0.15 to 0.08
+          float audioShapeB = 1.0 + smoothedAudio * 0.05; // Reduced from 0.1 to 0.05
           float longA = r * effectIntensity * (1.0 + 0.3 * sin(time * 20.0 + pct * 6.0)) * audioShapeA;
           float shortA = r * effectIntensity * 0.3 * audioShapeB;
           vec2 dir = uv - center;
@@ -3152,8 +3176,8 @@ function createScribbleEffect() {
                     - (1.0 + jitter);
 
           // Audio-reactive line thickness and glow (much more controlled)
-          float audioThickness = lineThickness * (1.0 + smoothedAudio * 0.1); // Reduced from 0.25 to 0.1
-          float audioGlow = glowIntensity * (1.0 + smoothedAudio * 0.2); // Reduced from 0.5 to 0.2
+          float audioThickness = lineThickness * (1.0 + smoothedAudio * 0.05); // Reduced from 0.1 to 0.05
+          float audioGlow = glowIntensity * (1.0 + smoothedAudio * 0.1); // Reduced from 0.2 to 0.1
           float glow = smoothstep(audioThickness + audioGlow, audioThickness, abs(d));
 
           // per‑ring color
@@ -3801,11 +3825,23 @@ function createBlobEffect() {
       float rim = pow(1.0 - dot(N, vec3(0.0,0.0,1.0)), 3.0) * 0.4;
 
       float hue = mod(time * uColorSpeed + p.y * 0.02, 1.0);
-      vec3 waxColor = hsv2rgb(vec3(hue, 1.0, 0.8));
+      
+      // Add variation to prevent flat colors - use position and time for dynamic saturation/value
+      float saturationVariation = 0.3 + 0.4 * sin(time * 0.5 + p.x * 3.0) * cos(time * 0.3 + p.y * 2.0);
+      float saturation = clamp(0.6 + saturationVariation * 0.3, 0.4, 0.9); // Limit max saturation to 0.9
+      
+      float valueVariation = 0.2 + 0.3 * sin(time * 0.7 + p.y * 4.0) * cos(time * 0.4 + p.x * 1.5);
+      float value = clamp(0.6 + valueVariation * 0.2, 0.5, 0.85); // Limit max value to 0.85
+      
+      vec3 waxColor = hsv2rgb(vec3(hue, saturation, value));
       vec3 lit = waxColor * (0.4 + 0.6*diff) + rim;
+      
       float glowDist = 0.35 * effectIntensity;
       float glowAlpha = smoothstep(glowDist, 0.0, field);
-      vec3 glowCol = hsv2rgb(vec3(hue, 0.8, 0.8));
+      
+      // Use different saturation for glow to add depth
+      float glowSaturation = clamp(saturation * 0.8, 0.3, 0.7);
+      vec3 glowCol = hsv2rgb(vec3(hue, glowSaturation, value * 0.9));
       vec3 proceduralColor = lit + glowCol * glowAlpha;
 
       // --- Visual Mode Logic ---
@@ -4355,8 +4391,8 @@ function createNeonGridEffect() {
               lines += scanlines;
               
               // Grid brightness varies across surface
-              float gridBrightness = 1.0 + sin(uv.x * gridScale * 0.5 + time * 2.0) * midIntensity * 0.4;
-              gridBrightness += cos(uv.y * gridScale * 0.7 + time * 1.5) * trebleIntensity * 0.3;
+                          float gridBrightness = 1.0 + sin(uv.x * gridScale * 0.5 + time * 2.0) * midIntensity * 0.1;
+            gridBrightness += cos(uv.y * gridScale * 0.7 + time * 1.5) * trebleIntensity * 0.08;
               
               // === CLEAN BRIGHTNESS SYSTEM ===
               
@@ -4367,7 +4403,7 @@ function createNeonGridEffect() {
               brightness *= gridBrightness;
               
               // Audio brightness boost - users see immediate response!
-              float lineBrightness = brightness * (0.7 + bassIntensity * 0.8 + midIntensity * 0.5 + trebleIntensity * 0.3);
+              float lineBrightness = brightness * (0.7 + bassIntensity * 0.2 + midIntensity * 0.1 + trebleIntensity * 0.08);
               
               // === CONSISTENT PINK GRID COLOR ===
               
@@ -4379,7 +4415,7 @@ function createNeonGridEffect() {
               // === FINAL AUDIO EFFECTS ===
               
               // Beat pulsing - users immediately see this!
-              float beatPulse = 1.0 + bassIntensity * sin(time * 6.0) * 0.4;
+              float beatPulse = 1.0 + bassIntensity * sin(time * 6.0) * 0.1;
               finalColor *= beatPulse;
               
               // Add some digital glitch texture
@@ -4397,7 +4433,7 @@ function createNeonGridEffect() {
                   // Mode 3: Camera modulates grid brightness
                   vec3 cameraColor = texture2D(cameraTexture, vUv).rgb;
                   float camBrightness = dot(cameraColor, vec3(0.333));
-                  finalColor *= (0.5 + camBrightness * 1.5);
+                  finalColor *= (0.5 + camBrightness * 0.8);
               }
               
               gl_FragColor = vec4(finalColor * lines, lines);
@@ -9595,6 +9631,11 @@ async function flipCamera() {
     showActionMessage(`camera: ${cameraName}`);
     console.log(`Successfully switched to ${cameraName} camera`);
     
+    // Re-initialize touch controls to ensure they work after camera change
+    setTimeout(() => {
+      reinitTouchControls();
+    }, 100);
+    
   } catch (err) {
     console.error('Error flipping camera:', err);
     showActionMessage("camera flip failed");
@@ -9614,6 +9655,11 @@ async function flipCamera() {
       });
       
       showActionMessage("camera: default");
+      
+      // Re-initialize touch controls after fallback camera restart
+      setTimeout(() => {
+        reinitTouchControls();
+      }, 100);
     } catch (fallbackErr) {
       console.error('Fallback camera restart failed:', fallbackErr);
       showActionMessage("camera error");
@@ -11010,7 +11056,7 @@ function playPreviousUserSong() {
     
     // Configurable thresholds (in ms and pixels)
     const longPressThreshold = 600;  // Duration (ms) to trigger a long press (help menu)
-    const cameraFlipThreshold = 2000; // Duration (ms) to trigger camera flip (longer than help menu)
+    const cameraFlipThreshold = 4000; // Duration (ms) to trigger camera flip (much longer than help menu)
     const tapMaxDuration = 200;      // Max duration (ms) for a tap
     const tapDelay = 300;            // Time window (ms) to wait for additional taps
     const swipeThreshold = 50;       // Minimum movement (pixels) to be considered a swipe
@@ -11030,6 +11076,7 @@ function playPreviousUserSong() {
     function onTouchStart(e) {
       if (e.target.id === 'passwordInput' || e.target.id === 'passwordSubmit') return;
       e.preventDefault();
+      e.stopPropagation();
       touchStartTime = Date.now();
       touchStartX = e.touches[0].clientX;
       touchStartY = e.touches[0].clientY;
@@ -11091,6 +11138,8 @@ function playPreviousUserSong() {
     }
     
     function onTouchMove(e) {
+      e.preventDefault();
+      e.stopPropagation();
       if (e.touches.length === 2) {
         // Handle pinch gestures and two-finger movement
         const pdx = e.touches[0].clientX - e.touches[1].clientX;
@@ -11143,7 +11192,6 @@ function playPreviousUserSong() {
         clearTimeout(cameraFlipTimer);
         return;
       }
-      e.preventDefault();
       // Any movement cancels the long press timer
       clearTimeout(longPressTimer);
       clearTimeout(cameraFlipTimer);
@@ -11152,6 +11200,7 @@ function playPreviousUserSong() {
     function onTouchEnd(e) {
       if (e.target.id === 'passwordInput' || e.target.id === 'passwordSubmit') return;
       e.preventDefault();
+      e.stopPropagation();
       // Clear timers when touch ends
       clearTimeout(longPressTimer);
       clearTimeout(cameraFlipTimer);
@@ -11332,6 +11381,8 @@ function playPreviousUserSong() {
     }
     
     function onTouchCancel(e) {
+      e.preventDefault();
+      e.stopPropagation();
       console.log('Touch canceled');
       clearTimeout(longPressTimer);
       clearTimeout(tapTimer);
@@ -11353,6 +11404,24 @@ function playPreviousUserSong() {
       twoFingerStartPositions = [];
       twoFingerMaxMovement = 0;
       twoFingerIntentionalDrag = false;
+    }
+    
+    // Function to re-initialize touch controls (useful after camera operations)
+    function reinitTouchControls() {
+      // Remove existing listeners
+      const target = document.body;
+      target.removeEventListener('touchstart', onTouchStart, { passive: false });
+      target.removeEventListener('touchmove', onTouchMove, { passive: false });
+      target.removeEventListener('touchend', onTouchEnd, { passive: false });
+      target.removeEventListener('touchcancel', onTouchCancel, { passive: false });
+      
+      // Re-add listeners
+      target.addEventListener('touchstart', onTouchStart, { passive: false });
+      target.addEventListener('touchmove', onTouchMove, { passive: false });
+      target.addEventListener('touchend', onTouchEnd, { passive: false });
+      target.addEventListener('touchcancel', onTouchCancel, { passive: false });
+      
+      console.log('Touch controls re-initialized');
     }
     
     // Call initTouchControls() once the DOM is ready
