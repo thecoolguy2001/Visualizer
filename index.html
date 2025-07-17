@@ -2078,12 +2078,13 @@ function createPortal() {
     uniforms: {
       time: { value: 0.0 },
       resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) },
-      // Core eternal zoom parameters:
-      zoomSpeed: { value: 0.8 },         // Slower, more controlled zoom
-      tunnelDepth: { value: 12.0 },      // Deeper tunnel for better quality
-      ringSpacing: { value: 0.12 },      // Tighter ring spacing
-      rotationSpeed: { value: 0.15 },    // Slower rotation
+      // Core kaleidoscope parameters:
+      zoomSpeed: { value: 0.6 },         // Smooth zoom speed
+      rotationSpeed: { value: 0.12 },    // Gentle rotation
       audioReactive: { value: 0.0 },     // Audio reactivity influence
+      audioBass: { value: 0.0 },
+      audioMid: { value: 0.0 },
+      audioTreble: { value: 0.0 },
       colorShift: { value: 0.0 },        // Color cycling
       // --- Visual Mode Uniforms ---
       cameraTexture: { value: null },
@@ -2098,243 +2099,97 @@ function createPortal() {
       }
     `,
     fragmentShader: `
-      precision highp float;
-      
-      uniform float time;
-      uniform vec2 resolution;
-      uniform float zoomSpeed;
-      uniform float tunnelDepth;
-      uniform float ringSpacing;
-      uniform float rotationSpeed;
-      uniform float audioReactive;
-      uniform float colorShift;
-      
-      // --- Visual Mode Uniforms ---
-      uniform sampler2D cameraTexture;
-      uniform float visualMode;
-      uniform float cameraActive;
-      
-      varying vec2 vUv;
-      
-      float hash(vec2 p) {
-        return fract(sin(dot(p, vec2(63.7264,78.233))) * 43758.5453123);
-      }
-      
-      float noise(vec2 p) {
-        vec2 i = floor(p);
-        vec2 f = fract(p);
-        float a = hash(i);
-        float b = hash(i + vec2(1.0, 0.0));
-        float c = hash(i + vec2(0.0, 1.0));
-        float d = hash(i + vec2(1.0, 1.0));
-        vec2 u = f * f * (3.0 - 2.0 * f);
-        return mix(a, b, u.x) + (c - a)*u.y*(1.0 - u.x) + (d - b)*u.x*u.y;
-      }
-      
-      // Fractal noise for DMT-like patterns
-      float fractalNoise(vec2 p) {
-        float total = 0.0;
-        float amplitude = 0.5;
-        for (int i = 0; i < 6; i++) {
-          total += amplitude * noise(p);
-          p *= 2.0;
-          amplitude *= 0.5;
-        }
-        return total;
-      }
-      
-      // Kaleidoscope symmetry function
-      vec2 kaleidoscope(vec2 uv, float segments) {
-        float angle = atan(uv.y, uv.x);
-        float radius = length(uv);
-        
-        // Create kaleidoscope effect
-        float sliceAngle = 6.28318 / segments;
-        float segmentIndex = floor(angle / sliceAngle);
-        float localAngle = angle - segmentIndex * sliceAngle;
-        
-        // Mirror alternate segments
-        if (mod(segmentIndex, 2.0) > 0.5) {
-          localAngle = sliceAngle - localAngle;
-        }
-        
-        return vec2(cos(localAngle) * radius, sin(localAngle) * radius);
-      }
-      
-      vec3 eternalZoom(vec2 uv) {
-        // Center the coordinates
-        vec2 centered = uv - 0.5;
-        
-        // Convert to polar coordinates for tunnel effect
-        float radius = length(centered);
-        float angle = atan(centered.y, centered.x);
-        
-        // Smooth audio-reactive zoom speed
-        float audioZoomBoost = 1.0 + audioReactive * 0.8;
-        float depth = 1.0 / (radius + 0.01) + time * zoomSpeed * audioZoomBoost;
-        
-        // Create smooth tunnel rings
-        float ringPattern = fract(depth * ringSpacing);
-        float ringSmooth = smoothstep(0.0, 0.3, ringPattern) * smoothstep(1.0, 0.7, ringPattern);
-        
-        // Smooth rotation with audio reactivity
-        float rotation = time * rotationSpeed * (1.0 + audioReactive * 0.3);
-        angle += rotation + depth * 0.05;
-        
-        // High-quality kaleidoscope patterns
-        float kaleidoSegments = 6.0 + audioReactive * 4.0;
-        vec2 kaleidoCoords = kaleidoscope(centered, kaleidoSegments);
-        float kaleidoPattern = fractalNoise(kaleidoCoords * 8.0 + time * 0.2);
-        
-        // ACID-INSPIRED FRACTAL LAYERS
-        float fractalLayer1 = fractalNoise(vec2(angle * 4.0, depth * 6.0) + time * 0.3);
-        float fractalLayer2 = fractalNoise(vec2(angle * 8.0, depth * 3.0) + time * 0.6);
-        float fractalLayer3 = fractalNoise(vec2(angle * 16.0, depth * 2.0) + time * 0.9);
-        
-        // Combine fractal layers
-        float fractalCombined = (fractalLayer1 + fractalLayer2 * 0.5 + fractalLayer3 * 0.25) / 1.75;
-        
-        // Create geometric patterns for the tunnel walls
-        float tunnelPattern = 0.0;
-        
-        // Primary tunnel structure - create smooth geometric segments
-        float segments = 6.0 + audioReactive * 3.0;
-        float segmentPattern = abs(sin(angle * segments)) * 0.6 + 0.4;
-        tunnelPattern += segmentPattern;
-        
-        // Secondary pattern - radial lines creating perspective
-        float radialLines = sin(angle * 16.0 + depth * 4.0) * 0.3 + 0.7;
-        tunnelPattern *= radialLines;
-        
-        // Tertiary pattern - depth rings for stronger tunnel effect
-        float depthRings = sin(depth * 12.0) * 0.4 + 0.6;
-        tunnelPattern *= depthRings;
-        
-        // CRYSTALLINE DMT PATTERNS
-        float crystalPattern = 0.0;
-        for (int i = 0; i < 12; i++) {
-          float crystalAngle = float(i) * 0.524 + time * rotationSpeed * 0.3; // 30 degrees
-          float crystalLine = abs(sin(angle - crystalAngle)) * 0.3 + 0.7;
-          crystalPattern += crystalLine;
-        }
-        tunnelPattern *= (crystalPattern * 0.2 + 0.8);
-        
-        // ORNATE DECORATIVE PATTERNS
-        float ornatePattern = 0.0;
-        ornatePattern += sin(angle * 24.0 + depth * 8.0 + time * 2.0) * 0.1;
-        ornatePattern += cos(angle * 36.0 - depth * 6.0 + time * 1.5) * 0.1;
-        ornatePattern += sin(angle * 48.0 + depth * 4.0 + time * 3.0) * 0.05;
-        tunnelPattern += ornatePattern;
-        
-        // TESSELLATED GEOMETRIC SHAPES
-        float tessellation = 0.0;
-        float tessRadius = mod(radius * 20.0 + time * 2.0, 1.0);
-        float tessAngle = mod(angle * 6.0, 1.0);
-        tessellation += smoothstep(0.3, 0.7, tessRadius) * smoothstep(0.3, 0.7, tessAngle);
-        tunnelPattern += tessellation * 0.3;
-        
-        // MORPHING GEOMETRIC MANDALAS
-        float mandalaPattern = 0.0;
-        for (int i = 1; i <= 8; i++) {
-          float freq = float(i) * 3.0;
-          float amp = 1.0 / float(i);
-          mandalaPattern += amp * sin(freq * angle + time * 0.5 + depth * 2.0);
-        }
-        tunnelPattern += mandalaPattern * 0.2;
-        
-        // Apply fractal and kaleidoscope effects
-        tunnelPattern *= (1.0 + fractalCombined * 0.5);
-        tunnelPattern *= (1.0 + kaleidoPattern * 0.3);
-        
-        // Audio-reactive tunnel distortion - MORE INTENSE
-        float audioDistortion = 1.0 + audioReactive * 0.8 * sin(angle * 12.0 + time * 6.0);
-        tunnelPattern *= audioDistortion;
-        
-        // Create smooth depth-based brightness for tunnel effect
-        float tunnelBrightness = 1.0 - smoothstep(0.0, 0.7, radius);
-        tunnelBrightness *= (0.3 + ringSmooth * 0.7);
-        
-        // Enhanced perspective effect
-        float perspective = pow(1.0 - radius, 2.0);
-        tunnelBrightness *= (0.6 + perspective * 0.4);
-        
-        // PSYCHEDELIC COLOR SYSTEM
-        float hue = colorShift + depth * 1.2 + angle * 0.2 + fractalCombined * 2.0;
-        
-        // Create smooth, less bright colors
-        vec3 color1 = vec3(
-          0.4 + 0.3 * sin(hue),
-          0.4 + 0.3 * sin(hue + 2.094),  // 120 degrees
-          0.4 + 0.3 * sin(hue + 4.188)   // 240 degrees
-        );
-        
-        vec3 color2 = vec3(
-          0.4 + 0.3 * sin(hue + 0.5 + kaleidoPattern),
-          0.4 + 0.3 * sin(hue + 2.594 + kaleidoPattern),
-          0.4 + 0.3 * sin(hue + 4.688 + kaleidoPattern)
-        );
-        
-        vec3 color3 = vec3(
-          0.5 + 0.5 * sin(hue + 2.0 + fractalCombined * 2.0),
-          0.5 + 0.5 * sin(hue + 4.094 + fractalCombined * 2.0),
-          0.5 + 0.5 * sin(hue + 6.188 + fractalCombined * 2.0)
-        );
-        
-        // Blend colors based on tunnel pattern and fractals
-        vec3 color = mix(color1, color2, ringPattern);
-        color = mix(color, color3, fractalCombined * 0.5);
-        
-        // Apply tunnel pattern and brightness
-        color *= tunnelPattern * tunnelBrightness;
-        
-        // Subtle edge highlights
-        float edgeHighlight = smoothstep(0.1, 0.2, ringPattern) * smoothstep(0.9, 0.8, ringPattern);
-        color += edgeHighlight * 0.2;
-        
-        // Subtle perspective glow
-        float perspectiveGlow = pow(1.0 - radius, 4.0) * 0.15;
-        color += perspectiveGlow;
-        
-        // Smooth geometric detail overlay
-        float detailPattern = sin(angle * 16.0 + depth * 4.0) * sin(depth * 8.0) * 0.08;
-        detailPattern *= (1.0 + fractalCombined * 0.3);
-        color += detailPattern * (1.0 + audioReactive * 0.4);
-        
-        // Subtle breathing effect
-        float breathingEffect = sin(time * 1.5 + radius * 6.0) * 0.03 * audioReactive;
-        color += breathingEffect;
-        
-        // Controlled saturation
-        float saturation = 1.0 + audioReactive * 0.2;
-        color *= saturation;
-        
-        return clamp(color, 0.0, 1.0);
-      }
-      
-      void main(){
-        vec2 screenUV = gl_FragCoord.xy / resolution.xy;
-        vec4 cameraColor = texture2D(cameraTexture, screenUV);
-        
-        // Create eternal zoom effect
-        vec3 zoomColor = eternalZoom(vUv);
-        
-        // Create vignette effect
-        float vignette = smoothstep(0.85, 0.3, length(vUv - 0.5));
-        
-        // --- Visual Mode Logic ---
-        if (cameraActive > 0.5) {
-            if (abs(visualMode - 2.0) < 0.1) { // Style 2: Blend with camera
-                zoomColor = mix(zoomColor, cameraColor.rgb, 0.5);
-            }
-            // Style 3 is handled by alpha
-        }
-        
-        zoomColor *= vignette;
-        float finalAlpha = (abs(visualMode - 3.0) < 0.1 && cameraActive > 0.5) ? vignette : 1.0;
-        
-        gl_FragColor = vec4(zoomColor, finalAlpha);
-      }
-    `,
+precision highp float;
+
+uniform float time;
+uniform vec2 resolution;
+uniform float zoomSpeed;
+uniform float rotationSpeed;
+uniform float audioReactive;
+uniform float audioBass;
+uniform float audioMid;
+uniform float audioTreble;
+uniform float colorShift;
+uniform sampler2D cameraTexture;
+uniform float visualMode;
+uniform float cameraActive;
+
+varying vec2 vUv;
+
+vec3 palette(float t) {
+  return 0.5 + 0.5 * cos(6.2831 * (vec3(1.0, 0.7, 0.3) * t + vec3(0.05, 0.3, 0.6)));
+}
+
+void main() {
+  vec2 uv = vUv * 2.0 - 1.0;
+  float radius = length(uv);
+  float angle = atan(uv.y, uv.x);
+
+  float segments = 8.0;
+  float segAngle = 6.2831 / segments;
+  angle = mod(angle, segAngle);
+  angle = abs(angle - segAngle * 0.5);
+
+  float depth = 1.0 / (radius + 0.05);
+  float tunnelTime = time * zoomSpeed + depth * 4.0;
+  float ripple = sin(depth * 12.0 - tunnelTime * 3.0 + angle * 5.0);
+
+  float spiralBands = sin(angle * (10.0 + 4.0 * sin(time * 0.3)) + radius * 20.0 - time * 2.0);
+  float radialNotches = cos(radius * (40.0 + 20.0 * sin(time * 0.2)) - time * 1.5);
+  float rotatingBars = sin(angle * (16.0 + 8.0 * cos(time * 0.4)) - time * 2.5);
+  float flowerPetals = sin(angle * (8.0 + 6.0 * sin(time * 0.15 + radius * 5.0)));
+
+  // Enhanced organic black geometry that blends with colors
+  float organicShape = smoothstep(-0.3, 0.3, spiralBands) *
+                      smoothstep(-0.2, 0.2, radialNotches) *
+                      smoothstep(-0.4, 0.4, rotatingBars) *
+                      smoothstep(-0.3, 0.3, flowerPetals) *
+                      smoothstep(0.2, 0.8, ripple);
+
+  // Add some organic variation to make it less geometric
+  float organicNoise = sin(angle * 12.0 + radius * 15.0 + time * 1.8) *
+                      cos(radius * 25.0 - time * 0.9) *
+                      sin(angle * 8.0 + time * 0.7);
+  organicShape *= 0.7 + 0.3 * smoothstep(0.0, 0.5, organicNoise);
+
+  // Make the black shapes more transparent and blend with colors
+  float blackInfluence = organicShape * 0.3; // Reduced from 0.5
+  float brightness = 1.0 - blackInfluence;
+
+  float ring = smoothstep(0.0, 1.0, ripple);
+
+  float star = 0.5 + 0.5 * sin(angle * 24.0 + radius * 30.0 - time * 1.6 + ripple * 2.0);
+  float starMask = smoothstep(0.25, 0.75, star);
+  float polygons = smoothstep(0.3, 0.8, cos(angle * 6.0 + radius * 10.0 + time * 1.5));
+  float polyMask = 0.6 + 0.4 * polygons;
+  float multiLayer = brightness * starMask * polyMask;
+
+  float hue = colorShift + angle * 0.6 + depth * 0.5 + ripple * 0.2 + audioReactive * 0.6;
+  vec3 color = palette(hue) * multiLayer;
+
+  float hue2 = hue + 0.4;
+  vec3 color2 = palette(hue2) * (0.6 + 0.4 * starMask * polyMask);
+  color = mix(color, color2, 0.45 + 0.35 * sin(time * 0.5 + angle * 3.0));
+  color *= 1.2;
+
+  float tunnelHighlight = smoothstep(0.1, 0.2, radius) * 0.3;
+  color += tunnelHighlight * vec3(0.6);
+
+  float vignette = smoothstep(1.2, 0.3, radius);
+
+  vec2 screenUV = gl_FragCoord.xy / resolution.xy;
+  vec3 cam = texture2D(cameraTexture, screenUV).rgb;
+  if (cameraActive > 0.5 && abs(visualMode - 2.0) < 0.1) {
+    color = mix(color, cam, 0.3);
+  }
+
+  color = pow(color, vec3(0.95));        // less gamma flattening
+  color = clamp(color * 1.4, 0.0, 1.0);  // enhance pop while keeping it tight
+
+  float alpha = (abs(visualMode - 3.0) < 0.1 && cameraActive > 0.5) ? vignette : 1.0;
+  gl_FragColor = vec4(color * vignette, alpha);
+}
+`,
     transparent: true,
     blending: THREE.AdditiveBlending
   });
@@ -4814,7 +4669,7 @@ function createNeonGridEffect() {
       this.material.uniforms.effectIntensity.value = this.userData.baseEffectIntensity;
       this.material.uniforms.audioBass.value = this.material.uniforms.audioBass.value || 0.0;
       this.material.uniforms.audioMid.value = this.material.uniforms.audioMid.value || 0.0;
-      this.material.uniforms.audioTreble.value = this.material.uniforms.audioTreble.value || 0.0;
+      this.material.uniforms.audioTreble.value = this.material.uniforms.audioTrebre.value || 0.0;
       
       // Display feedback message
       showActionMessage(`Paper Wind: ${(clampedLevel * 100).toFixed(0)}% (${this.userData.wobbleMultiplier.toFixed(1)}x force)`);
@@ -6916,7 +6771,7 @@ function createPixelSortEffect() {
                   
                   pattern = butterfly;
               } else if (drawingType < 0.25) {
-                  // Tree Swaying in Breeze
+                  // Tree Swaying in Breeze - nature's choreography
                   vec2 pos = cellUv;
                   float tree = 0.0;
                   
@@ -8815,18 +8670,16 @@ if (wave3DEffect && wave3DEffect.material.uniforms) {
   wave3DEffect.geometry.attributes.position.needsUpdate = true;
 }
         
-      // Portal - Eternal Zoom
+      // Portal - Kaleidoscope Effect
       // Portal idle update
 const portal = visualElements.find(elem => elem.name === 'Portal');
 if (portal && portal.material && portal.material.uniforms) {
   const time = performance.now() * 0.001;
 
   portal.material.uniforms.time.value = time;
-  portal.material.uniforms.zoomSpeed.value = 1.5; // Faster base zoom speed for more intensity
-  portal.material.uniforms.tunnelDepth.value = 8.0; // Tunnel depth
-  portal.material.uniforms.ringSpacing.value = 0.15; // Ring spacing for tunnel effect
-  portal.material.uniforms.rotationSpeed.value = 0.3; // Rotation speed
-  portal.material.uniforms.colorShift.value = time * 2.0 + Math.sin(time * 0.8) * 4.0; // Enhanced color cycling
+  portal.material.uniforms.zoomSpeed.value = 0.6; // Smooth zoom speed
+  portal.material.uniforms.rotationSpeed.value = 0.12; // Gentle rotation
+  portal.material.uniforms.colorShift.value = time * 1.5 + Math.sin(time * 0.6) * 3.0; // Smooth color cycling
   portal.material.uniforms.audioReactive.value = 0.0;
 }
         
@@ -9228,9 +9081,8 @@ if (wave3DEffect && wave3DEffect.material.uniforms) {
         // ROTATION: Use momentum-based speed
         portal.material.uniforms.rotationSpeed.value = portal.userData.rotationMomentum;
         
-        // TUNNEL PARAMETERS: Audio-reactive tunnel structure
-        portal.material.uniforms.tunnelDepth.value = 8.0 + smoothedMid * 4.0; // Mid frequencies affect tunnel depth
-        portal.material.uniforms.ringSpacing.value = 0.15 + smoothedTreble * 0.1; // Treble affects ring spacing
+        // KALEIDOSCOPE PARAMETERS: Audio-reactive kaleidoscope structure
+        portal.material.uniforms.zoomSpeed.value = 0.6 + smoothedBass * 0.3; // Bass affects zoom speed
         portal.material.uniforms.audioReactive.value = (smoothedBass + smoothedMid + smoothedTreble) * 0.4; // Audio reactive effects
       }
       
@@ -10368,10 +10220,8 @@ if (portal && portal.material && portal.material.uniforms) {
 
   // Store base intensity multipliers (these affect the targets, not the current values)
   portal.userData.intensityMultiplier = 0.5 + intensityLevel * 0.2; // Scale effect intensity
-  portal.userData.baseZoomSpeed = 1.0 + intensityLevel * 0.3; // Base zoom speed - more aggressive
-  portal.userData.baseRotationSpeed = 0.2 + intensityLevel * 0.08; // Base rotation speed
-  portal.userData.baseTunnelDepth = 6.0 + intensityLevel * 1.2; // Base tunnel depth
-  portal.userData.baseRingSpacing = 0.1 + intensityLevel * 0.03; // Base ring spacing
+  portal.userData.baseZoomSpeed = 0.6 + intensityLevel * 0.15; // Base zoom speed - smooth and controlled
+  portal.userData.baseRotationSpeed = 0.12 + intensityLevel * 0.04; // Base rotation speed
 
   console.log(`Portal intensity set to level ${intensityLevel} (multiplier: ${portal.userData.intensityMultiplier})`);
 }
